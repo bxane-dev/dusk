@@ -1,0 +1,19 @@
+node_modules/
+dist/
+.vite/
+*.log
+.DS_Store
+Thumbs.db
+
+# Rust / Tauri
+src-tauri/target/
+target/
+
+# IDE
+.vscode/
+.idea/
+
+# Local runtime data
+*.db
+*.db-shm
+*.db-wal
