@@ -1,0 +1,31 @@
+name: Windows Release
+
+on:
+  workflow_dispatch:
+
+jobs:
+  publish:
+    permissions:
+      contents: write
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v6
+        with:
+          node-version: lts/*
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: swatinem/rust-cache@v2
+        with:
+          workspaces: ./src-tauri -> target
+      - name: Install frontend dependencies
+        run: npm install
+      - name: Build Dusk and create draft release
+        uses: tauri-apps/tauri-action@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tagName: dusk-v__VERSION__
+          releaseName: Dusk v__VERSION__
+          releaseBody: Windows installer for Dusk.
+          releaseDraft: true
+          prerelease: true
