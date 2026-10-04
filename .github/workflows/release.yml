@@ -2,6 +2,9 @@ name: Windows Release
 
 on:
   workflow_dispatch:
+  push:
+    branches:
+      - installer-build
 
 jobs:
   publish:
@@ -19,13 +22,13 @@ jobs:
           workspaces: ./src-tauri -> target
       - name: Install frontend dependencies
         run: npm install
-      - name: Build Dusk and create draft release
+      - name: Build Dusk and publish Windows installer
         uses: tauri-apps/tauri-action@v1
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           tagName: dusk-v__VERSION__
           releaseName: Dusk v__VERSION__
-          releaseBody: Windows installer for Dusk.
-          releaseDraft: true
-          prerelease: true
+          releaseBody: Installable Windows release for Dusk.
+          releaseDraft: false
+          prerelease: false
