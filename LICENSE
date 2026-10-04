@@ -1,0 +1,49 @@
+Dusk Open Code License (DOCL) v1.0
+
+Copyright (c) 2026 bxane-dev
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated source code and documentation files (the
+"Software"), to use, copy, modify, merge, publish, distribute, sublicense,
+and/or create derivative works from the Software, including for commercial
+purposes, subject to the following conditions:
+
+1. Attribution
+   Any public redistribution, derivative work, application, project, or
+   product that uses a substantial portion of the Software must provide
+   reasonable and visible credit to:
+
+   bxane-dev
+   https://github.com/bxane-dev
+
+   and must include a link to the original Dusk source repository:
+
+   https://github.com/bxane-dev/dusk
+
+2. License Notice
+   A copy of this license and the above copyright notice must be included
+   with any redistributed source code or substantial portions of the
+   Software.
+
+3. Modifications
+   Modified versions may be distributed, forked, and contributed back to
+   Dusk. Modified versions must not imply that bxane-dev created, endorsed,
+   or maintains those modifications unless permission has been given.
+
+4. Contributions
+   Contributions submitted to the Dusk repository may be incorporated into
+   the project and distributed under this license. Contributors retain
+   copyright in their own contributions unless they explicitly assign it.
+
+5. Names and Branding
+   This license does not grant trademark rights. You may state that your
+   project is based on or uses Dusk, but you may not represent an unofficial
+   derivative as the official Dusk project.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE, AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES, OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT, OR OTHERWISE, ARISING
+FROM, OUT OF, OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
+DEALINGS IN THE SOFTWARE.
