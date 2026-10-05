@@ -21,3 +21,9 @@ target/
 # Updater signing keys must never be committed
 .tauri-updater.key
 .tauri-updater.key.pub
+
+# Local environment / Supabase project config
+.env
+.env.local
+.env.*.local
+!.env.example
