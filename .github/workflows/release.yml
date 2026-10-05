@@ -61,7 +61,11 @@ jobs:
           if (-not [string]::IsNullOrWhiteSpace($env:WINDOWS_CERTIFICATE)) {
             $pfxPath = Join-Path $env:RUNNER_TEMP 'dusk-code-signing.pfx'
             [IO.File]::WriteAllBytes($pfxPath, [Convert]::FromBase64String($env:WINDOWS_CERTIFICATE))
-            $securePassword = ConvertTo-SecureString -String $env:WINDOWS_CERTIFICATE_PASSWORD -Force -AsPlainText
+            if ([string]::IsNullOrWhiteSpace($env:WINDOWS_CERTIFICATE_PASSWORD)) {
+              $securePassword = New-Object System.Security.SecureString
+            } else {
+              $securePassword = ConvertTo-SecureString -String $env:WINDOWS_CERTIFICATE_PASSWORD -Force -AsPlainText
+            }
             $cert = Import-PfxCertificate -FilePath $pfxPath -CertStoreLocation Cert:\CurrentUser\My -Password $securePassword
             if ($null -eq $config.bundle.windows) {
               $config.bundle | Add-Member -NotePropertyName windows -NotePropertyValue ([pscustomobject]@{})
