@@ -2,6 +2,8 @@
 
 Dusk is a local-first Windows game launcher built with Tauri, Rust, React, TypeScript, and SQLite.
 
+**Current stable version: 1.0.0**
+
 It scans real local game installations, launches games, tracks sessions it can observe, and keeps the library database on the user's PC. Dusk does not ship with fake games or seeded playtime.
 
 ## Features
@@ -123,7 +125,18 @@ Console mode switches the Tauri window into native fullscreen, collapses Dusk to
 
 GitHub Actions checks the React build and Rust code on Windows.
 
-The Windows release workflow can be started manually from GitHub Actions. It builds the Tauri installer and creates a draft GitHub Release.
+The Windows release workflow can be started manually from GitHub Actions or from the dedicated `installer-build` branch. It publishes a stable NSIS installer. If updater-signing and Windows certificate secrets are configured, the same workflow also publishes signed updater artifacts and Authenticode-signs the Windows build.
+
+## Stable release
+
+Stable installers are published on GitHub Releases:
+
+- Repository: https://github.com/bxane-dev/dusk
+- Releases: https://github.com/bxane-dev/dusk/releases
+- Changelog: `CHANGELOG.md`
+- Signing setup: `RELEASE_SIGNING.md`
+
+The release workflow never commits private signing material. Missing signing secrets cause the corresponding signing layer to be skipped rather than fabricated.
 
 ## Contributing
 
