@@ -112,3 +112,11 @@ export interface CloudSaveStatus {
   userId: string | null;
   message: string;
 }
+
+export interface CloudUploadResult {
+  backupId: string;
+  profileId: string;
+  gameId: string;
+  uploadedFiles: number;
+  uploadedBytes: number;
+}
