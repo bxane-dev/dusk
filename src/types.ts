@@ -20,6 +20,8 @@ export interface ScanResult {
   updated: number;
   steamFound: number;
   epicFound: number;
+  gogFound: number;
+  emulatorFound: number;
   warnings: string[];
 }
 
