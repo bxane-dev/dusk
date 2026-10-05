@@ -3,6 +3,7 @@ import {
   Check,
   Clock3,
   Database,
+  ExternalLink,
   FolderOpen,
   Gamepad2,
   HardDrive,
@@ -14,6 +15,7 @@ import {
   Library,
   Minus,
   Moon,
+  PackageOpen,
   Pencil,
   Play,
   Plus,
@@ -798,6 +800,7 @@ export default function App() {
   const [playingId, setPlayingId] = useState<string | null>(null);
   const [toast, setToast] = useState<{ message: string; type: "ok" | "error" } | null>(null);
   const [updateBusy, setUpdateBusy] = useState(false);
+  const [installerBusy, setInstallerBusy] = useState(false);
   const [availableUpdate, setAvailableUpdate] = useState<string | null>(null);
   const [autoScanEnabled, setAutoScanEnabled] = useState(
     () => localStorage.getItem("dusk-auto-scan") !== "false",
@@ -815,6 +818,7 @@ export default function App() {
   const collectionMutationRef = useRef(false);
   const screenshotDeleteLocksRef = useRef(new Set<number>());
   const updateLockRef = useRef(false);
+  const installerLockRef = useRef(false);
   const consoleModeLockRef = useRef(false);
   const windowActionLockRef = useRef(false);
   const refreshCoreBusyRef = useRef(false);
@@ -1382,6 +1386,33 @@ export default function App() {
     }
   }
 
+  async function runLocalInstaller() {
+    if (installerLockRef.current) return;
+
+    installerLockRef.current = true;
+    setInstallerBusy(true);
+    try {
+      const installerPath = await api.chooseGameInstaller();
+      if (!installerPath) return;
+
+      await api.runGameInstaller(installerPath);
+      showToast("Installer launched. Dusk will discover the game on the next automatic scan.");
+    } catch (error) {
+      showToast(readableError(error), "error");
+    } finally {
+      installerLockRef.current = false;
+      setInstallerBusy(false);
+    }
+  }
+
+  async function openExternal(target: "creator" | "steam" | "epic" | "gog" | "itch") {
+    try {
+      await api.openExternalTarget(target);
+    } catch (error) {
+      showToast(readableError(error), "error");
+    }
+  }
+
   async function deleteScreenshot(screenshot: ScreenshotRecord) {
     if (screenshotDeleteLocksRef.current.has(screenshot.id)) return;
     if (!window.confirm("Delete this imported screenshot from Dusk?")) return;
@@ -1550,6 +1581,15 @@ export default function App() {
         </div>
 
         <div className="sidebar-bottom">
+          <button
+            className="creator-pill"
+            onClick={() => void openExternal("creator")}
+            title="Open guns.lol/bxane"
+          >
+            <span>bxane</span>
+            <small>guns.lol/bxane</small>
+            <ExternalLink size={12} />
+          </button>
           <NavItem
             active={view === "settings"}
             icon={<Settings size={18} />}
@@ -2068,6 +2108,58 @@ export default function App() {
 
                   <section className="settings-card">
                     <div className="settings-card-head">
+                      <PackageOpen size={20} />
+                      <div>
+                        <h3>Installer hub</h3>
+                        <p>Install from local files or open supported official stores.</p>
+                      </div>
+                    </div>
+
+                    <div className="setting-row">
+                      <div>
+                        <strong>Run local game installer</strong>
+                        <span>
+                          Choose a local .exe or .msi you already have. Dusk launches it, then
+                          automatic scanning can discover the installed game.
+                        </span>
+                      </div>
+                      <button
+                        className="button primary"
+                        disabled={installerBusy}
+                        onClick={() => void runLocalInstaller()}
+                      >
+                        <PackageOpen size={16} />
+                        {installerBusy ? "Opening…" : "Choose installer"}
+                      </button>
+                    </div>
+
+                    <div className="official-store-grid">
+                      <button className="button secondary" onClick={() => void openExternal("steam")}>
+                        Steam <ExternalLink size={14} />
+                      </button>
+                      <button className="button secondary" onClick={() => void openExternal("epic")}>
+                        Epic Games <ExternalLink size={14} />
+                      </button>
+                      <button className="button secondary" onClick={() => void openExternal("gog")}>
+                        GOG <ExternalLink size={14} />
+                      </button>
+                      <button className="button secondary" onClick={() => void openExternal("itch")}>
+                        itch.io <ExternalLink size={14} />
+                      </button>
+                    </div>
+
+                    <div className="settings-note">
+                      <HardDrive size={17} />
+                      <p>
+                        Dusk does not download games from unofficial redistribution sites. Local
+                        installers stay under your control, and official store links open in your
+                        default browser.
+                      </p>
+                    </div>
+                  </section>
+
+                  <section className="settings-card">
+                    <div className="settings-card-head">
                       <ScanSearch size={20} />
                       <div>
                         <h3>Game detection</h3>
@@ -2142,8 +2234,11 @@ export default function App() {
                       <Moon size={20} fill="currentColor" />
                     </div>
                     <div>
-                      <strong>Dusk 1.0.4</strong>
+                      <strong>Dusk 1.5.0 · bxane</strong>
                       <span>Open code · github.com/bxane-dev/dusk</span>
+                      <button className="about-creator-pill" onClick={() => void openExternal("creator")}>
+                        bxane · guns.lol/bxane <ExternalLink size={11} />
+                      </button>
                     </div>
                   </section>
                 </div>
