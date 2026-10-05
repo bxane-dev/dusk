@@ -1,3 +1,7 @@
+-- IMPORTANT: In the Dusk Supabase project, enable Authentication -> Providers -> Anonymous Sign-Ins.
+-- Dusk uses an authenticated anonymous Supabase user for private per-installation cloud storage.
+-- This keeps Storage behind RLS without embedding a service_role key in the desktop app.
+
 -- Dusk Supabase Storage setup
 -- Run this in the Dusk Supabase project SQL editor or apply it through the Supabase connector.
 -- The bucket is private. Files are isolated by the authenticated Supabase user UUID
