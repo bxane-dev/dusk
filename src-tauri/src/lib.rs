@@ -9,12 +9,15 @@ use std::{
     fs,
     path::{Path, PathBuf},
     process::Command,
+    sync::OnceLock,
     thread,
     time::{Duration, Instant},
 };
 use tauri::{AppHandle, Manager};
 use uuid::Uuid;
 use walkdir::WalkDir;
+
+static SCHEMA_STATE: OnceLock<Result<(), String>> = OnceLock::new();
 
 #[derive(Debug, Clone)]
 struct DiscoveredGame {
@@ -161,7 +164,19 @@ fn open_database(app: &AppHandle) -> Result<Connection, String> {
     let path = database_path(app)?;
     let connection =
         Connection::open(path).map_err(|error| format!("Could not open Dusk database: {error}"))?;
-    initialize_schema(&connection)?;
+
+    connection
+        .busy_timeout(Duration::from_secs(2))
+        .map_err(|error| format!("Could not configure Dusk database timeout: {error}"))?;
+    connection
+        .execute_batch("PRAGMA foreign_keys = ON;")
+        .map_err(|error| format!("Could not configure Dusk database: {error}"))?;
+
+    let schema = SCHEMA_STATE.get_or_init(|| initialize_schema(&connection));
+    if let Err(error) = schema {
+        return Err(error.clone());
+    }
+
     Ok(connection)
 }
 
@@ -925,8 +940,7 @@ fn list_games(app: AppHandle) -> Result<Vec<GameRecord>, String> {
     Ok(games)
 }
 
-#[tauri::command]
-fn scan_games(app: AppHandle) -> Result<ScanResult, String> {
+fn scan_games_blocking(app: AppHandle) -> Result<ScanResult, String> {
     let (steam_games, mut warnings) = scan_steam();
     let (epic_games, epic_warnings) = scan_epic();
     let (gog_games, gog_warnings) = scan_gog();
@@ -970,6 +984,13 @@ fn scan_games(app: AppHandle) -> Result<ScanResult, String> {
         emulator_found,
         warnings,
     })
+}
+
+#[tauri::command]
+async fn scan_games(app: AppHandle) -> Result<ScanResult, String> {
+    tauri::async_runtime::spawn_blocking(move || scan_games_blocking(app))
+        .await
+        .map_err(|error| format!("Game scan worker failed: {error}"))?
 }
 
 #[tauri::command]
@@ -1413,8 +1434,7 @@ fn normalized_match_text(value: &str) -> String {
         .collect()
 }
 
-#[tauri::command]
-fn scan_screenshots(app: AppHandle) -> Result<AutoScreenshotScanResult, String> {
+fn scan_screenshots_blocking(app: AppHandle) -> Result<AutoScreenshotScanResult, String> {
     let connection = open_database(&app)?;
     let mut statement = connection
         .prepare(
@@ -1574,6 +1594,13 @@ fn scan_screenshots(app: AppHandle) -> Result<AutoScreenshotScanResult, String> 
         matched_imported,
         skipped_duplicates,
     })
+}
+
+#[tauri::command]
+async fn scan_screenshots(app: AppHandle) -> Result<AutoScreenshotScanResult, String> {
+    tauri::async_runtime::spawn_blocking(move || scan_screenshots_blocking(app))
+        .await
+        .map_err(|error| format!("Screenshot scan worker failed: {error}"))?
 }
 
 #[tauri::command]
@@ -1987,28 +2014,6 @@ fn validate_save_directory(path: &Path) -> Result<PathBuf, String> {
     Ok(canonical)
 }
 
-fn directory_stats(path: &Path) -> (i64, i64) {
-    let mut files = 0_i64;
-    let mut bytes = 0_i64;
-
-    for entry in WalkDir::new(path)
-        .follow_links(false)
-        .into_iter()
-        .filter_map(Result::ok)
-    {
-        if !entry.file_type().is_file() {
-            continue;
-        }
-        files += 1;
-        bytes += entry
-            .metadata()
-            .map(|metadata| metadata.len() as i64)
-            .unwrap_or(0);
-    }
-
-    (files, bytes)
-}
-
 fn copy_directory_tree(source: &Path, destination: &Path) -> Result<(i64, i64), String> {
     fs::create_dir_all(destination)
         .map_err(|error| format!("Could not create backup directory: {error}"))?;
@@ -2206,10 +2211,16 @@ fn clear_save_config(app: AppHandle, game_id: String) -> Result<(), String> {
     Ok(())
 }
 
-#[tauri::command]
-fn create_save_backup(app: AppHandle, game_id: String) -> Result<SaveBackupRecord, String> {
+fn create_save_backup_blocking(app: AppHandle, game_id: String) -> Result<SaveBackupRecord, String> {
     let connection = open_database(&app)?;
     create_save_backup_internal(&app, &connection, &game_id, "manual")
+}
+
+#[tauri::command]
+async fn create_save_backup(app: AppHandle, game_id: String) -> Result<SaveBackupRecord, String> {
+    tauri::async_runtime::spawn_blocking(move || create_save_backup_blocking(app, game_id))
+        .await
+        .map_err(|error| format!("Save backup worker failed: {error}"))?
 }
 
 #[tauri::command]
@@ -2247,8 +2258,7 @@ fn list_save_backups(app: AppHandle, game_id: String) -> Result<Vec<SaveBackupRe
     Ok(backups)
 }
 
-#[tauri::command]
-fn restore_save_backup(
+fn restore_save_backup_blocking(
     app: AppHandle,
     game_id: String,
     backup_id: String,
@@ -2284,6 +2294,19 @@ fn restore_save_backup(
     }
 
     Ok(safety_backup)
+}
+
+#[tauri::command]
+async fn restore_save_backup(
+    app: AppHandle,
+    game_id: String,
+    backup_id: String,
+) -> Result<SaveBackupRecord, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        restore_save_backup_blocking(app, game_id, backup_id)
+    })
+    .await
+    .map_err(|error| format!("Save restore worker failed: {error}"))?
 }
 
 #[tauri::command]
