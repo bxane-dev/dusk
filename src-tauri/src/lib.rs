@@ -175,6 +175,18 @@ struct ProfileRecord {
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
+struct ProfileSaveFileState {
+    profile_id: String,
+    game_id: String,
+    vault_path: String,
+    exists: bool,
+    file_count: i64,
+    total_bytes: i64,
+    updated_at: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
 struct CloudUploadResult {
     backup_id: String,
     profile_id: String,
@@ -2731,6 +2743,77 @@ fn create_save_backup_internal(
     })
 }
 
+fn save_profile_files_blocking(
+    app: AppHandle,
+    game_id: String,
+) -> Result<ProfileSaveFileState, String> {
+    let connection = open_database(&app)?;
+    let config = save_config_for_game(&connection, &game_id)?;
+    let live = validate_save_directory(Path::new(&config.save_path))?;
+    let vault = profile_save_vault_dir(&app, &config.profile_id, &game_id)?;
+
+    if vault.exists() {
+        fs::remove_dir_all(&vault)
+            .map_err(|error| format!("Could not replace profile save files: {error}"))?;
+    }
+    copy_directory_tree(&live, &vault)?;
+    write_profile_vault_metadata(&vault, &config.profile_id, &game_id);
+
+    profile_vault_state(&app, &config.profile_id, &game_id)
+}
+
+#[tauri::command]
+async fn save_profile_files(
+    app: AppHandle,
+    game_id: String,
+) -> Result<ProfileSaveFileState, String> {
+    tauri::async_runtime::spawn_blocking(move || save_profile_files_blocking(app, game_id))
+        .await
+        .map_err(|error| format!("Profile save worker failed: {error}"))?
+}
+
+fn load_profile_files_blocking(
+    app: AppHandle,
+    game_id: String,
+) -> Result<ProfileSaveFileState, String> {
+    let connection = open_database(&app)?;
+    let config = save_config_for_game(&connection, &game_id)?;
+    let live = validate_save_directory(Path::new(&config.save_path))?;
+    let vault = profile_save_vault_dir(&app, &config.profile_id, &game_id)?;
+
+    if !vault.is_dir() {
+        return Err("This owner does not have saved profile files for this game yet.".into());
+    }
+
+    // Preserve the current live files before replacing them.
+    let _ = create_save_backup_internal(&app, &connection, &game_id, "pre-profile-load")?;
+
+    clear_directory_contents(&live)?;
+    copy_directory_tree(&vault, &live)?;
+
+    profile_vault_state(&app, &config.profile_id, &game_id)
+}
+
+#[tauri::command]
+async fn load_profile_files(
+    app: AppHandle,
+    game_id: String,
+) -> Result<ProfileSaveFileState, String> {
+    tauri::async_runtime::spawn_blocking(move || load_profile_files_blocking(app, game_id))
+        .await
+        .map_err(|error| format!("Profile load worker failed: {error}"))?
+}
+
+#[tauri::command]
+fn get_profile_save_file_state(
+    app: AppHandle,
+    game_id: String,
+) -> Result<ProfileSaveFileState, String> {
+    let connection = open_database(&app)?;
+    let profile_id = active_profile_id(&connection)?;
+    profile_vault_state(&app, &profile_id, &game_id)
+}
+
 #[tauri::command]
 fn choose_save_folder(app: AppHandle, game_id: String) -> Result<Option<SaveConfig>, String> {
     // Ensure the game exists before associating a filesystem location with it.
@@ -3396,6 +3479,9 @@ pub fn run() {
             collection_memberships,
             get_stats,
             list_achievements,
+            save_profile_files,
+            load_profile_files,
+            get_profile_save_file_state,
             choose_save_folder,
             get_save_config,
             clear_save_config,
