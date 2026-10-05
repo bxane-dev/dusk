@@ -116,7 +116,7 @@ jobs:
           tagName: dusk-v__VERSION__
           releaseName: Dusk v__VERSION__
           releaseBody: |
-            Dusk v1.0.1 — startup hotfix for Windows.
+            Dusk v1.0.2 — stability and responsiveness hotfix for Windows.
 
             Includes Steam, Epic and GOG scanning, common emulator detection, playtime tracking, collections, screenshots, save backups, controller navigation, and fullscreen console mode.
 
