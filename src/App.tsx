@@ -127,6 +127,7 @@ function sourceLabel(source: string) {
   if (source === "epic") return "Epic";
   if (source === "gog") return "GOG";
   if (source === "emulator") return "Emulator";
+  if (source === "device") return "Device";
   if (source === "manual") return "Manual";
   return source;
 }
@@ -796,7 +797,15 @@ export default function App() {
   const [toast, setToast] = useState<{ message: string; type: "ok" | "error" } | null>(null);
   const [updateBusy, setUpdateBusy] = useState(false);
   const [availableUpdate, setAvailableUpdate] = useState<string | null>(null);
+  const [autoScanEnabled, setAutoScanEnabled] = useState(
+    () => localStorage.getItem("dusk-auto-scan") !== "false",
+  );
+  const [lastAutoScanAt, setLastAutoScanAt] = useState<number | null>(() => {
+    const value = Number(localStorage.getItem("dusk-last-auto-scan") || "0");
+    return Number.isFinite(value) && value > 0 ? value : null;
+  });
   const scanLockRef = useRef(false);
+  const autoScanTimerRef = useRef<number | null>(null);
   const screenshotScanLockRef = useRef(false);
   const playingIdsRef = useRef(new Set<string>());
   const favoriteLocksRef = useRef(new Set<string>());
@@ -892,6 +901,32 @@ export default function App() {
     void refreshCore(true);
     void api.dataDirectory().then(setDataDirectory).catch(() => undefined);
   }, [refreshCore]);
+
+  useEffect(() => {
+    if (!autoScanEnabled) return;
+
+    const run = () => void autoScanGames(false);
+    const startup = window.setTimeout(run, 1200);
+    autoScanTimerRef.current = window.setInterval(run, 10 * 60 * 1000);
+
+    const onVisibility = () => {
+      if (document.visibilityState !== "visible") return;
+      const last = Number(localStorage.getItem("dusk-last-auto-scan") || "0");
+      if (Date.now() - last >= 10 * 60 * 1000) {
+        void autoScanGames(false);
+      }
+    };
+
+    document.addEventListener("visibilitychange", onVisibility);
+    return () => {
+      window.clearTimeout(startup);
+      if (autoScanTimerRef.current !== null) {
+        window.clearInterval(autoScanTimerRef.current);
+        autoScanTimerRef.current = null;
+      }
+      document.removeEventListener("visibilitychange", onVisibility);
+    };
+  }, [autoScanEnabled]);
 
   useEffect(() => {
     if (view === "screenshots" && !screenshotsLoadedRef.current) {
@@ -1039,6 +1074,39 @@ export default function App() {
 
   const favoriteGames = useMemo(() => games.filter((game) => game.favorite).slice(0, 6), [games]);
 
+  async function autoScanGames(force: boolean) {
+    if (!autoScanEnabled || scanLockRef.current) return;
+
+    const last = Number(localStorage.getItem("dusk-last-auto-scan") || "0");
+    if (!force && last > 0 && Date.now() - last < 10 * 60 * 1000) return;
+
+    scanLockRef.current = true;
+    setScanning(true);
+
+    try {
+      const result = await api.scanGames();
+      const timestamp = Date.now();
+      localStorage.setItem("dusk-last-auto-scan", String(timestamp));
+      setLastAutoScanAt(timestamp);
+      await refreshCore(false);
+
+      if (result.added > 0) {
+        showToast(
+          "Automatic scan found " +
+            String(result.added) +
+            " new game" +
+            (result.added === 1 ? "." : "s."),
+        );
+      }
+    } catch (error) {
+      // Automatic discovery should never interrupt normal use.
+      console.warn("Automatic game scan failed:", error);
+    } finally {
+      setScanning(false);
+      scanLockRef.current = false;
+    }
+  }
+
   async function scan() {
     if (scanLockRef.current) return;
     scanLockRef.current = true;
@@ -1070,10 +1138,15 @@ export default function App() {
         String(result.gogFound) +
         " GOG · " +
         String(result.emulatorFound) +
-        " emulators" +
+        " emulators · " +
+        String(result.deviceFound) +
+        " device folders" +
         (screenshotResult && screenshotResult.imported > 0
           ? " · " + String(screenshotResult.imported) + " screenshots"
           : "");
+      const timestamp = Date.now();
+      localStorage.setItem("dusk-last-auto-scan", String(timestamp));
+      setLastAutoScanAt(timestamp);
       showToast("Scan complete: " + String(result.found) + " found (" + detail + ").");
       if (result.warnings.length > 0 && result.found === 0) {
         window.setTimeout(() => showToast(result.warnings[0], "error"), 500);
@@ -1573,6 +1646,7 @@ export default function App() {
                         <option value="epic">Epic</option>
                         <option value="gog">GOG</option>
                         <option value="emulator">Emulators</option>
+                        <option value="device">Device scan</option>
                         <option value="manual">Manual</option>
                       </select>
                       <select
@@ -1593,7 +1667,7 @@ export default function App() {
                       title={games.length === 0 ? "Your library is empty" : "No games match these filters"}
                       copy={
                         games.length === 0
-                          ? "Dusk can detect Steam, Epic, GOG, and common emulators, or you can point it at any game executable."
+                          ? "Dusk automatically detects Steam, Epic, GOG, common emulators, and games in common device game folders."
                           : "Change the search, source, or collection filter."
                       }
                       action={
@@ -1896,6 +1970,30 @@ export default function App() {
                         <p>Current automatic scanners.</p>
                       </div>
                     </div>
+                    <div className="setting-row">
+                      <div>
+                        <strong>Automatic device scan</strong>
+                        <span>
+                          Runs shortly after startup and about every 10 minutes while Dusk is open.
+                          Scans are bounded and run off the UI thread.
+                          {lastAutoScanAt
+                            ? " Last scan: " + formatDate(new Date(lastAutoScanAt).toISOString()) + "."
+                            : ""}
+                        </span>
+                      </div>
+                      <button
+                        className={cx("button", autoScanEnabled ? "primary" : "secondary")}
+                        onClick={() => {
+                          const next = !autoScanEnabled;
+                          setAutoScanEnabled(next);
+                          localStorage.setItem("dusk-auto-scan", String(next));
+                          if (next) void autoScanGames(true);
+                        }}
+                      >
+                        {autoScanEnabled ? "On" : "Off"}
+                      </button>
+                    </div>
+
                     <div className="scanner-list">
                       <div>
                         <Check size={16} />
@@ -1916,6 +2014,11 @@ export default function App() {
                         <Check size={16} />
                         <strong>Emulators</strong>
                         <span>Detects common installed emulators such as Dolphin, PCSX2, RetroArch, Ryujinx, Cemu, PPSSPP, and DuckStation.</span>
+                      </div>
+                      <div>
+                        <Check size={16} />
+                        <strong>Device folders</strong>
+                        <span>Checks bounded common game folders across available Windows drives and your profile without crawling the whole disk.</span>
                       </div>
                       <div>
                         <Plus size={16} />
