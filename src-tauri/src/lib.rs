@@ -2344,12 +2344,20 @@ fn set_collection_membership(
 #[tauri::command]
 fn collection_memberships(app: AppHandle) -> Result<Vec<CollectionMembership>, String> {
     let connection = open_database(&app)?;
+    let profile_id = active_profile_id(&connection)?;
     let mut statement = connection
-        .prepare("SELECT collection_id, game_id FROM collection_games")
+        .prepare(
+            r#"
+            SELECT cg.collection_id, cg.game_id
+            FROM collection_games cg
+            INNER JOIN profile_games pg ON pg.game_id = cg.game_id
+            WHERE pg.profile_id = ?1
+            "#,
+        )
         .map_err(|error| format!("Could not prepare collection memberships: {error}"))?;
 
     let rows = statement
-        .query_map([], |row| {
+        .query_map(params![profile_id], |row| {
             Ok(CollectionMembership {
                 collection_id: row.get(0)?,
                 game_id: row.get(1)?,
@@ -2367,59 +2375,86 @@ fn collection_memberships(app: AppHandle) -> Result<Vec<CollectionMembership>, S
 #[tauri::command]
 fn get_stats(app: AppHandle) -> Result<Stats, String> {
     let connection = open_database(&app)?;
+    let profile_id = active_profile_id(&connection)?;
 
     let game_count = connection
-        .query_row("SELECT COUNT(*) FROM games WHERE hidden = 0", [], |row| row.get(0))
+        .query_row(
+            "SELECT COUNT(*) FROM profile_games pg INNER JOIN games g ON g.id = pg.game_id WHERE pg.profile_id = ?1 AND g.hidden = 0",
+            params![profile_id],
+            |row| row.get(0),
+        )
         .unwrap_or(0);
+
     let favorite_count = connection
         .query_row(
-            "SELECT COUNT(*) FROM games WHERE hidden = 0 AND favorite = 1",
-            [],
+            "SELECT COUNT(*) FROM profile_games pg INNER JOIN games g ON g.id = pg.game_id WHERE pg.profile_id = ?1 AND g.hidden = 0 AND g.favorite = 1",
+            params![profile_id],
             |row| row.get(0),
         )
         .unwrap_or(0);
+
     let played_game_count = connection
         .query_row(
-            "SELECT COUNT(*) FROM games WHERE hidden = 0 AND launch_count > 0",
-            [],
+            "SELECT COUNT(*) FROM profile_games pg INNER JOIN games g ON g.id = pg.game_id WHERE pg.profile_id = ?1 AND g.hidden = 0 AND g.launch_count > 0",
+            params![profile_id],
             |row| row.get(0),
         )
         .unwrap_or(0);
+
     let total_seconds = connection
         .query_row(
-            "SELECT COALESCE(SUM(total_seconds), 0) FROM games WHERE hidden = 0",
-            [],
+            "SELECT COALESCE(SUM(g.total_seconds), 0) FROM profile_games pg INNER JOIN games g ON g.id = pg.game_id WHERE pg.profile_id = ?1 AND g.hidden = 0",
+            params![profile_id],
             |row| row.get(0),
         )
         .unwrap_or(0);
+
     let launch_count = connection
         .query_row(
-            "SELECT COALESCE(SUM(launch_count), 0) FROM games WHERE hidden = 0",
-            [],
+            "SELECT COALESCE(SUM(g.launch_count), 0) FROM profile_games pg INNER JOIN games g ON g.id = pg.game_id WHERE pg.profile_id = ?1 AND g.hidden = 0",
+            params![profile_id],
             |row| row.get(0),
         )
         .unwrap_or(0);
+
     let last_7_days_seconds = connection
         .query_row(
-            "SELECT COALESCE(SUM(duration_seconds), 0) FROM sessions WHERE started_at >= datetime('now', '-7 days')",
-            [],
+            r#"
+            SELECT COALESCE(SUM(s.duration_seconds), 0)
+            FROM sessions s
+            INNER JOIN profile_games pg ON pg.game_id = s.game_id
+            WHERE pg.profile_id = ?1
+              AND s.started_at >= datetime('now', '-7 days')
+            "#,
+            params![profile_id],
             |row| row.get(0),
         )
         .unwrap_or(0);
+
     let screenshot_count = connection
-        .query_row("SELECT COUNT(*) FROM screenshots", [], |row| row.get(0))
+        .query_row(
+            r#"
+            SELECT COUNT(*)
+            FROM screenshots s
+            INNER JOIN profile_games pg ON pg.game_id = s.game_id
+            WHERE pg.profile_id = ?1
+            "#,
+            params![profile_id],
+            |row| row.get(0),
+        )
         .unwrap_or(0);
 
     let top_game = connection
         .query_row(
             r#"
-            SELECT title
-            FROM games
-            WHERE hidden = 0 AND total_seconds > 0
-            ORDER BY total_seconds DESC
+            SELECT g.title
+            FROM profile_games pg
+            INNER JOIN games g ON g.id = pg.game_id
+            WHERE pg.profile_id = ?1 AND g.hidden = 0 AND g.total_seconds > 0
+            ORDER BY g.total_seconds DESC
             LIMIT 1
             "#,
-            [],
+            params![profile_id],
             |row| row.get(0),
         )
         .optional()
@@ -2442,14 +2477,17 @@ fn list_achievements(app: AppHandle) -> Result<Vec<Achievement>, String> {
     let stats = get_stats(app.clone())?;
     let connection = open_database(&app)?;
 
+    let profile_id = active_profile_id(&connection)?;
     let night_sessions: i64 = connection
         .query_row(
             r#"
             SELECT COUNT(*)
-            FROM sessions
-            WHERE CAST(strftime('%H', started_at) AS INTEGER) BETWEEN 0 AND 4
+            FROM sessions s
+            INNER JOIN profile_games pg ON pg.game_id = s.game_id
+            WHERE pg.profile_id = ?1
+              AND CAST(strftime('%H', s.started_at) AS INTEGER) BETWEEN 0 AND 4
             "#,
-            [],
+            params![profile_id],
             |row| row.get(0),
         )
         .unwrap_or(0);
