@@ -1337,6 +1337,57 @@ fn list_games(app: AppHandle) -> Result<Vec<GameRecord>, String> {
     Ok(games)
 }
 
+fn scan_games_blocking(app: AppHandle) -> Result<ScanResult, String> {
+    let (steam_games, mut warnings) = scan_steam();
+    let (epic_games, epic_warnings) = scan_epic();
+    let (gog_games, gog_warnings) = scan_gog();
+    let (emulator_games, emulator_warnings) = scan_emulators();
+    let (device_games, device_warnings) = scan_common_device_game_folders();
+
+    warnings.extend(epic_warnings);
+    warnings.extend(gog_warnings);
+    warnings.extend(emulator_warnings);
+    warnings.extend(device_warnings);
+
+    let steam_found = steam_games.len();
+    let epic_found = epic_games.len();
+    let gog_found = gog_games.len();
+    let emulator_found = emulator_games.len();
+    let device_found = device_games.len();
+
+    let all_games: Vec<DiscoveredGame> = steam_games
+        .into_iter()
+        .chain(epic_games)
+        .chain(gog_games)
+        .chain(emulator_games)
+        .chain(device_games)
+        .collect();
+
+    let connection = open_database(&app)?;
+    let mut added = 0_usize;
+    let mut updated = 0_usize;
+
+    for game in &all_games {
+        if upsert_discovered(&connection, game)? {
+            updated += 1;
+        } else {
+            added += 1;
+        }
+    }
+
+    Ok(ScanResult {
+        found: all_games.len(),
+        added,
+        updated,
+        steam_found,
+        epic_found,
+        gog_found,
+        emulator_found,
+        device_found,
+        warnings,
+    })
+}
+
 #[tauri::command]
 async fn scan_games(app: AppHandle) -> Result<ScanResult, String> {
     tauri::async_runtime::spawn_blocking(move || scan_games_blocking(app))
@@ -2732,6 +2783,112 @@ fn save_config_for_game(connection: &Connection, game_id: &str) -> Result<SaveCo
         .optional()
         .map_err(|error| format!("Could not read save configuration: {error}"))?
         .ok_or_else(|| "No save folder is configured for this game.".to_string())
+}
+
+fn profile_vault_segment(value: &str) -> String {
+    let cleaned: String = value
+        .chars()
+        .map(|character| {
+            if character.is_ascii_alphanumeric() || matches!(character, '-' | '_' | '.') {
+                character
+            } else {
+                '_'
+            }
+        })
+        .collect();
+
+    if cleaned.is_empty() {
+        "item".into()
+    } else {
+        cleaned
+    }
+}
+
+fn profile_save_vault_dir(
+    app: &AppHandle,
+    profile_id: &str,
+    game_id: &str,
+) -> Result<PathBuf, String> {
+    Ok(app_data_dir(app)?
+        .join("profile-saves")
+        .join(profile_vault_segment(profile_id))
+        .join(profile_vault_segment(game_id)))
+}
+
+fn write_profile_vault_metadata(vault: &Path, profile_id: &str, game_id: &str) {
+    if fs::create_dir_all(vault).is_err() {
+        return;
+    }
+
+    let metadata = serde_json::json!({
+        "schemaVersion": 1,
+        "profileId": profile_id,
+        "gameId": game_id,
+        "updatedAt": now()
+    });
+
+    if let Ok(bytes) = serde_json::to_vec_pretty(&metadata) {
+        let _ = fs::write(vault.join(".dusk-profile.json"), bytes);
+    }
+}
+
+fn profile_vault_state(
+    app: &AppHandle,
+    profile_id: &str,
+    game_id: &str,
+) -> Result<ProfileSaveFileState, String> {
+    let vault = profile_save_vault_dir(app, profile_id, game_id)?;
+    if !vault.is_dir() {
+        return Ok(ProfileSaveFileState {
+            profile_id: profile_id.to_string(),
+            game_id: game_id.to_string(),
+            vault_path: vault.to_string_lossy().into_owned(),
+            exists: false,
+            file_count: 0,
+            total_bytes: 0,
+            updated_at: None,
+        });
+    }
+
+    let mut file_count = 0_i64;
+    let mut total_bytes = 0_i64;
+    let mut newest: Option<std::time::SystemTime> = None;
+
+    for entry in WalkDir::new(&vault)
+        .follow_links(false)
+        .into_iter()
+        .filter_map(Result::ok)
+    {
+        if !entry.file_type().is_file() {
+            continue;
+        }
+
+        if entry.file_name().to_string_lossy() == ".dusk-profile.json" {
+            continue;
+        }
+
+        file_count += 1;
+        if let Ok(metadata) = entry.metadata() {
+            total_bytes = total_bytes.saturating_add(metadata.len() as i64);
+            if let Ok(modified) = metadata.modified() {
+                if newest.map(|current| modified > current).unwrap_or(true) {
+                    newest = Some(modified);
+                }
+            }
+        }
+    }
+
+    let updated_at = newest.map(|modified| DateTime::<Utc>::from(modified).to_rfc3339());
+
+    Ok(ProfileSaveFileState {
+        profile_id: profile_id.to_string(),
+        game_id: game_id.to_string(),
+        vault_path: vault.to_string_lossy().into_owned(),
+        exists: true,
+        file_count,
+        total_bytes,
+        updated_at,
+    })
 }
 
 fn create_save_backup_internal(
