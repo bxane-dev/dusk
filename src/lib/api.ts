@@ -8,6 +8,8 @@ import type {
   LaunchResult,
   ScanResult,
   ScreenshotRecord,
+  SaveBackupRecord,
+  SaveConfig,
   Stats,
 } from "../types";
 
@@ -54,5 +56,19 @@ export const api = {
     invoke<CollectionMembership[]>("collection_memberships"),
   getStats: () => invoke<Stats>("get_stats"),
   listAchievements: () => invoke<Achievement[]>("list_achievements"),
+  chooseSaveFolder: (gameId: string) =>
+    invoke<SaveConfig | null>("choose_save_folder", { gameId }),
+  getSaveConfig: (gameId: string) =>
+    invoke<SaveConfig | null>("get_save_config", { gameId }),
+  clearSaveConfig: (gameId: string) =>
+    invoke<void>("clear_save_config", { gameId }),
+  createSaveBackup: (gameId: string) =>
+    invoke<SaveBackupRecord>("create_save_backup", { gameId }),
+  listSaveBackups: (gameId: string) =>
+    invoke<SaveBackupRecord[]>("list_save_backups", { gameId }),
+  restoreSaveBackup: (gameId: string, backupId: string) =>
+    invoke<SaveBackupRecord>("restore_save_backup", { gameId, backupId }),
+  deleteSaveBackup: (gameId: string, backupId: string) =>
+    invoke<void>("delete_save_backup", { gameId, backupId }),
   dataDirectory: () => invoke<string>("data_directory"),
 };
