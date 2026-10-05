@@ -19,6 +19,7 @@ It scans real local game installations, launches games, tracks sessions it can o
 - Safe local installer hub for user-selected EXE/MSI installers
 - Official store shortcuts for Steam, Epic Games, GOG, and itch.io
 - Clickable bxane creator pill linking to https://guns.lol/bxane
+- Physical per-owner save-file vaults for each configured game
 - Manual game entries for any local Windows executable
 - Native game launching
 - Steam launch through the Steam protocol
@@ -122,6 +123,24 @@ Cloud setup requires:
 - the private bucket/RLS policies in `SUPABASE_STORAGE_SETUP.sql`
 
 Only a publishable key is used in the desktop client. A Supabase `service_role` or secret key must never be embedded in Dusk.
+
+## Owner profile save files
+
+Each local owner profile can keep its own physical copy of a game's actual save files.
+
+For every configured game, Dusk stores the active owner's current copy under:
+
+`<Dusk app data>/profiles/<profile-id>/games/<game-id>/current/`
+
+The game detail panel provides:
+
+- **Save to profile** — copies the live game save folder into the active owner's physical vault.
+- **Load profile files** — creates a safety backup of the current live saves, then replaces them with that owner's stored files.
+- File count, total size, and last-updated information.
+
+Choosing a save folder seeds the owner's vault with the current live files. Creating a normal manual backup also refreshes that owner's current vault.
+
+Profile deletion removes that owner's Dusk-managed vault and backup copies, but never deletes the game's live save folder.
 
 ## Save-game backups
 
