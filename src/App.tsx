@@ -2125,6 +2125,11 @@ export default function App() {
                         <span>Checks bounded common game folders across Windows drives, your profile, and Downloads without crawling the whole disk.</span>
                       </div>
                       <div>
+                        <Check size={16} />
+                        <strong>Downloads</strong>
+                        <span>Scans downloaded game folders by default while ignoring loose installer executables.</span>
+                      </div>
+                      <div>
                         <Plus size={16} />
                         <strong>Manual games</strong>
                         <span>Any local Windows executable can be added explicitly.</span>
