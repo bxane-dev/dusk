@@ -2,7 +2,7 @@
 
 Dusk is a local-first Windows game launcher built with Tauri, Rust, React, TypeScript, and SQLite.
 
-**Current stable version: 1.5.0**
+**Current stable version: 1.6.0**
 
 It scans real local game installations, launches games, tracks sessions it can observe, and keeps the library database on the user's PC. Dusk does not ship with fake games or seeded playtime.
 
@@ -39,7 +39,7 @@ It scans real local game installations, launches games, tracks sessions it can o
 - Night, OLED, and Slate themes
 - Violet, Ember, and Cyan accents
 - SQLite persistence
-- No cloud account required
+- Dusk account login with cross-device library/progress sync
 
 ## Stack
 
@@ -98,9 +98,9 @@ Dusk automatically checks:
 
 For shared Windows folders, Dusk only imports an image when the filename contains a sufficiently specific known game title. Imported source paths are tracked so repeated scans do not create duplicates. If an automatically found screenshot is removed from Dusk, its original source file is left untouched and Dusk remembers not to re-import it automatically.
 
-## Owner profiles and Supabase cloud saves
+## Dusk accounts, owner profiles, and Supabase cloud saves
 
-Dusk supports multiple local owner profiles. Each owner has a separate visible game library, save-folder configuration, and backup set.
+Dusk uses Supabase-backed accounts. Registration uses email, username, and password; normal sign-in uses username and password. Each account can contain multiple owner profiles, and each owner has a separate visible game library, save-folder configuration, and backup set.
 
 When Supabase cloud saves are configured, Dusk uploads the **actual save files** from each backup to the private `dusk-savefiles` Storage bucket. The object structure is:
 
@@ -113,13 +113,12 @@ When Supabase cloud saves are configured, Dusk uploads the **actual save files**
         _backup.json
 ```
 
-Dusk also uploads a private `manifest.json` containing profile/game/backup metadata. Local backups remain the source of truth if cloud access is unavailable, so a network failure never prevents a save backup.
+Dusk also syncs account-owned metadata including profiles, library membership, favorites, playtime, launch counts, collections, and the active profile. Executable paths and save-folder paths remain device-local so a second PC never inherits invalid filesystem locations. Local backups remain usable if cloud access is temporarily unavailable.
 
 Cloud setup requires:
 
 - the Dusk Supabase project URL
 - the Dusk Supabase publishable key
-- Anonymous Sign-Ins enabled in Supabase Auth
 - the private bucket/RLS policies in `SUPABASE_STORAGE_SETUP.sql`
 
 Only a publishable key is used in the desktop client. A Supabase `service_role` or secret key must never be embedded in Dusk.
