@@ -2,6 +2,21 @@
 
 All notable Dusk changes are documented here.
 
+## 1.0.2 - 2026-10-05
+
+Stability and responsiveness hotfix.
+
+- Database schema/migration initialization now runs once per process instead of on every command.
+- Added SQLite busy timeout handling for short-lived concurrent access.
+- Heavy game scans, screenshot scans, save backups, and save restores now run on blocking workers instead of tying up command handling.
+- Rapid repeated clicks are deduplicated for scans, launches, favorites, collections, update checks, screenshot deletion, fullscreen changes, and game-detail actions.
+- Core library refreshes and screenshot refreshes are coalesced instead of stacking overlapping requests.
+- Favorites update optimistically without forcing a full database/library reload on every click.
+- Repeated screenshot-page visits no longer reload all screenshot previews unnecessarily.
+- File picker and add-game actions now have hard re-entry locks.
+- Controller polling no longer recreates its animation loop when connection state changes.
+- Toast timers no longer let older notifications clear newer ones.
+
 ## 1.0.1 - 2026-10-05
 
 Startup hotfix.
