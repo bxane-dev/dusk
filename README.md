@@ -97,6 +97,32 @@ Dusk automatically checks:
 
 For shared Windows folders, Dusk only imports an image when the filename contains a sufficiently specific known game title. Imported source paths are tracked so repeated scans do not create duplicates. If an automatically found screenshot is removed from Dusk, its original source file is left untouched and Dusk remembers not to re-import it automatically.
 
+## Owner profiles and Supabase cloud saves
+
+Dusk supports multiple local owner profiles. Each owner has a separate visible game library, save-folder configuration, and backup set.
+
+When Supabase cloud saves are configured, Dusk uploads the **actual save files** from each backup to the private `dusk-savefiles` Storage bucket. The object structure is:
+
+```text
+<supabase-user-uuid>/
+  profiles/<profile-id>/
+    games/<game-id>/
+      backups/<backup-id>/
+        <original relative save-file paths>
+        _backup.json
+```
+
+Dusk also uploads a private `manifest.json` containing profile/game/backup metadata. Local backups remain the source of truth if cloud access is unavailable, so a network failure never prevents a save backup.
+
+Cloud setup requires:
+
+- the Dusk Supabase project URL
+- the Dusk Supabase publishable key
+- Anonymous Sign-Ins enabled in Supabase Auth
+- the private bucket/RLS policies in `SUPABASE_STORAGE_SETUP.sql`
+
+Only a publishable key is used in the desktop client. A Supabase `service_role` or secret key must never be embedded in Dusk.
+
 ## Save-game backups
 
 Save backups are opt-in per game. Dusk does not guess save locations.
