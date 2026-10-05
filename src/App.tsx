@@ -35,6 +35,7 @@ import {
   useState,
 } from "react";
 import { api } from "./lib/api";
+import { checkForDuskUpdate, installDuskUpdate } from "./lib/updater";
 import type {
   Achievement,
   CollectionMembership,
@@ -524,6 +525,8 @@ export default function App() {
   const [scanning, setScanning] = useState(false);
   const [playingId, setPlayingId] = useState<string | null>(null);
   const [toast, setToast] = useState<{ message: string; type: "ok" | "error" } | null>(null);
+  const [updateBusy, setUpdateBusy] = useState(false);
+  const [availableUpdate, setAvailableUpdate] = useState<string | null>(null);
 
   const [theme, setTheme] = useState<ThemeName>(
     () => (localStorage.getItem("dusk-theme") as ThemeName) || "night",
@@ -721,6 +724,37 @@ export default function App() {
       showToast("Collection deleted.");
     } catch (error) {
       showToast(readableError(error), "error");
+    }
+  }
+
+  async function checkUpdates() {
+    setUpdateBusy(true);
+    try {
+      const result = await checkForDuskUpdate();
+      if (result.available && result.version) {
+        setAvailableUpdate(result.version);
+        showToast("Dusk " + result.version + " is available.");
+      } else {
+        setAvailableUpdate(null);
+        showToast("Dusk is up to date.");
+      }
+    } catch (error) {
+      showToast(
+        "Updater is not configured for this build yet: " + readableError(error),
+        "error",
+      );
+    } finally {
+      setUpdateBusy(false);
+    }
+  }
+
+  async function installUpdate() {
+    setUpdateBusy(true);
+    try {
+      await installDuskUpdate();
+    } catch (error) {
+      showToast(readableError(error), "error");
+      setUpdateBusy(false);
     }
   }
 
@@ -1249,6 +1283,45 @@ export default function App() {
                           </button>
                         ))}
                       </div>
+                    </div>
+                  </section>
+
+                  <section className="settings-card">
+                    <div className="settings-card-head">
+                      <RefreshCw size={20} />
+                      <div>
+                        <h3>Updates</h3>
+                        <p>Secure updates from official Dusk GitHub Releases.</p>
+                      </div>
+                    </div>
+                    <div className="setting-row">
+                      <div>
+                        <strong>
+                          {availableUpdate ? "Dusk " + availableUpdate + " available" : "Automatic updater"}
+                        </strong>
+                        <span>
+                          {availableUpdate
+                            ? "Download and install the new version."
+                            : "Check for a newer signed Dusk release."}
+                        </span>
+                      </div>
+                      {availableUpdate ? (
+                        <button
+                          className="button primary"
+                          disabled={updateBusy}
+                          onClick={() => void installUpdate()}
+                        >
+                          {updateBusy ? "Updating…" : "Install update"}
+                        </button>
+                      ) : (
+                        <button
+                          className="button secondary"
+                          disabled={updateBusy}
+                          onClick={() => void checkUpdates()}
+                        >
+                          {updateBusy ? "Checking…" : "Check for updates"}
+                        </button>
+                      )}
                     </div>
                   </section>
 
