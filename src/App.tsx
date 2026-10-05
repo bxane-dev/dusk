@@ -525,6 +525,7 @@ export default function App() {
   const [addOpen, setAddOpen] = useState(false);
   const [loading, setLoading] = useState(true);
   const [scanning, setScanning] = useState(false);
+  const [screenshotScanning, setScreenshotScanning] = useState(false);
   const [playingId, setPlayingId] = useState<string | null>(null);
   const [toast, setToast] = useState<{ message: string; type: "ok" | "error" } | null>(null);
   const [updateBusy, setUpdateBusy] = useState(false);
@@ -576,9 +577,32 @@ export default function App() {
   }, [showToast]);
 
   useEffect(() => {
-    void refreshCore(true);
+    let cancelled = false;
+
+    void (async () => {
+      await refreshCore(true);
+      try {
+        const result = await api.scanScreenshots();
+        if (!cancelled && result.imported > 0) {
+          await Promise.all([refreshScreenshots(), refreshCore(false)]);
+          showToast(
+            "Dusk automatically found " +
+              String(result.imported) +
+              " new screenshot" +
+              (result.imported === 1 ? "." : "s."),
+          );
+        }
+      } catch {
+        // Screenshot discovery is best-effort and must not block Dusk startup.
+      }
+    })();
+
     void api.dataDirectory().then(setDataDirectory).catch(() => undefined);
-  }, [refreshCore]);
+
+    return () => {
+      cancelled = true;
+    };
+  }, [refreshCore, refreshScreenshots, showToast]);
 
   useEffect(() => {
     if (view === "screenshots") void refreshScreenshots();
@@ -658,7 +682,8 @@ export default function App() {
     setScanning(true);
     try {
       const result = await api.scanGames();
-      await refreshCore(false);
+      const screenshotResult = await api.scanScreenshots();
+      await Promise.all([refreshCore(false), refreshScreenshots()]);
       const detail =
         String(result.added) +
         " new · " +
@@ -671,7 +696,10 @@ export default function App() {
         String(result.gogFound) +
         " GOG · " +
         String(result.emulatorFound) +
-        " emulators";
+        " emulators" +
+        (screenshotResult.imported > 0
+          ? " · " + String(screenshotResult.imported) + " screenshots"
+          : "");
       showToast("Scan complete: " + String(result.found) + " found (" + detail + ").");
       if (result.warnings.length > 0 && result.found === 0) {
         window.setTimeout(() => showToast(result.warnings[0], "error"), 500);
@@ -680,6 +708,35 @@ export default function App() {
       showToast(readableError(error), "error");
     } finally {
       setScanning(false);
+    }
+  }
+
+  async function scanScreenshotsNow() {
+    setScreenshotScanning(true);
+    try {
+      const result = await api.scanScreenshots();
+      await Promise.all([refreshScreenshots(), refreshCore(false)]);
+      if (result.imported > 0) {
+        showToast(
+          "Found " +
+            String(result.imported) +
+            " new screenshot" +
+            (result.imported === 1 ? "." : "s.") +
+            " Steam: " +
+            String(result.steamImported) +
+            " · matched folders: " +
+            String(result.matchedImported) +
+            ".",
+        );
+      } else if (result.found > 0) {
+        showToast("Screenshot scan complete. No new screenshots; existing files were already known.");
+      } else {
+        showToast("Screenshot scan complete. No matching screenshots were found.");
+      }
+    } catch (error) {
+      showToast(readableError(error), "error");
+    } finally {
+      setScreenshotScanning(false);
     }
   }
 
@@ -1144,19 +1201,33 @@ export default function App() {
                     <div>
                       <span className="eyebrow">Local gallery</span>
                       <h1>Screenshots</h1>
-                      <p>Images you explicitly imported into Dusk.</p>
+                      <p>Automatically detected and manually imported local screenshots.</p>
                     </div>
-                    <button className="button secondary" onClick={() => void refreshScreenshots()}>
-                      <RefreshCw size={16} />
-                      Refresh
-                    </button>
+                    <div className="top-actions">
+                      <button
+                        className="button primary"
+                        disabled={screenshotScanning}
+                        onClick={() => void scanScreenshotsNow()}
+                      >
+                        {screenshotScanning ? (
+                          <RefreshCw className="spin" size={16} />
+                        ) : (
+                          <ScanSearch size={16} />
+                        )}
+                        {screenshotScanning ? "Scanning…" : "Scan screenshots"}
+                      </button>
+                      <button className="button secondary" onClick={() => void refreshScreenshots()}>
+                        <RefreshCw size={16} />
+                        Refresh
+                      </button>
+                    </div>
                   </div>
 
                   {screenshots.length === 0 ? (
                     <EmptyState
                       icon={<Images size={25} />}
-                      title="No screenshots imported"
-                      copy="Open a game in your library and use the Shots action to import local images."
+                      title="No screenshots found"
+                      copy="Dusk checks Steam screenshot folders, common per-game screenshot folders, Windows Screenshots, and Xbox Game Bar Captures. You can also import images manually from a game."
                     />
                   ) : (
                     <div className="screenshot-grid">
