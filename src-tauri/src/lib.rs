@@ -56,6 +56,7 @@ struct ScanResult {
     epic_found: usize,
     gog_found: usize,
     emulator_found: usize,
+    device_found: usize,
     warnings: Vec<String>,
 }
 
@@ -900,6 +901,121 @@ fn scan_emulators() -> (Vec<DiscoveredGame>, Vec<String>) {
     (Vec::new(), Vec::new())
 }
 
+
+fn likely_game_folder_name(name: &str) -> bool {
+    let lower = name.to_ascii_lowercase();
+    ![
+        "windows",
+        "program files",
+        "program files (x86)",
+        "programdata",
+        "users",
+        "$recycle.bin",
+        "system volume information",
+    ]
+    .iter()
+    .any(|blocked| lower == *blocked)
+}
+
+fn common_device_game_roots() -> Vec<PathBuf> {
+    let mut roots = Vec::new();
+
+    #[cfg(target_os = "windows")]
+    {
+        for letter in b'C'..=b'Z' {
+            let drive = PathBuf::from(format!("{}:\\", letter as char));
+            if !drive.exists() {
+                continue;
+            }
+
+            for relative in ["Games", "Game", "PortableGames", "Portable Games"] {
+                let candidate = drive.join(relative);
+                if candidate.is_dir() {
+                    roots.push(candidate);
+                }
+            }
+        }
+
+        if let Ok(profile) = env::var("USERPROFILE") {
+            let profile = PathBuf::from(profile);
+            for relative in ["Games", "Desktop\\Games", "Documents\\Games"] {
+                let candidate = profile.join(relative);
+                if candidate.is_dir() {
+                    roots.push(candidate);
+                }
+            }
+        }
+    }
+
+    roots.sort();
+    roots.dedup();
+    roots
+}
+
+fn scan_common_device_game_folders() -> (Vec<DiscoveredGame>, Vec<String>) {
+    let started = Instant::now();
+    let budget = Duration::from_secs(12);
+    let mut games = Vec::new();
+    let mut warnings = Vec::new();
+    let mut seen_paths = HashSet::new();
+    let mut inspected_folders = 0_usize;
+
+    for root in common_device_game_roots() {
+        if started.elapsed() >= budget || inspected_folders >= 250 {
+            warnings.push(
+                "Automatic device-folder scan stopped at its safety limit; launcher scans still completed."
+                    .into(),
+            );
+            break;
+        }
+
+        let entries = match fs::read_dir(&root) {
+            Ok(entries) => entries,
+            Err(_) => continue,
+        };
+
+        for entry in entries.filter_map(Result::ok) {
+            if started.elapsed() >= budget || inspected_folders >= 250 {
+                break;
+            }
+
+            let path = entry.path();
+            if !path.is_dir() {
+                continue;
+            }
+
+            let title = entry.file_name().to_string_lossy().trim().to_string();
+            if title.is_empty() || !likely_game_folder_name(&title) {
+                continue;
+            }
+
+            inspected_folders += 1;
+
+            let canonical = path.canonicalize().unwrap_or(path.clone());
+            let canonical_key = canonical.to_string_lossy().to_ascii_lowercase();
+            if !seen_paths.insert(canonical_key.clone()) {
+                continue;
+            }
+
+            let Some(executable) = find_best_executable(&canonical, &title) else {
+                continue;
+            };
+
+            let source_id = format!("{:x}", md5::compute(canonical_key.as_bytes()));
+            games.push(DiscoveredGame {
+                id: format!("device:{source_id}"),
+                title,
+                exe_path: Some(executable.to_string_lossy().into_owned()),
+                install_path: canonical.to_string_lossy().into_owned(),
+                source: "device".into(),
+                source_id: Some(source_id),
+            });
+        }
+    }
+
+    (games, warnings)
+}
+
 #[tauri::command]
 fn list_games(app: AppHandle) -> Result<Vec<GameRecord>, String> {
     let connection = open_database(&app)?;
@@ -931,21 +1047,25 @@ fn scan_games_blocking(app: AppHandle) -> Result<ScanResult, String> {
     let (epic_games, epic_warnings) = scan_epic();
     let (gog_games, gog_warnings) = scan_gog();
     let (emulator_games, emulator_warnings) = scan_emulators();
+    let (device_games, device_warnings) = scan_common_device_game_folders();
 
     warnings.extend(epic_warnings);
     warnings.extend(gog_warnings);
     warnings.extend(emulator_warnings);
+    warnings.extend(device_warnings);
 
     let steam_found = steam_games.len();
     let epic_found = epic_games.len();
     let gog_found = gog_games.len();
     let emulator_found = emulator_games.len();
+    let device_found = device_games.len();
 
     let all_games: Vec<DiscoveredGame> = steam_games
         .into_iter()
         .chain(epic_games)
         .chain(gog_games)
         .chain(emulator_games)
+        .chain(device_games)
         .collect();
 
     let connection = open_database(&app)?;
@@ -968,6 +1088,7 @@ fn scan_games_blocking(app: AppHandle) -> Result<ScanResult, String> {
         epic_found,
         gog_found,
         emulator_found,
+        device_found,
         warnings,
     })
 }
