@@ -6,6 +6,7 @@ import type {
   CollectionRecord,
   GameRecord,
   LaunchResult,
+  ProfileRecord,
   ScanResult,
   ScreenshotRecord,
   SaveBackupRecord,
@@ -14,6 +15,14 @@ import type {
 } from "../types";
 
 export const api = {
+  listProfiles: () => invoke<ProfileRecord[]>("list_profiles"),
+  getActiveProfile: () => invoke<ProfileRecord>("get_active_profile"),
+  createProfile: (name: string) =>
+    invoke<ProfileRecord>("create_profile", { name }),
+  setActiveProfile: (profileId: string) =>
+    invoke<ProfileRecord>("set_active_profile", { profileId }),
+  deleteProfile: (profileId: string) =>
+    invoke<ProfileRecord>("delete_profile", { profileId }),
   listGames: () => invoke<GameRecord[]>("list_games"),
   scanGames: () => invoke<ScanResult>("scan_games"),
   chooseExecutable: () => invoke<string | null>("choose_executable"),
