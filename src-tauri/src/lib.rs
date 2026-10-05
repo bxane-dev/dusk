@@ -101,6 +101,16 @@ struct ScreenshotRecord {
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
+struct AutoScreenshotScanResult {
+    found: usize,
+    imported: usize,
+    steam_imported: usize,
+    matched_imported: usize,
+    skipped_duplicates: usize,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
 struct CollectionRecord {
     id: String,
     name: String,
@@ -171,6 +181,7 @@ fn initialize_schema(connection: &Connection) -> Result<(), String> {
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 game_id TEXT NOT NULL,
                 path TEXT NOT NULL UNIQUE,
+                source_path TEXT,
                 created_at TEXT NOT NULL,
                 FOREIGN KEY(game_id) REFERENCES games(id) ON DELETE CASCADE
             );
@@ -194,7 +205,24 @@ fn initialize_schema(connection: &Connection) -> Result<(), String> {
             CREATE INDEX IF NOT EXISTS idx_screenshots_game_id ON screenshots(game_id);
             "#,
         )
-        .map_err(|error| format!("Could not initialize Dusk database: {error}"))
+        .map_err(|error| format!("Could not initialize Dusk database: {error}"))?;
+
+    // Existing Dusk databases predate automatic screenshot source tracking.
+    let _ = connection.execute("ALTER TABLE screenshots ADD COLUMN source_path TEXT", []);
+    connection
+        .execute_batch(
+            r#"
+            CREATE UNIQUE INDEX IF NOT EXISTS idx_screenshots_source_path
+            ON screenshots(source_path)
+            WHERE source_path IS NOT NULL;
+
+            CREATE TABLE IF NOT EXISTS ignored_screenshot_sources (
+                source_path TEXT PRIMARY KEY,
+                ignored_at TEXT NOT NULL
+            );
+            "#,
+        )
+        .map_err(|error| format!("Could not initialize screenshot tracking: {error}"))
 }
 
 fn now() -> String {
@@ -1209,40 +1237,322 @@ fn open_game_folder(_app: AppHandle, _game_id: String) -> Result<(), String> {
     Err("Opening game folders is currently implemented for Windows.".into())
 }
 
+
+fn is_screenshot_image(path: &Path) -> bool {
+    matches!(
+        path.extension()
+            .and_then(|value| value.to_str())
+            .map(|value| value.to_ascii_lowercase())
+            .as_deref(),
+        Some("png") | Some("jpg") | Some("jpeg") | Some("webp") | Some("gif") | Some("bmp")
+    )
+}
+
+fn screenshot_created_at(path: &Path) -> String {
+    fs::metadata(path)
+        .ok()
+        .and_then(|metadata| metadata.modified().ok())
+        .map(|modified| DateTime::<Utc>::from(modified).to_rfc3339())
+        .unwrap_or_else(now)
+}
+
+enum ScreenshotStoreOutcome {
+    Imported,
+    Duplicate,
+    Ignored,
+    Failed,
+}
+
+fn store_screenshot_source(
+    app: &AppHandle,
+    connection: &Connection,
+    game_id: &str,
+    source: &Path,
+    allow_ignored: bool,
+) -> ScreenshotStoreOutcome {
+    if !source.is_file() || !is_screenshot_image(source) {
+        return ScreenshotStoreOutcome::Failed;
+    }
+
+    let source_path = source.to_string_lossy().into_owned();
+
+    if allow_ignored {
+        let _ = connection.execute(
+            "DELETE FROM ignored_screenshot_sources WHERE source_path = ?1",
+            params![source_path],
+        );
+    } else {
+        let ignored: bool = connection
+            .query_row(
+                "SELECT EXISTS(SELECT 1 FROM ignored_screenshot_sources WHERE source_path = ?1)",
+                params![source_path],
+                |row| row.get(0),
+            )
+            .unwrap_or(false);
+        if ignored {
+            return ScreenshotStoreOutcome::Ignored;
+        }
+    }
+
+    let exists: bool = connection
+        .query_row(
+            "SELECT EXISTS(SELECT 1 FROM screenshots WHERE source_path = ?1)",
+            params![source_path],
+            |row| row.get(0),
+        )
+        .unwrap_or(false);
+
+    if exists {
+        return ScreenshotStoreOutcome::Duplicate;
+    }
+
+    let extension = source
+        .extension()
+        .and_then(|value| value.to_str())
+        .unwrap_or("png")
+        .to_ascii_lowercase();
+
+    let screenshots_dir = match app_data_dir(app) {
+        Ok(path) => path.join("screenshots").join(game_id.replace(':', "_")),
+        Err(_) => return ScreenshotStoreOutcome::Failed,
+    };
+
+    if fs::create_dir_all(&screenshots_dir).is_err() {
+        return ScreenshotStoreOutcome::Failed;
+    }
+
+    let destination = screenshots_dir.join(format!("{}.{}", Uuid::new_v4(), extension));
+    if fs::copy(source, &destination).is_err() {
+        return ScreenshotStoreOutcome::Failed;
+    }
+
+    let inserted = connection.execute(
+        "INSERT OR IGNORE INTO screenshots (game_id, path, source_path, created_at) VALUES (?1, ?2, ?3, ?4)",
+        params![
+            game_id,
+            destination.to_string_lossy().into_owned(),
+            source_path,
+            screenshot_created_at(source)
+        ],
+    );
+
+    match inserted {
+        Ok(1) => ScreenshotStoreOutcome::Imported,
+        Ok(_) => {
+            let _ = fs::remove_file(destination);
+            ScreenshotStoreOutcome::Duplicate
+        }
+        Err(_) => {
+            let _ = fs::remove_file(destination);
+            ScreenshotStoreOutcome::Failed
+        }
+    }
+}
+
+fn image_files_in_directory(directory: &Path, max_depth: usize) -> Vec<PathBuf> {
+    if !directory.is_dir() {
+        return Vec::new();
+    }
+
+    WalkDir::new(directory)
+        .max_depth(max_depth)
+        .follow_links(false)
+        .into_iter()
+        .filter_map(Result::ok)
+        .filter(|entry| entry.file_type().is_file() && is_screenshot_image(entry.path()))
+        .map(|entry| entry.path().to_path_buf())
+        .collect()
+}
+
+fn normalized_match_text(value: &str) -> String {
+    value
+        .to_ascii_lowercase()
+        .chars()
+        .filter(|character| character.is_ascii_alphanumeric())
+        .collect()
+}
+
+#[tauri::command]
+fn scan_screenshots(app: AppHandle) -> Result<AutoScreenshotScanResult, String> {
+    let connection = open_database(&app)?;
+    let mut statement = connection
+        .prepare(
+            r#"
+            SELECT id, title, install_path, source, source_id
+            FROM games
+            WHERE hidden = 0
+            "#,
+        )
+        .map_err(|error| format!("Could not prepare screenshot game scan: {error}"))?;
+
+    let rows = statement
+        .query_map([], |row| {
+            Ok((
+                row.get::<_, String>(0)?,
+                row.get::<_, String>(1)?,
+                row.get::<_, String>(2)?,
+                row.get::<_, String>(3)?,
+                row.get::<_, Option<String>>(4)?,
+            ))
+        })
+        .map_err(|error| format!("Could not load games for screenshot scan: {error}"))?;
+
+    let games: Vec<(String, String, String, String, Option<String>)> = rows
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|error| format!("Could not decode games for screenshot scan: {error}"))?;
+    drop(statement);
+
+    let mut found = 0;
+    let mut imported = 0;
+    let mut steam_imported = 0;
+    let mut matched_imported = 0;
+    let mut skipped_duplicates = 0;
+    let mut seen_sources = HashSet::new();
+
+    // Steam keeps screenshots under userdata/<account>/760/remote/<appid>/screenshots.
+    for (game_id, _title, _install_path, source, source_id) in &games {
+        if source != "steam" {
+            continue;
+        }
+        let Some(app_id) = source_id.as_deref() else {
+            continue;
+        };
+
+        for steam_root in steam_roots() {
+            let userdata = steam_root.join("userdata");
+            let accounts = match fs::read_dir(&userdata) {
+                Ok(entries) => entries,
+                Err(_) => continue,
+            };
+
+            for account in accounts.filter_map(Result::ok) {
+                let directory = account
+                    .path()
+                    .join("760")
+                    .join("remote")
+                    .join(app_id)
+                    .join("screenshots");
+
+                for source_path in image_files_in_directory(&directory, 1) {
+                    let key = source_path.to_string_lossy().into_owned();
+                    if !seen_sources.insert(key) {
+                        continue;
+                    }
+                    found += 1;
+                    match store_screenshot_source(&app, &connection, game_id, &source_path, false) {
+                        ScreenshotStoreOutcome::Imported => {
+                            imported += 1;
+                            steam_imported += 1;
+                        }
+                        ScreenshotStoreOutcome::Duplicate | ScreenshotStoreOutcome::Ignored => {
+                            skipped_duplicates += 1;
+                        }
+                        ScreenshotStoreOutcome::Failed => {}
+                    }
+                }
+            }
+        }
+    }
+
+    // Match screenshots inside common per-game screenshot folders.
+    for (game_id, _title, install_path, _source, _source_id) in &games {
+        let root = PathBuf::from(install_path);
+        for name in ["screenshots", "Screenshots", "ScreenShots", "captures", "Captures"] {
+            let directory = root.join(name);
+            for source_path in image_files_in_directory(&directory, 2) {
+                let key = source_path.to_string_lossy().into_owned();
+                if !seen_sources.insert(key) {
+                    continue;
+                }
+                found += 1;
+                match store_screenshot_source(&app, &connection, game_id, &source_path, false) {
+                    ScreenshotStoreOutcome::Imported => {
+                        imported += 1;
+                        matched_imported += 1;
+                    }
+                    ScreenshotStoreOutcome::Duplicate | ScreenshotStoreOutcome::Ignored => {
+                        skipped_duplicates += 1;
+                    }
+                    ScreenshotStoreOutcome::Failed => {}
+                }
+            }
+        }
+    }
+
+    // Windows and Xbox Game Bar commonly save to these folders. To avoid false
+    // associations, only import when the filename contains a sufficiently specific
+    // normalized game title.
+    if let Ok(profile) = env::var("USERPROFILE") {
+        let profile = PathBuf::from(profile);
+        let shared_directories = [
+            profile.join("Pictures").join("Screenshots"),
+            profile.join("Videos").join("Captures"),
+        ];
+
+        for directory in shared_directories {
+            for source_path in image_files_in_directory(&directory, 2) {
+                let key = source_path.to_string_lossy().into_owned();
+                if !seen_sources.insert(key) {
+                    continue;
+                }
+
+                let filename = source_path
+                    .file_stem()
+                    .and_then(|value| value.to_str())
+                    .unwrap_or_default();
+                let normalized_file = normalized_match_text(filename);
+
+                let matched_game = games.iter().find(|(_id, title, _path, _source, _source_id)| {
+                    let normalized_title = normalized_match_text(title);
+                    normalized_title.len() >= 5 && normalized_file.contains(&normalized_title)
+                });
+
+                let Some((game_id, _title, _path, _source, _source_id)) = matched_game else {
+                    continue;
+                };
+
+                found += 1;
+                match store_screenshot_source(&app, &connection, game_id, &source_path, false) {
+                    ScreenshotStoreOutcome::Imported => {
+                        imported += 1;
+                        matched_imported += 1;
+                    }
+                    ScreenshotStoreOutcome::Duplicate | ScreenshotStoreOutcome::Ignored => {
+                        skipped_duplicates += 1;
+                    }
+                    ScreenshotStoreOutcome::Failed => {}
+                }
+            }
+        }
+    }
+
+    Ok(AutoScreenshotScanResult {
+        found,
+        imported,
+        steam_imported,
+        matched_imported,
+        skipped_duplicates,
+    })
+}
+
 #[tauri::command]
 fn import_screenshots(app: AppHandle, game_id: String) -> Result<usize, String> {
     let selected = match rfd::FileDialog::new()
-        .add_filter("Images", &["png", "jpg", "jpeg", "webp", "gif"])
+        .add_filter("Images", &["png", "jpg", "jpeg", "webp", "gif", "bmp"])
         .pick_files()
     {
         Some(files) => files,
         None => return Ok(0),
     };
 
-    let screenshots_dir = app_data_dir(&app)?.join("screenshots").join(game_id.replace(':', "_"));
-    fs::create_dir_all(&screenshots_dir)
-        .map_err(|error| format!("Could not create screenshot directory: {error}"))?;
-
     let connection = open_database(&app)?;
     let mut imported = 0;
 
     for source in selected {
-        let extension = source
-            .extension()
-            .and_then(|value| value.to_str())
-            .unwrap_or("png");
-        let destination = screenshots_dir.join(format!("{}.{}", Uuid::new_v4(), extension));
-
-        if fs::copy(&source, &destination).is_err() {
-            continue;
-        }
-
-        let inserted = connection.execute(
-            "INSERT OR IGNORE INTO screenshots (game_id, path, created_at) VALUES (?1, ?2, ?3)",
-            params![game_id, destination.to_string_lossy().into_owned(), now()],
-        );
-
-        if inserted.is_ok() {
+        if matches!(
+            store_screenshot_source(&app, &connection, &game_id, &source, true),
+            ScreenshotStoreOutcome::Imported
+        ) {
             imported += 1;
         }
     }
@@ -1299,17 +1609,23 @@ fn list_screenshots(app: AppHandle, game_id: Option<String>) -> Result<Vec<Scree
 #[tauri::command]
 fn delete_screenshot(app: AppHandle, screenshot_id: i64) -> Result<(), String> {
     let connection = open_database(&app)?;
-    let path: Option<String> = connection
+    let screenshot: Option<(String, Option<String>)> = connection
         .query_row(
-            "SELECT path FROM screenshots WHERE id = ?1",
+            "SELECT path, source_path FROM screenshots WHERE id = ?1",
             params![screenshot_id],
-            |row| row.get(0),
+            |row| Ok((row.get(0)?, row.get(1)?)),
         )
         .optional()
         .map_err(|error| format!("Could not find screenshot: {error}"))?;
 
-    if let Some(path) = path {
+    if let Some((path, source_path)) = screenshot {
         let _ = fs::remove_file(path);
+        if let Some(source_path) = source_path {
+            let _ = connection.execute(
+                "INSERT OR REPLACE INTO ignored_screenshot_sources (source_path, ignored_at) VALUES (?1, ?2)",
+                params![source_path, now()],
+            );
+        }
     }
 
     connection
@@ -1614,6 +1930,7 @@ pub fn run() {
             launch_game,
             open_game_folder,
             import_screenshots,
+            scan_screenshots,
             list_screenshots,
             delete_screenshot,
             list_collections,
