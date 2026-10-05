@@ -104,6 +104,8 @@ function formatDate(value: string | null) {
 function sourceLabel(source: string) {
   if (source === "steam") return "Steam";
   if (source === "epic") return "Epic";
+  if (source === "gog") return "GOG";
+  if (source === "emulator") return "Emulator";
   if (source === "manual") return "Manual";
   return source;
 }
@@ -665,7 +667,11 @@ export default function App() {
         String(result.steamFound) +
         " Steam · " +
         String(result.epicFound) +
-        " Epic";
+        " Epic · " +
+        String(result.gogFound) +
+        " GOG · " +
+        String(result.emulatorFound) +
+        " emulators";
       showToast("Scan complete: " + String(result.found) + " found (" + detail + ").");
       if (result.warnings.length > 0 && result.found === 0) {
         window.setTimeout(() => showToast(result.warnings[0], "error"), 500);
@@ -1075,6 +1081,8 @@ export default function App() {
                         <option value="all">All sources</option>
                         <option value="steam">Steam</option>
                         <option value="epic">Epic</option>
+                        <option value="gog">GOG</option>
+                        <option value="emulator">Emulators</option>
                         <option value="manual">Manual</option>
                       </select>
                       <select
@@ -1095,7 +1103,7 @@ export default function App() {
                       title={games.length === 0 ? "Your library is empty" : "No games match these filters"}
                       copy={
                         games.length === 0
-                          ? "Dusk can detect Steam and Epic installs, or you can point it at any game executable."
+                          ? "Dusk can detect Steam, Epic, GOG, and common emulators, or you can point it at any game executable."
                           : "Change the search, source, or collection filter."
                       }
                       action={
@@ -1365,6 +1373,16 @@ export default function App() {
                         <Check size={16} />
                         <strong>Epic Games</strong>
                         <span>Reads installed Epic manifest files.</span>
+                      </div>
+                      <div>
+                        <Check size={16} />
+                        <strong>GOG</strong>
+                        <span>Reads GOG game install records from the Windows registry.</span>
+                      </div>
+                      <div>
+                        <Check size={16} />
+                        <strong>Emulators</strong>
+                        <span>Detects common installed emulators such as Dolphin, PCSX2, RetroArch, Ryujinx, Cemu, PPSSPP, and DuckStation.</span>
                       </div>
                       <div>
                         <Plus size={16} />
