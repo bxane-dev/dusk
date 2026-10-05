@@ -57,6 +57,7 @@ import type {
   CloudSaveStatus,
   GameRecord,
   ProfileRecord,
+  ProfileSaveFileState,
   ScreenshotRecord,
   SaveBackupRecord,
   SaveConfig,
@@ -364,6 +365,7 @@ function AddGameModal(props: {
 
 function GameDetail(props: {
   game: GameRecord;
+  activeProfile: ProfileRecord | null;
   collections: CollectionRecord[];
   memberships: CollectionMembership[];
   onClose: () => void;
@@ -375,6 +377,7 @@ function GameDetail(props: {
   const detailBusyRef = useRef(false);
   const [saveConfig, setSaveConfig] = useState<SaveConfig | null>(null);
   const [saveBackups, setSaveBackups] = useState<SaveBackupRecord[]>([]);
+  const [profileSaveState, setProfileSaveState] = useState<ProfileSaveFileState | null>(null);
   const [saveLoading, setSaveLoading] = useState(true);
 
   const membershipSet = useMemo(() => {
@@ -391,9 +394,11 @@ function GameDetail(props: {
       const values = await Promise.all([
         api.getSaveConfig(props.game.id),
         api.listSaveBackups(props.game.id),
+        api.getProfileSaveFileState(props.game.id),
       ]);
       setSaveConfig(values[0]);
       setSaveBackups(values[1]);
+      setProfileSaveState(values[2]);
     } catch (error) {
       props.onToast(readableError(error), "error");
     } finally {
@@ -426,6 +431,51 @@ function GameDetail(props: {
           props.onToast("Save folder configured.");
           await refreshSaveData();
         }
+      } catch (error) {
+        props.onToast(readableError(error), "error");
+      }
+    });
+  }
+
+  async function saveFilesToProfile() {
+    await withDetailLock(async () => {
+      try {
+        const state = await api.saveProfileFiles(props.game.id);
+        setProfileSaveState(state);
+        props.onToast(
+          "Saved " +
+            String(state.fileCount) +
+            " files to " +
+            (props.activeProfile?.name || "this profile") +
+            ".",
+        );
+      } catch (error) {
+        props.onToast(readableError(error), "error");
+      }
+    });
+  }
+
+  async function loadFilesFromProfile() {
+    if (detailBusyRef.current) return;
+    const okay = window.confirm(
+      "Load " +
+        (props.activeProfile?.name || "this profile") +
+        "'s saved files for " +
+        props.game.title +
+        "? Dusk creates a safety backup before replacing the live save folder.",
+    );
+    if (!okay) return;
+
+    await withDetailLock(async () => {
+      try {
+        const state = await api.loadProfileFiles(props.game.id);
+        setProfileSaveState(state);
+        props.onToast(
+          "Loaded " +
+            String(state.fileCount) +
+            " profile save files. A safety backup was created first.",
+        );
+        await refreshSaveData();
       } catch (error) {
         props.onToast(readableError(error), "error");
       }
@@ -726,6 +776,42 @@ function GameDetail(props: {
                     >
                       <X size={14} />
                       Disconnect
+                    </button>
+                  </div>
+                </div>
+
+                <div className="profile-save-vault">
+                  <div className="profile-save-vault-copy">
+                    <strong>
+                      {props.activeProfile?.name || "Owner"} · Profile save files
+                    </strong>
+                    <span>
+                      {profileSaveState?.exists
+                        ? String(profileSaveState.fileCount) +
+                          " files · " +
+                          formatBytes(profileSaveState.totalBytes) +
+                          (profileSaveState.updatedAt
+                            ? " · " + formatDate(profileSaveState.updatedAt)
+                            : "")
+                        : "No physical save files stored for this owner yet."}
+                    </span>
+                  </div>
+                  <div className="profile-save-vault-actions">
+                    <button
+                      className="button secondary"
+                      disabled={busy}
+                      onClick={() => void saveFilesToProfile()}
+                    >
+                      <Save size={14} />
+                      Save to profile
+                    </button>
+                    <button
+                      className="button secondary"
+                      disabled={busy || !profileSaveState?.exists}
+                      onClick={() => void loadFilesFromProfile()}
+                    >
+                      <RotateCcw size={14} />
+                      Load profile files
                     </button>
                   </div>
                 </div>
@@ -2438,6 +2524,7 @@ export default function App() {
       {selectedGame && (
         <GameDetail
           game={selectedGame}
+          activeProfile={activeProfile}
           collections={collections}
           memberships={memberships}
           onClose={() => setSelectedGameId(null)}
