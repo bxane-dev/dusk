@@ -38,6 +38,7 @@ import {
   useRef,
   useState,
 } from "react";
+import { convertFileSrc } from "@tauri-apps/api/core";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { api } from "./lib/api";
 import { checkForDuskUpdate, installDuskUpdate } from "./lib/updater";
@@ -147,10 +148,16 @@ function NavItem(props: {
 }
 
 function Cover({ game }: { game: GameRecord }) {
-  if (game.coverDataUrl) {
+  if (game.coverPath) {
     return (
       <div className="cover">
-        <img src={game.coverDataUrl} alt="" />
+        <img
+          src={convertFileSrc(game.coverPath)}
+          alt=""
+          loading="lazy"
+          decoding="async"
+          draggable={false}
+        />
       </div>
     );
   }
@@ -1696,11 +1703,13 @@ export default function App() {
                         const game = games.find((item) => item.id === screenshot.gameId);
                         return (
                           <article className="screenshot-card" key={screenshot.id}>
-                            {screenshot.dataUrl ? (
-                              <img src={screenshot.dataUrl} alt="" />
-                            ) : (
-                              <div className="image-unavailable">Preview unavailable</div>
-                            )}
+                            <img
+                              src={convertFileSrc(screenshot.path)}
+                              alt=""
+                              loading="lazy"
+                              decoding="async"
+                              draggable={false}
+                            />
                             <div className="screenshot-meta">
                               <div>
                                 <strong>{game?.title || "Unknown game"}</strong>
