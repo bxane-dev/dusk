@@ -1,6 +1,6 @@
 # Dusk Auto-Updater Setup
 
-Dusk v0.2.0 includes the official Tauri updater integration.
+Dusk v1.0.0 includes the official Tauri updater integration.
 
 The updater uses GitHub Releases and a signed `latest.json` manifest. Update signatures are mandatory in Tauri and the private signing key must never be committed to this public repository.
 
@@ -55,4 +55,4 @@ The normal source configuration intentionally does not contain the updater publi
 
 ## Bootstrap note
 
-Dusk v0.1.0 did not contain the updater plugin, so existing v0.1.0 users must install v0.2.0 manually once. From v0.2.0 onward, signed releases can update from inside Dusk.
+Dusk v0.1.0 did not contain the updater plugin. Users of the original v0.1.0 installer must install a newer signed-updater-enabled release manually once. Releases built with the updater signing secrets can then update from inside Dusk.
