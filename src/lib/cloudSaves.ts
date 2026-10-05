@@ -1,3 +1,4 @@
+import type { SupabaseClient } from "@supabase/supabase-js";
 import { api } from "./api";
 import { getSupabaseClient, SUPABASE_KEY, SUPABASE_URL, supabaseConfigured } from "./auth";
 import type { CloudSaveStatus, SaveBackupRecord } from "../types";
