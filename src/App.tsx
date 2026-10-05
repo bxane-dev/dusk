@@ -1,6 +1,7 @@
 import {
   Archive,
   Check,
+  Cloud,
   Clock3,
   Database,
   ExternalLink,
@@ -30,6 +31,7 @@ import {
   Star,
   Trash2,
   Trophy,
+  UserRound,
   X,
 } from "lucide-react";
 import {
@@ -45,13 +47,16 @@ import {
 import { convertFileSrc } from "@tauri-apps/api/core";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { api } from "./lib/api";
+import { cloudSaveStatus, syncBackupToSupabase, syncCloudManifest } from "./lib/cloudSaves";
 import { checkForDuskUpdate, installDuskUpdate } from "./lib/updater";
 import { useControllerNavigation } from "./lib/useControllerNavigation";
 import type {
   Achievement,
   CollectionMembership,
   CollectionRecord,
+  CloudSaveStatus,
   GameRecord,
+  ProfileRecord,
   ScreenshotRecord,
   SaveBackupRecord,
   SaveConfig,
@@ -431,11 +436,28 @@ function GameDetail(props: {
     await withDetailLock(async () => {
       try {
         const backup = await api.createSaveBackup(props.game.id);
+        let cloudSuffix = "";
+        try {
+          const status = await cloudSaveStatus();
+          if (status.configured && status.authenticated) {
+            const uploaded = await syncBackupToSupabase(backup);
+            await syncCloudManifest();
+            cloudSuffix =
+              " · Supabase: " +
+              String(uploaded.uploadedFiles) +
+              " files synced";
+          } else if (status.configured) {
+            cloudSuffix = " · cloud sync unavailable";
+          }
+        } catch {
+          cloudSuffix = " · saved locally; cloud sync will retry later";
+        }
         props.onToast(
           "Save backup created: " +
             String(backup.fileCount) +
             " files · " +
             formatBytes(backup.totalBytes) +
+            cloudSuffix +
             ".",
         );
         await refreshSaveData();
@@ -457,6 +479,15 @@ function GameDetail(props: {
     await withDetailLock(async () => {
       try {
         const safety = await api.restoreSaveBackup(props.game.id, backup.id);
+        try {
+          const status = await cloudSaveStatus();
+          if (status.configured && status.authenticated) {
+            await syncBackupToSupabase(safety);
+            await syncCloudManifest();
+          }
+        } catch {
+          // A local safety backup is still valid if cloud sync is unavailable.
+        }
         props.onToast(
           "Save restored. Safety backup created with " +
             String(safety.fileCount) +
@@ -787,6 +818,14 @@ export default function App() {
   const [memberships, setMemberships] = useState<CollectionMembership[]>([]);
   const [screenshots, setScreenshots] = useState<ScreenshotRecord[]>([]);
   const [dataDirectory, setDataDirectory] = useState("");
+  const [profiles, setProfiles] = useState<ProfileRecord[]>([]);
+  const [activeProfile, setActiveProfile] = useState<ProfileRecord | null>(null);
+  const [cloudStatus, setCloudStatus] = useState<CloudSaveStatus>({
+    configured: false,
+    authenticated: false,
+    userId: null,
+    message: "Checking Supabase cloud saves…",
+  });
 
   const [selectedGameId, setSelectedGameId] = useState<string | null>(null);
   const [collectionFilter, setCollectionFilter] = useState("all");
@@ -868,12 +907,16 @@ export default function App() {
             api.listAchievements(),
             api.listCollections(),
             api.collectionMemberships(),
+            api.listProfiles(),
+            api.getActiveProfile(),
           ]);
           setGames(values[0]);
           setStats(values[1]);
           setAchievements(values[2]);
           setCollections(values[3]);
           setMemberships(values[4]);
+          setProfiles(values[5]);
+          setActiveProfile(values[6]);
         } while (refreshCorePendingRef.current);
       } catch (error) {
         showToast(readableError(error), "error");
@@ -908,6 +951,7 @@ export default function App() {
   useEffect(() => {
     void refreshCore(true);
     void api.dataDirectory().then(setDataDirectory).catch(() => undefined);
+    void cloudSaveStatus().then(setCloudStatus);
   }, [refreshCore]);
 
   useEffect(() => {
@@ -1307,6 +1351,72 @@ export default function App() {
     }
   }
 
+  async function switchOwnerProfile(profileId: string) {
+    if (profileId === activeProfile?.id) return;
+    try {
+      const profile = await api.setActiveProfile(profileId);
+      setActiveProfile(profile);
+      setSelectedGameId(null);
+      setCollectionFilter("all");
+      await refreshCore(false);
+      try {
+        await syncCloudManifest();
+      } catch {
+        // Cloud sync is optional; profile switching remains local-first.
+      }
+      showToast("Switched to " + profile.name + ".");
+    } catch (error) {
+      showToast(readableError(error), "error");
+    }
+  }
+
+  async function createOwnerProfile() {
+    const name = window.prompt("Profile / owner name");
+    if (!name || !name.trim()) return;
+    try {
+      const profile = await api.createProfile(name.trim());
+      setActiveProfile(profile);
+      setSelectedGameId(null);
+      setCollectionFilter("all");
+      await refreshCore(false);
+      try {
+        await syncCloudManifest();
+      } catch {
+        // Profile is still saved locally if cloud is unavailable.
+      }
+      showToast("Created owner profile " + profile.name + ".");
+    } catch (error) {
+      showToast(readableError(error), "error");
+    }
+  }
+
+  async function removeOwnerProfile(profile: ProfileRecord) {
+    if (profiles.length <= 1) {
+      showToast("Dusk must keep at least one owner profile.", "error");
+      return;
+    }
+    const okay = window.confirm(
+      "Delete profile " +
+        profile.name +
+        "? Its local Dusk backup copies will be removed, but live game save folders are not deleted.",
+    );
+    if (!okay) return;
+    try {
+      const fallback = await api.deleteProfile(profile.id);
+      setActiveProfile(fallback);
+      setSelectedGameId(null);
+      await refreshCore(false);
+      try {
+        await syncCloudManifest();
+      } catch {
+        // Local deletion remains valid if cloud is unavailable.
+      }
+      showToast("Profile deleted.");
+    } catch (error) {
+      showToast(readableError(error), "error");
+    }
+  }
+
   async function createCollection() {
     if (collectionMutationRef.current) return;
     const name = window.prompt("Collection name");
@@ -1581,6 +1691,25 @@ export default function App() {
         </div>
 
         <div className="sidebar-bottom">
+          <div className="profile-switcher">
+            <div className="profile-switcher-icon">
+              <UserRound size={15} />
+            </div>
+            <select
+              value={activeProfile?.id || ""}
+              onChange={(event) => void switchOwnerProfile(event.target.value)}
+              aria-label="Active owner profile"
+            >
+              {profiles.map((profile) => (
+                <option key={profile.id} value={profile.id}>
+                  {profile.name}
+                </option>
+              ))}
+            </select>
+            <button className="mini-icon" onClick={() => void createOwnerProfile()} title="New profile">
+              <Plus size={14} />
+            </button>
+          </div>
           <button
             className="creator-pill"
             onClick={() => void openExternal("creator")}
@@ -1970,6 +2099,57 @@ export default function App() {
                       <p>Appearance and local data information.</p>
                     </div>
                   </div>
+
+                  <section className="settings-card">
+                    <div className="settings-card-head">
+                      <UserRound size={20} />
+                      <div>
+                        <h3>Profiles & cloud saves</h3>
+                        <p>Separate game libraries and save backups for each owner.</p>
+                      </div>
+                    </div>
+
+                    <div className="profile-settings-list">
+                      {profiles.map((profile) => (
+                        <div className={cx("profile-settings-row", activeProfile?.id === profile.id && "active")} key={profile.id}>
+                          <div>
+                            <strong>{profile.name}</strong>
+                            <span>
+                              {profile.gameCount} games · {profile.backupCount} backups
+                              {activeProfile?.id === profile.id ? " · active" : ""}
+                            </span>
+                          </div>
+                          <div className="profile-settings-actions">
+                            {activeProfile?.id !== profile.id && (
+                              <button className="button secondary" onClick={() => void switchOwnerProfile(profile.id)}>
+                                Use
+                              </button>
+                            )}
+                            {profiles.length > 1 && (
+                              <button className="icon-button" onClick={() => void removeOwnerProfile(profile)} title="Delete profile">
+                                <Trash2 size={15} />
+                              </button>
+                            )}
+                          </div>
+                        </div>
+                      ))}
+                      <button className="button secondary" onClick={() => void createOwnerProfile()}>
+                        <Plus size={15} />
+                        New owner profile
+                      </button>
+                    </div>
+
+                    <div className="setting-row cloud-save-row">
+                      <div>
+                        <strong>Supabase save files</strong>
+                        <span>{cloudStatus.message}</span>
+                      </div>
+                      <div className={cx("cloud-status-pill", cloudStatus.authenticated && "connected")}>
+                        <Cloud size={14} />
+                        {cloudStatus.authenticated ? "Connected" : cloudStatus.configured ? "Needs auth" : "Not configured"}
+                      </div>
+                    </div>
+                  </section>
 
                   <section className="settings-card">
                     <div className="settings-card-head">
