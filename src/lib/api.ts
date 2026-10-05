@@ -8,6 +8,7 @@ import type {
   GameRecord,
   LaunchResult,
   ProfileRecord,
+  ProfileSaveFileState,
   ScanResult,
   ScreenshotRecord,
   SaveBackupRecord,
@@ -73,6 +74,12 @@ export const api = {
   listAchievements: () => invoke<Achievement[]>("list_achievements"),
   chooseSaveFolder: (gameId: string) =>
     invoke<SaveConfig | null>("choose_save_folder", { gameId }),
+  getProfileSaveFileState: (gameId: string) =>
+    invoke<ProfileSaveFileState>("get_profile_save_file_state", { gameId }),
+  saveProfileFiles: (gameId: string) =>
+    invoke<ProfileSaveFileState>("save_profile_files", { gameId }),
+  loadProfileFiles: (gameId: string) =>
+    invoke<ProfileSaveFileState>("load_profile_files", { gameId }),
   getSaveConfig: (gameId: string) =>
     invoke<SaveConfig | null>("get_save_config", { gameId }),
   clearSaveConfig: (gameId: string) =>
