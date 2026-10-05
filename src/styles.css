@@ -964,3 +964,180 @@ button:disabled { cursor: not-allowed; opacity: 0.55; }
   width: 29px;
   height: 29px;
 }
+
+.controller-bar {
+  position: fixed;
+  z-index: 45;
+  right: 24px;
+  bottom: 18px;
+  display: flex;
+  align-items: center;
+  gap: 13px;
+  padding: 8px 11px;
+  border: 1px solid var(--border-strong);
+  border-radius: 999px;
+  color: var(--muted);
+  background: color-mix(in srgb, var(--surface-2) 93%, transparent);
+  box-shadow: 0 12px 35px rgba(0, 0, 0, 0.28);
+  backdrop-filter: blur(14px);
+  font-size: 9px;
+}
+
+.controller-bar span {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  white-space: nowrap;
+}
+
+.controller-bar kbd {
+  min-width: 22px;
+  padding: 3px 6px;
+  border: 1px solid var(--border-strong);
+  border-bottom-width: 2px;
+  border-radius: 6px;
+  color: var(--text);
+  background: var(--surface-3);
+  font: inherit;
+  font-weight: 800;
+  text-align: center;
+}
+
+.controller-connected button:focus-visible,
+.controller-connected [role="button"]:focus-visible,
+.controller-connected [data-controller-focus="true"]:focus-visible {
+  outline: 3px solid var(--accent);
+  outline-offset: 4px;
+  box-shadow: 0 0 0 7px rgba(var(--accent-rgb), 0.11);
+}
+
+.console-mode {
+  grid-template-columns: 92px minmax(0, 1fr);
+}
+
+.console-mode .sidebar {
+  padding: 18px 9px 12px;
+}
+
+.console-mode .brand {
+  justify-content: center;
+  padding: 4px 0 20px;
+}
+
+.console-mode .brand > div:last-child,
+.console-mode .nav-item > span:not(.nav-icon),
+.console-mode .nav-count,
+.console-mode .sidebar-section-head,
+.console-mode .collection-nav,
+.console-mode .sidebar-divider,
+.console-mode .local-chip {
+  display: none;
+}
+
+.console-mode .nav-item {
+  display: grid;
+  width: 58px;
+  height: 52px;
+  min-height: 52px;
+  grid-template-columns: 1fr;
+  place-items: center;
+  justify-self: center;
+  padding: 0;
+  border-radius: 14px;
+}
+
+.console-mode .nav-icon svg {
+  width: 22px;
+  height: 22px;
+}
+
+.console-mode .main {
+  grid-template-rows: 78px minmax(0, 1fr);
+}
+
+.console-mode .topbar {
+  padding: 14px 34px;
+}
+
+.console-mode .search-box {
+  width: min(560px, 48vw);
+  height: 48px;
+  border-radius: 14px;
+}
+
+.console-mode .top-actions .button {
+  min-height: 46px;
+  padding-inline: 18px;
+  border-radius: 13px;
+}
+
+.console-mode .page {
+  padding: 36px 46px 88px;
+}
+
+.console-mode .hero {
+  padding: 34px;
+  border-radius: 22px;
+}
+
+.console-mode .hero h1 {
+  font-size: clamp(44px, 5vw, 68px);
+}
+
+.console-mode .hero p {
+  font-size: 15px;
+}
+
+.console-mode .game-grid {
+  grid-template-columns: repeat(5, minmax(165px, 1fr));
+  gap: 18px;
+}
+
+.console-mode .game-grid.large {
+  grid-template-columns: repeat(5, minmax(175px, 1fr));
+}
+
+.console-mode .game-card {
+  padding: 10px;
+  border-radius: 17px;
+}
+
+.console-mode .game-card-copy strong {
+  font-size: 14px;
+}
+
+.console-mode .game-meta {
+  font-size: 10px;
+}
+
+.console-mode .round-action {
+  width: 42px;
+  height: 42px;
+}
+
+.console-mode .page-heading h1 {
+  font-size: 40px;
+}
+
+.console-mode .detail-panel {
+  width: min(540px, 46vw);
+}
+
+.console-mode .controller-bar {
+  right: 32px;
+  bottom: 24px;
+  gap: 16px;
+  padding: 10px 14px;
+  font-size: 10px;
+}
+
+.console-mode .content {
+  scroll-padding-bottom: 90px;
+}
+
+@media (min-width: 1600px) {
+  .console-mode .game-grid,
+  .console-mode .game-grid.large {
+    grid-template-columns: repeat(6, minmax(175px, 1fr));
+  }
+}
