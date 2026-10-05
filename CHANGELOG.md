@@ -2,6 +2,15 @@
 
 All notable Dusk changes are documented here.
 
+## 1.0.1 - 2026-10-05
+
+Startup hotfix.
+
+- Fixed a Windows startup exit caused by registering the Tauri updater plugin in builds that did not contain updater signing/public-key configuration.
+- Updater runtime registration is now injected only for properly signed updater builds.
+- Added a CI smoke test that launches the built Windows executable and verifies it remains running.
+- Pinned Tauri updater JavaScript/Rust versions to matching releases.
+
 ## 1.0.0 - 2026-10-05
 
 First stable release.
