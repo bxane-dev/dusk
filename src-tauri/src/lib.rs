@@ -448,6 +448,98 @@ fn find_best_executable(root: &Path, game_name: &str) -> Option<PathBuf> {
         .map(|(_, path)| path)
 }
 
+
+fn find_best_executable_bounded(
+    root: &Path,
+    game_name: &str,
+    started: Instant,
+    budget: Duration,
+) -> Option<PathBuf> {
+    if !root.exists() {
+        return None;
+    }
+
+    let normalized_name: String = game_name
+        .to_ascii_lowercase()
+        .chars()
+        .filter(|character| character.is_ascii_alphanumeric())
+        .collect();
+
+    let mut best: Option<(i64, PathBuf)> = None;
+
+    for entry in WalkDir::new(root)
+        .max_depth(4)
+        .follow_links(false)
+        .into_iter()
+        .filter_map(Result::ok)
+        .take(2000)
+    {
+        if started.elapsed() >= budget {
+            break;
+        }
+        if !entry.file_type().is_file() {
+            continue;
+        }
+
+        let path = entry.path();
+        if path
+            .extension()
+            .and_then(|value| value.to_str())
+            .map(|value| value.eq_ignore_ascii_case("exe"))
+            != Some(true)
+        {
+            continue;
+        }
+
+        let filename = path
+            .file_stem()
+            .and_then(|value| value.to_str())
+            .unwrap_or_default()
+            .to_ascii_lowercase();
+
+        let blocked = [
+            "unins",
+            "uninstall",
+            "crash",
+            "report",
+            "vc_redist",
+            "vcredist",
+            "dxsetup",
+            "setup",
+            "unitycrashhandler",
+            "dotnet",
+        ];
+        if blocked.iter().any(|word| filename.contains(word)) {
+            continue;
+        }
+
+        let normalized_file: String = filename
+            .chars()
+            .filter(|character| character.is_ascii_alphanumeric())
+            .collect();
+
+        let mut score = 100_i64 - entry.depth() as i64 * 8;
+        if !normalized_name.is_empty()
+            && (normalized_file.contains(&normalized_name)
+                || normalized_name.contains(&normalized_file))
+        {
+            score += 150;
+        }
+        if filename.contains("launcher") {
+            score -= 20;
+        }
+        if filename.contains("win64") || filename.contains("x64") {
+            score += 10;
+        }
+
+        if best.as_ref().map(|(current, _)| score > *current).unwrap_or(true) {
+            best = Some((score, path.to_path_buf()));
+        }
+    }
+
+    best.map(|(_, path)| path)
+}
+
 fn steam_roots() -> Vec<PathBuf> {
     let mut roots = Vec::new();
     if let Ok(program_files_x86) = env::var("PROGRAMFILES(X86)") {
@@ -998,7 +1090,9 @@ fn scan_common_device_game_folders() -> (Vec<DiscoveredGame>, Vec<String>) {
                 continue;
             }
 
-            let Some(executable) = find_best_executable(&canonical, &title) else {
+            let Some(executable) =
+                find_best_executable_bounded(&canonical, &title, started, budget)
+            else {
                 continue;
             };
 
