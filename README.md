@@ -20,6 +20,8 @@ It scans real local game installations, launches games, tracks sessions it can o
 - Custom cover images
 - Automatic screenshot discovery from Steam, game folders, Windows Screenshots, and Xbox Game Bar Captures
 - Imported local screenshot gallery with duplicate protection
+- Per-game save-folder backups and restore points
+- Automatic pre-restore safety snapshots
 - Dusk achievements calculated from real local Dusk data
 - Local stats dashboard
 - Night, OLED, and Slate themes
@@ -83,6 +85,22 @@ Dusk automatically checks:
 - `Videos\Captures` used by Xbox Game Bar
 
 For shared Windows folders, Dusk only imports an image when the filename contains a sufficiently specific known game title. Imported source paths are tracked so repeated scans do not create duplicates. If an automatically found screenshot is removed from Dusk, its original source file is left untouched and Dusk remembers not to re-import it automatically.
+
+## Save-game backups
+
+Save backups are opt-in per game. Dusk does not guess save locations.
+
+From a game's details panel:
+
+1. Choose the exact save folder used by that game.
+2. Create a restore point with **Back up now**.
+3. Review backup time, file count, and size.
+4. Restore any snapshot when needed.
+5. Delete old Dusk snapshots without changing the live save folder.
+
+Before every restore, Dusk first creates a `pre-restore` safety backup of the current saves. Restore operations replace the contents of the configured save folder with the selected snapshot.
+
+Dusk rejects drive roots and broad Windows, Program Files, user-profile, and AppData roots as backup targets. Backups stay local under Dusk's application data directory.
 
 ## CI and releases
 
