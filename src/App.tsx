@@ -47,6 +47,8 @@ import {
 import { convertFileSrc } from "@tauri-apps/api/core";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { api } from "./lib/api";
+import { syncAccountState } from "./lib/accountSync";
+import { logoutDuskAccount } from "./lib/auth";
 import { cloudSaveStatus, syncAllBackupsToSupabase, syncBackupToSupabase, syncCloudManifest } from "./lib/cloudSaves";
 import { checkForDuskUpdate, installDuskUpdate } from "./lib/updater";
 import { useControllerNavigation } from "./lib/useControllerNavigation";
@@ -1004,6 +1006,7 @@ export default function App() {
           setMemberships(values[4]);
           setProfiles(values[5]);
           setActiveProfile(values[6]);
+          void syncAccountState().catch(() => undefined);
         } while (refreshCorePendingRef.current);
       } catch (error) {
         showToast(readableError(error), "error");
@@ -1039,6 +1042,10 @@ export default function App() {
     void refreshCore(true);
     void api.dataDirectory().then(setDataDirectory).catch(() => undefined);
     void cloudSaveStatus().then(setCloudStatus);
+    const syncTimer = window.setInterval(() => {
+      void syncAccountState().catch(() => undefined);
+    }, 30000);
+    return () => window.clearInterval(syncTimer);
   }, [refreshCore]);
 
   useEffect(() => {
@@ -2256,6 +2263,18 @@ export default function App() {
                       </button>
                     </div>
 
+                    <div className="setting-row">
+                      <div>
+                        <strong>Dusk account</strong>
+                        <span>Your account owns this synced library, progress, profiles, collections, and cloud-save namespace.</span>
+                      </div>
+                      <button
+                        className="button secondary"
+                        onClick={() => void logoutDuskAccount().then(() => window.location.reload())}
+                      >
+                        Sign out
+                      </button>
+                    </div>
                     <div className="setting-row cloud-save-row">
                       <div>
                         <strong>Supabase save files</strong>
