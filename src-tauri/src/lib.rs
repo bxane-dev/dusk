@@ -1,4 +1,3 @@
-use base64::{engine::general_purpose::STANDARD as BASE64, Engine as _};
 use chrono::{DateTime, Utc};
 use regex::Regex;
 use rusqlite::{params, Connection, OptionalExtension};
@@ -285,21 +284,8 @@ fn now() -> String {
     Utc::now().to_rfc3339()
 }
 
-fn image_data_url(path: &Path) -> Option<String> {
-    let bytes = fs::read(path).ok()?;
-    // Avoid accidentally loading huge files into the webview.
-    if bytes.len() > 12 * 1024 * 1024 {
-        return None;
-    }
-    let mime = mime_guess::from_path(path).first_or_octet_stream();
-    Some(format!("data:{};base64,{}", mime, BASE64.encode(bytes)))
-}
-
 fn row_to_game(row: &rusqlite::Row<'_>) -> rusqlite::Result<GameRecord> {
     let cover_path: Option<String> = row.get(7)?;
-    let cover_data_url = cover_path
-        .as_deref()
-        .and_then(|value| image_data_url(Path::new(value)));
 
     Ok(GameRecord {
         id: row.get(0)?,
@@ -310,7 +296,7 @@ fn row_to_game(row: &rusqlite::Row<'_>) -> rusqlite::Result<GameRecord> {
         source_id: row.get(5)?,
         favorite: row.get::<_, i64>(6)? != 0,
         cover_path,
-        cover_data_url,
+        cover_data_url: None,
         added_at: row.get(8)?,
         last_played: row.get(9)?,
         total_seconds: row.get(10)?,
@@ -1647,7 +1633,7 @@ fn list_screenshots(app: AppHandle, game_id: Option<String>) -> Result<Vec<Scree
         Ok(ScreenshotRecord {
             id: row.get(0)?,
             game_id: row.get(1)?,
-            data_url: image_data_url(Path::new(&path)),
+            data_url: None,
             path,
             created_at: row.get(3)?,
         })
