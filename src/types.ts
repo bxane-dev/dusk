@@ -130,3 +130,9 @@ export interface ProfileSaveFileState {
   totalBytes: number;
   updatedAt: string | null;
 }
+
+export interface CloudSyncAllResult {
+  backups: number;
+  uploadedFiles: number;
+  uploadedBytes: number;
+}
