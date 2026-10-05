@@ -17,3 +17,7 @@ target/
 *.db
 *.db-shm
 *.db-wal
+
+# Updater signing keys must never be committed
+.tauri-updater.key
+.tauri-updater.key.pub
