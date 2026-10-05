@@ -5,6 +5,7 @@ import type {
   CollectionMembership,
   CollectionRecord,
   CloudUploadResult,
+  CloudSyncAllResult,
   GameRecord,
   LaunchResult,
   ProfileRecord,
@@ -99,6 +100,12 @@ export const api = {
     accessToken: string;
     authUserId: string;
   }) => invoke<CloudUploadResult>("upload_save_backup_to_cloud", input),
+  uploadAllSaveBackupsToCloud: (input: {
+    supabaseUrl: string;
+    publishableKey: string;
+    accessToken: string;
+    authUserId: string;
+  }) => invoke<CloudSyncAllResult>("upload_all_save_backups_to_cloud", input),
   uploadCloudManifest: (input: {
     supabaseUrl: string;
     publishableKey: string;
