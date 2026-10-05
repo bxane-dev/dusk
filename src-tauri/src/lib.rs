@@ -195,6 +195,14 @@ struct CloudUploadResult {
     uploaded_bytes: u64,
 }
 
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct CloudSyncAllResult {
+    backups: usize,
+    uploaded_files: usize,
+    uploaded_bytes: u64,
+}
+
 fn app_data_dir(app: &AppHandle) -> Result<PathBuf, String> {
     let dir = app
         .path()
@@ -3157,16 +3165,15 @@ fn upload_save_backup_to_cloud_blocking(
     )?;
 
     let connection = open_database(&app)?;
-    let active_profile = active_profile_id(&connection)?;
 
     let backup: SaveBackupRecord = connection
         .query_row(
             r#"
             SELECT id, profile_id, game_id, backup_path, created_at, file_count, total_bytes, kind
             FROM profile_save_backups
-            WHERE id = ?1 AND profile_id = ?2
+            WHERE id = ?1
             "#,
-            params![backup_id, active_profile],
+            params![backup_id],
             |row| {
                 Ok(SaveBackupRecord {
                     id: row.get(0)?,
@@ -3182,7 +3189,7 @@ fn upload_save_backup_to_cloud_blocking(
         )
         .optional()
         .map_err(|error| format!("Could not load backup for cloud sync: {error}"))?
-        .ok_or_else(|| "Save backup not found for the active profile.".to_string())?;
+        .ok_or_else(|| "Save backup not found.".to_string())?;
 
     let backup_root = PathBuf::from(&backup.backup_path);
     if !backup_root.is_dir() {
@@ -3308,6 +3315,82 @@ async fn upload_save_backup_to_cloud(
     })
     .await
     .map_err(|error| format!("Cloud backup worker failed: {error}"))?
+}
+
+
+fn upload_all_save_backups_to_cloud_blocking(
+    app: AppHandle,
+    supabase_url: String,
+    publishable_key: String,
+    access_token: String,
+    auth_user_id: String,
+) -> Result<CloudSyncAllResult, String> {
+    let connection = open_database(&app)?;
+    let mut statement = connection
+        .prepare("SELECT id FROM profile_save_backups ORDER BY created_at ASC")
+        .map_err(|error| format!("Could not prepare cloud backup list: {error}"))?;
+
+    let ids = statement
+        .query_map([], |row| row.get::<_, String>(0))
+        .map_err(|error| format!("Could not load cloud backup list: {error}"))?
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|error| format!("Could not decode cloud backup list: {error}"))?;
+
+    drop(statement);
+    drop(connection);
+
+    let mut uploaded_files = 0_usize;
+    let mut uploaded_bytes = 0_u64;
+    let mut backups = 0_usize;
+
+    for backup_id in ids {
+        let result = upload_save_backup_to_cloud_blocking(
+            app.clone(),
+            backup_id,
+            supabase_url.clone(),
+            publishable_key.clone(),
+            access_token.clone(),
+            auth_user_id.clone(),
+        )?;
+        backups += 1;
+        uploaded_files = uploaded_files.saturating_add(result.uploaded_files);
+        uploaded_bytes = uploaded_bytes.saturating_add(result.uploaded_bytes);
+    }
+
+    upload_cloud_manifest_blocking(
+        app,
+        supabase_url,
+        publishable_key,
+        access_token,
+        auth_user_id,
+    )?;
+
+    Ok(CloudSyncAllResult {
+        backups,
+        uploaded_files,
+        uploaded_bytes,
+    })
+}
+
+#[tauri::command]
+async fn upload_all_save_backups_to_cloud(
+    app: AppHandle,
+    supabase_url: String,
+    publishable_key: String,
+    access_token: String,
+    auth_user_id: String,
+) -> Result<CloudSyncAllResult, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        upload_all_save_backups_to_cloud_blocking(
+            app,
+            supabase_url,
+            publishable_key,
+            access_token,
+            auth_user_id,
+        )
+    })
+    .await
+    .map_err(|error| format!("Cloud sync worker failed: {error}"))?
 }
 
 fn upload_cloud_manifest_blocking(
@@ -3515,6 +3598,7 @@ pub fn run() {
             restore_save_backup,
             delete_save_backup,
             upload_save_backup_to_cloud,
+            upload_all_save_backups_to_cloud,
             upload_cloud_manifest,
             data_directory,
         ])
