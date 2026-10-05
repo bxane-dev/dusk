@@ -3052,11 +3052,11 @@ fn upload_save_backup_to_cloud_blocking(
     let base_segments = vec![
         auth_user_id.clone(),
         "profiles".into(),
-        safe_storage_segment(&backup.profile_id),
+        backup.profile_id.clone(),
         "games".into(),
-        safe_storage_segment(&backup.game_id),
+        backup.game_id.clone(),
         "backups".into(),
-        safe_storage_segment(&backup.id),
+        backup.id.clone(),
     ];
 
     let mut uploaded_files = 0_usize;
@@ -3082,8 +3082,12 @@ fn upload_save_backup_to_cloud_blocking(
 
         let mut segments = base_segments.clone();
         for component in relative.components() {
-            let segment = component.as_os_str().to_string_lossy();
-            segments.push(safe_storage_segment(&segment));
+            match component {
+                std::path::Component::Normal(segment) => {
+                    segments.push(segment.to_string_lossy().into_owned());
+                }
+                _ => return Err("Unsafe save-file path encountered during cloud upload.".into()),
+            }
         }
 
         let bytes = fs::read(entry.path())
