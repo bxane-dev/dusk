@@ -120,3 +120,13 @@ export interface CloudUploadResult {
   uploadedFiles: number;
   uploadedBytes: number;
 }
+
+export interface ProfileSaveFileState {
+  profileId: string;
+  gameId: string;
+  vaultPath: string;
+  exists: boolean;
+  fileCount: number;
+  totalBytes: number;
+  updatedAt: string | null;
+}
