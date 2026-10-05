@@ -12,6 +12,7 @@ import {
   Images,
   Layers3,
   Library,
+  Minus,
   Moon,
   Pencil,
   Play,
@@ -23,6 +24,7 @@ import {
   Search,
   Settings,
   Sparkles,
+  Square,
   Star,
   Trash2,
   Trophy,
@@ -804,6 +806,7 @@ export default function App() {
     const value = Number(localStorage.getItem("dusk-last-auto-scan") || "0");
     return Number.isFinite(value) && value > 0 ? value : null;
   });
+  const [windowMaximized, setWindowMaximized] = useState(false);
   const scanLockRef = useRef(false);
   const autoScanTimerRef = useRef<number | null>(null);
   const screenshotScanLockRef = useRef(false);
@@ -813,6 +816,7 @@ export default function App() {
   const screenshotDeleteLocksRef = useRef(new Set<number>());
   const updateLockRef = useRef(false);
   const consoleModeLockRef = useRef(false);
+  const windowActionLockRef = useRef(false);
   const refreshCoreBusyRef = useRef(false);
   const refreshCorePendingRef = useRef(false);
   const refreshScreenshotsBusyRef = useRef(false);
@@ -903,6 +907,13 @@ export default function App() {
   }, [refreshCore]);
 
   useEffect(() => {
+    void getCurrentWindow()
+      .isMaximized()
+      .then(setWindowMaximized)
+      .catch(() => undefined);
+  }, []);
+
+  useEffect(() => {
     if (!autoScanEnabled) return;
 
     const run = () => void autoScanGames(false);
@@ -947,6 +958,60 @@ export default function App() {
     localStorage.setItem("dusk-theme", theme);
     localStorage.setItem("dusk-accent", accent);
   }, [theme, accent]);
+
+  async function minimizeWindow() {
+    if (windowActionLockRef.current) return;
+    windowActionLockRef.current = true;
+    try {
+      await getCurrentWindow().minimize();
+    } catch (error) {
+      showToast("Could not minimize Dusk: " + readableError(error), "error");
+    } finally {
+      windowActionLockRef.current = false;
+    }
+  }
+
+  async function toggleWindowMaximize() {
+    if (windowActionLockRef.current) return;
+    windowActionLockRef.current = true;
+    try {
+      const appWindow = getCurrentWindow();
+      await appWindow.toggleMaximize();
+      setWindowMaximized(await appWindow.isMaximized());
+    } catch (error) {
+      showToast("Could not resize Dusk: " + readableError(error), "error");
+    } finally {
+      windowActionLockRef.current = false;
+    }
+  }
+
+  async function closeWindow() {
+    if (windowActionLockRef.current) return;
+    windowActionLockRef.current = true;
+    try {
+      await getCurrentWindow().close();
+    } catch (error) {
+      windowActionLockRef.current = false;
+      showToast("Could not close Dusk: " + readableError(error), "error");
+    }
+  }
+
+  async function handleTitlebarMouseDown(event: MouseEvent<HTMLDivElement>) {
+    if (event.button !== 0) return;
+    const target = event.target;
+    if (target instanceof HTMLElement && target.closest("button, input, select, a")) return;
+
+    if (event.detail === 2) {
+      await toggleWindowMaximize();
+      return;
+    }
+
+    try {
+      await getCurrentWindow().startDragging();
+    } catch {
+      // Dragging is best-effort; window buttons remain available.
+    }
+  }
 
   async function setConsoleModeEnabled(enabled: boolean) {
     if (consoleModeLockRef.current) return;
@@ -1347,7 +1412,42 @@ export default function App() {
         : "Library";
 
   return (
-    <div className={cx("app-shell", consoleMode && "console-mode", controllerConnected && "controller-connected")}>
+    <div className={cx("window-frame", consoleMode && "console-active")}>
+      <header className="window-titlebar" onMouseDown={(event) => void handleTitlebarMouseDown(event)}>
+        <div className="window-titlebar-spacer" aria-hidden="true" />
+        <div className="window-title">
+          <Moon size={13} fill="currentColor" />
+          <span>Dusk</span>
+        </div>
+        <div className="window-controls">
+          <button
+            className="window-control"
+            aria-label="Minimize Dusk"
+            title="Minimize"
+            onClick={() => void minimizeWindow()}
+          >
+            <Minus size={15} />
+          </button>
+          <button
+            className="window-control"
+            aria-label={windowMaximized ? "Restore Dusk" : "Maximize Dusk"}
+            title={windowMaximized ? "Restore" : "Maximize"}
+            onClick={() => void toggleWindowMaximize()}
+          >
+            <Square size={12} />
+          </button>
+          <button
+            className="window-control close"
+            aria-label="Close Dusk"
+            title="Close"
+            onClick={() => void closeWindow()}
+          >
+            <X size={15} />
+          </button>
+        </div>
+      </header>
+
+      <div className={cx("app-shell", consoleMode && "console-mode", controllerConnected && "controller-connected")}>
       <aside className="sidebar">
         <div className="brand">
           <div className="brand-mark">
@@ -2018,7 +2118,7 @@ export default function App() {
                       <div>
                         <Check size={16} />
                         <strong>Device folders</strong>
-                        <span>Checks bounded common game folders across available Windows drives and your profile without crawling the whole disk.</span>
+                        <span>Checks bounded common game folders across Windows drives, your profile, and Downloads without crawling the whole disk.</span>
                       </div>
                       <div>
                         <Plus size={16} />
@@ -2073,6 +2173,7 @@ export default function App() {
       )}
 
       {toast && <div className={cx("toast", toast.type)}>{toast.message}</div>}
+      </div>
     </div>
   );
 }
