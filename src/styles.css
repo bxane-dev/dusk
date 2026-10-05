@@ -1322,3 +1322,106 @@ button:disabled { cursor: not-allowed; opacity: 0.55; }
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
+
+.profile-switcher {
+  display: grid;
+  grid-template-columns: 28px minmax(0, 1fr) 28px;
+  align-items: center;
+  gap: 6px;
+  margin: 0 8px;
+  padding: 5px 6px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--surface);
+}
+
+.profile-switcher-icon {
+  display: grid;
+  place-items: center;
+  color: var(--accent);
+}
+
+.profile-switcher select {
+  min-width: 0;
+  height: 30px;
+  border: 0;
+  outline: 0;
+  color: var(--text);
+  background: transparent;
+  font-size: 10px;
+  font-weight: 700;
+}
+
+.profile-settings-list {
+  display: grid;
+  gap: 7px;
+  padding-top: 10px;
+  border-top: 1px solid var(--border);
+}
+
+.profile-settings-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+  padding: 10px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--surface-2);
+}
+
+.profile-settings-row.active {
+  border-color: rgba(var(--accent-rgb), 0.3);
+  background: rgba(var(--accent-rgb), 0.07);
+}
+
+.profile-settings-row strong,
+.profile-settings-row span {
+  display: block;
+}
+
+.profile-settings-row strong {
+  font-size: 11px;
+}
+
+.profile-settings-row span {
+  margin-top: 3px;
+  color: var(--subtle);
+  font-size: 9px;
+}
+
+.profile-settings-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.profile-settings-actions .button {
+  min-height: 30px;
+  padding-inline: 10px;
+  font-size: 9px;
+}
+
+.cloud-save-row {
+  margin-top: 12px;
+}
+
+.cloud-status-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 9px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  color: var(--muted);
+  background: var(--surface-2);
+  font-size: 9px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.cloud-status-pill.connected {
+  border-color: rgba(92, 207, 152, 0.3);
+  color: #b8efd3;
+  background: rgba(92, 207, 152, 0.08);
+}
