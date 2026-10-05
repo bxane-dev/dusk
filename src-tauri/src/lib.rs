@@ -1458,9 +1458,14 @@ fn delete_profile(app: AppHandle, profile_id: String) -> Result<ProfileRecord, S
         .map_err(|error| format!("Could not delete profile: {error}"))?;
     drop(connection);
 
-    let backup_dir = app_data_dir(&app)?.join("save-backups").join(&profile_id);
+    let data_dir = app_data_dir(&app)?;
+    let backup_dir = data_dir.join("save-backups").join(&profile_id);
     if backup_dir.is_dir() {
         let _ = fs::remove_dir_all(backup_dir);
+    }
+    let profile_dir = data_dir.join("profiles").join(&profile_id);
+    if profile_dir.is_dir() {
+        let _ = fs::remove_dir_all(profile_dir);
     }
 
     get_active_profile(app)
@@ -2731,6 +2736,18 @@ fn create_save_backup_internal(
         )
         .map_err(|error| format!("Could not record save backup: {error}"))?;
 
+    // Keep the owner's current vault in sync when they explicitly make a backup.
+    if kind == "manual" {
+        if let Ok(vault) = profile_save_vault_dir(app, &config.profile_id, game_id) {
+            if vault.exists() {
+                let _ = fs::remove_dir_all(&vault);
+            }
+            if copy_directory_tree(&source, &vault).is_ok() {
+                write_profile_vault_metadata(&vault, &config.profile_id, game_id);
+            }
+        }
+    }
+
     Ok(SaveBackupRecord {
         id,
         profile_id: config.profile_id,
@@ -2845,6 +2862,14 @@ fn choose_save_folder(app: AppHandle, game_id: String) -> Result<Option<SaveConf
             ],
         )
         .map_err(|error| format!("Could not save backup configuration: {error}"))?;
+
+    // Seed this owner's physical save vault with the current live files.
+    let vault = profile_save_vault_dir(&app, &profile_id, &game_id)?;
+    if vault.exists() {
+        let _ = fs::remove_dir_all(&vault);
+    }
+    let _ = copy_directory_tree(&save_path, &vault);
+    write_profile_vault_metadata(&vault, &profile_id, &game_id);
 
     Ok(Some(SaveConfig {
         profile_id,
