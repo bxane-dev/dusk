@@ -1461,3 +1461,86 @@ button:disabled { cursor: not-allowed; opacity: 0.55; }
   min-height: 32px;
   padding-inline: 10px;
 }
+
+
+.account-shell {
+  min-height: 100vh;
+  display: grid;
+  place-items: center;
+  padding: 32px;
+  background:
+    radial-gradient(circle at 20% 20%, rgba(124, 58, 237, 0.14), transparent 34%),
+    radial-gradient(circle at 80% 0%, rgba(255, 255, 255, 0.05), transparent 28%),
+    #09090b;
+  color: #f4f4f5;
+}
+.account-card {
+  width: min(520px, 100%);
+  border: 1px solid rgba(255,255,255,.1);
+  border-radius: 24px;
+  background: rgba(17, 17, 20, .94);
+  box-shadow: 0 24px 80px rgba(0,0,0,.45);
+  padding: 28px;
+}
+.account-card.compact { width: auto; display: flex; align-items: center; gap: 12px; }
+.account-brand { display: flex; gap: 16px; align-items: flex-start; margin-bottom: 24px; }
+.account-brand span { font-size: 11px; letter-spacing: .18em; color: #a1a1aa; }
+.account-brand h1 { margin: 5px 0 7px; font-size: 30px; }
+.account-brand p { margin: 0; color: #a1a1aa; line-height: 1.5; }
+.account-logo {
+  flex: 0 0 auto;
+  width: 52px;
+  height: 52px;
+  display: grid;
+  place-items: center;
+  border-radius: 15px;
+  background: linear-gradient(145deg, rgba(139,92,246,.24), rgba(255,255,255,.04));
+  border: 1px solid rgba(255,255,255,.1);
+}
+.account-form { display: grid; gap: 14px; }
+.account-form label { display: grid; gap: 7px; color: #d4d4d8; font-size: 13px; }
+.account-form input {
+  width: 100%;
+  box-sizing: border-box;
+  border: 1px solid rgba(255,255,255,.1);
+  border-radius: 12px;
+  background: #0d0d10;
+  color: #fafafa;
+  padding: 13px 14px;
+  outline: none;
+}
+.account-form input:focus { border-color: rgba(139,92,246,.65); box-shadow: 0 0 0 3px rgba(139,92,246,.12); }
+.account-submit, .account-switch {
+  border: 0;
+  border-radius: 12px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  cursor: pointer;
+}
+.account-submit {
+  margin-top: 4px;
+  padding: 13px 16px;
+  font-weight: 700;
+  color: white;
+  background: #7c3aed;
+}
+.account-submit:disabled { opacity: .5; cursor: not-allowed; }
+.account-switch {
+  width: 100%;
+  margin-top: 14px;
+  padding: 11px 14px;
+  color: #b4b4bc;
+  background: transparent;
+}
+.account-switch:hover { background: rgba(255,255,255,.04); color: #fff; }
+.account-message {
+  border-radius: 10px;
+  border: 1px solid rgba(255,255,255,.08);
+  background: rgba(255,255,255,.04);
+  padding: 10px 12px;
+  font-size: 13px;
+  color: #d4d4d8;
+}
+.account-message.error { border-color: rgba(239,68,68,.3); color: #fecaca; margin-bottom: 14px; }
