@@ -3579,6 +3579,252 @@ async fn upload_all_save_backups_to_cloud(
     .map_err(|error| format!("Cloud sync worker failed: {error}"))?
 }
 
+
+#[tauri::command]
+fn export_account_state(app: AppHandle) -> Result<serde_json::Value, String> {
+    let connection = open_database(&app)?;
+    let active_profile = active_profile_id(&connection)?;
+
+    let mut profiles_statement = connection
+        .prepare("SELECT id, name, created_at, last_used_at FROM profiles ORDER BY created_at ASC")
+        .map_err(|error| format!("Could not prepare account profiles: {error}"))?;
+    let profiles = profiles_statement
+        .query_map([], |row| {
+            Ok(serde_json::json!({
+                "id": row.get::<_, String>(0)?,
+                "name": row.get::<_, String>(1)?,
+                "createdAt": row.get::<_, String>(2)?,
+                "lastUsedAt": row.get::<_, String>(3)?
+            }))
+        })
+        .map_err(|error| format!("Could not read account profiles: {error}"))?
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|error| format!("Could not decode account profiles: {error}"))?;
+
+    let mut games_statement = connection
+        .prepare(
+            r#"
+            SELECT id, title, source, source_id, favorite, added_at, last_played, total_seconds, launch_count
+            FROM games
+            ORDER BY added_at ASC
+            "#,
+        )
+        .map_err(|error| format!("Could not prepare account games: {error}"))?;
+    let games = games_statement
+        .query_map([], |row| {
+            Ok(serde_json::json!({
+                "id": row.get::<_, String>(0)?,
+                "title": row.get::<_, String>(1)?,
+                "source": row.get::<_, String>(2)?,
+                "sourceId": row.get::<_, Option<String>>(3)?,
+                "favorite": row.get::<_, i64>(4)? != 0,
+                "addedAt": row.get::<_, String>(5)?,
+                "lastPlayed": row.get::<_, Option<String>>(6)?,
+                "totalSeconds": row.get::<_, i64>(7)?,
+                "launchCount": row.get::<_, i64>(8)?
+            }))
+        })
+        .map_err(|error| format!("Could not read account games: {error}"))?
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|error| format!("Could not decode account games: {error}"))?;
+
+    let mut profile_games_statement = connection
+        .prepare("SELECT profile_id, game_id, added_at FROM profile_games ORDER BY profile_id, added_at")
+        .map_err(|error| format!("Could not prepare account profile games: {error}"))?;
+    let profile_games = profile_games_statement
+        .query_map([], |row| {
+            Ok(serde_json::json!({
+                "profileId": row.get::<_, String>(0)?,
+                "gameId": row.get::<_, String>(1)?,
+                "addedAt": row.get::<_, String>(2)?
+            }))
+        })
+        .map_err(|error| format!("Could not read account profile games: {error}"))?
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|error| format!("Could not decode account profile games: {error}"))?;
+
+    let mut collections_statement = connection
+        .prepare("SELECT id, name, created_at FROM collections ORDER BY created_at ASC")
+        .map_err(|error| format!("Could not prepare account collections: {error}"))?;
+    let collections = collections_statement
+        .query_map([], |row| {
+            Ok(serde_json::json!({
+                "id": row.get::<_, String>(0)?,
+                "name": row.get::<_, String>(1)?,
+                "createdAt": row.get::<_, String>(2)?
+            }))
+        })
+        .map_err(|error| format!("Could not read account collections: {error}"))?
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|error| format!("Could not decode account collections: {error}"))?;
+
+    let mut memberships_statement = connection
+        .prepare("SELECT collection_id, game_id FROM collection_games ORDER BY collection_id, game_id")
+        .map_err(|error| format!("Could not prepare account collection memberships: {error}"))?;
+    let collection_games = memberships_statement
+        .query_map([], |row| {
+            Ok(serde_json::json!({
+                "collectionId": row.get::<_, String>(0)?,
+                "gameId": row.get::<_, String>(1)?
+            }))
+        })
+        .map_err(|error| format!("Could not read account collection memberships: {error}"))?
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|error| format!("Could not decode account collection memberships: {error}"))?;
+
+    Ok(serde_json::json!({
+        "schemaVersion": 1,
+        "generatedAt": now(),
+        "activeProfileId": active_profile,
+        "profiles": profiles,
+        "games": games,
+        "profileGames": profile_games,
+        "collections": collections,
+        "collectionGames": collection_games
+    }))
+}
+
+#[tauri::command]
+fn import_account_state(app: AppHandle, state: serde_json::Value) -> Result<(), String> {
+    let connection = open_database(&app)?;
+    let transaction = connection
+        .unchecked_transaction()
+        .map_err(|error| format!("Could not start account-state merge: {error}"))?;
+
+    if let Some(profiles) = state.get("profiles").and_then(|value| value.as_array()) {
+        for profile in profiles {
+            let Some(id) = profile.get("id").and_then(|value| value.as_str()) else { continue; };
+            let Some(name) = profile.get("name").and_then(|value| value.as_str()) else { continue; };
+            let created_at = profile.get("createdAt").and_then(|value| value.as_str()).unwrap_or_else(|| "");
+            let last_used_at = profile.get("lastUsedAt").and_then(|value| value.as_str()).unwrap_or(created_at);
+            if created_at.is_empty() { continue; }
+
+            transaction
+                .execute(
+                    r#"
+                    INSERT INTO profiles (id, name, created_at, last_used_at)
+                    VALUES (?1, ?2, ?3, ?4)
+                    ON CONFLICT(id) DO UPDATE SET
+                      name = excluded.name,
+                      last_used_at = excluded.last_used_at
+                    "#,
+                    params![id, name, created_at, last_used_at],
+                )
+                .map_err(|error| format!("Could not merge account profile: {error}"))?;
+        }
+    }
+
+    if let Some(games) = state.get("games").and_then(|value| value.as_array()) {
+        for game in games {
+            let Some(id) = game.get("id").and_then(|value| value.as_str()) else { continue; };
+            let Some(title) = game.get("title").and_then(|value| value.as_str()) else { continue; };
+            let source = game.get("source").and_then(|value| value.as_str()).unwrap_or("cloud");
+            let source_id = game.get("sourceId").and_then(|value| value.as_str());
+            let favorite = if game.get("favorite").and_then(|value| value.as_bool()).unwrap_or(false) { 1_i64 } else { 0_i64 };
+            let added_at = game.get("addedAt").and_then(|value| value.as_str()).unwrap_or_else(|| "");
+            if added_at.is_empty() { continue; }
+            let last_played = game.get("lastPlayed").and_then(|value| value.as_str());
+            let total_seconds = game.get("totalSeconds").and_then(|value| value.as_i64()).unwrap_or(0);
+            let launch_count = game.get("launchCount").and_then(|value| value.as_i64()).unwrap_or(0);
+
+            transaction
+                .execute(
+                    r#"
+                    INSERT INTO games (
+                      id, title, exe_path, install_path, source, source_id, favorite,
+                      hidden, cover_path, added_at, last_played, total_seconds, launch_count
+                    )
+                    VALUES (?1, ?2, NULL, '', ?3, ?4, ?5, 0, NULL, ?6, ?7, ?8, ?9)
+                    ON CONFLICT(id) DO UPDATE SET
+                      title = excluded.title,
+                      source = excluded.source,
+                      source_id = excluded.source_id,
+                      favorite = excluded.favorite,
+                      last_played = COALESCE(excluded.last_played, games.last_played),
+                      total_seconds = MAX(games.total_seconds, excluded.total_seconds),
+                      launch_count = MAX(games.launch_count, excluded.launch_count)
+                    "#,
+                    params![
+                        id,
+                        title,
+                        source,
+                        source_id,
+                        favorite,
+                        added_at,
+                        last_played,
+                        total_seconds,
+                        launch_count
+                    ],
+                )
+                .map_err(|error| format!("Could not merge account game: {error}"))?;
+        }
+    }
+
+    if let Some(profile_games) = state.get("profileGames").and_then(|value| value.as_array()) {
+        for link in profile_games {
+            let Some(profile_id) = link.get("profileId").and_then(|value| value.as_str()) else { continue; };
+            let Some(game_id) = link.get("gameId").and_then(|value| value.as_str()) else { continue; };
+            let added_at = link.get("addedAt").and_then(|value| value.as_str()).unwrap_or_else(|| "");
+            if added_at.is_empty() { continue; }
+            transaction
+                .execute(
+                    "INSERT OR IGNORE INTO profile_games (profile_id, game_id, added_at) VALUES (?1, ?2, ?3)",
+                    params![profile_id, game_id, added_at],
+                )
+                .map_err(|error| format!("Could not merge account library membership: {error}"))?;
+        }
+    }
+
+    if let Some(collections) = state.get("collections").and_then(|value| value.as_array()) {
+        for collection in collections {
+            let Some(id) = collection.get("id").and_then(|value| value.as_str()) else { continue; };
+            let Some(name) = collection.get("name").and_then(|value| value.as_str()) else { continue; };
+            let created_at = collection.get("createdAt").and_then(|value| value.as_str()).unwrap_or_else(|| "");
+            if created_at.is_empty() { continue; }
+            transaction
+                .execute(
+                    "INSERT OR IGNORE INTO collections (id, name, created_at) VALUES (?1, ?2, ?3)",
+                    params![id, name, created_at],
+                )
+                .map_err(|error| format!("Could not merge account collection: {error}"))?;
+        }
+    }
+
+    if let Some(collection_games) = state.get("collectionGames").and_then(|value| value.as_array()) {
+        for link in collection_games {
+            let Some(collection_id) = link.get("collectionId").and_then(|value| value.as_str()) else { continue; };
+            let Some(game_id) = link.get("gameId").and_then(|value| value.as_str()) else { continue; };
+            let _ = transaction.execute(
+                "INSERT OR IGNORE INTO collection_games (collection_id, game_id) VALUES (?1, ?2)",
+                params![collection_id, game_id],
+            );
+        }
+    }
+
+    if let Some(active_profile) = state.get("activeProfileId").and_then(|value| value.as_str()) {
+        let exists: bool = transaction
+            .query_row(
+                "SELECT EXISTS(SELECT 1 FROM profiles WHERE id = ?1)",
+                params![active_profile],
+                |row| row.get(0),
+            )
+            .unwrap_or(false);
+        if exists {
+            transaction
+                .execute(
+                    "INSERT OR REPLACE INTO app_settings (key, value) VALUES ('active_profile_id', ?1)",
+                    params![active_profile],
+                )
+                .map_err(|error| format!("Could not restore active profile: {error}"))?;
+        }
+    }
+
+    transaction
+        .commit()
+        .map_err(|error| format!("Could not commit account-state merge: {error}"))?;
+    Ok(())
+}
+
 fn upload_cloud_manifest_blocking(
     app: AppHandle,
     supabase_url: String,
@@ -3786,6 +4032,8 @@ pub fn run() {
             upload_save_backup_to_cloud,
             upload_all_save_backups_to_cloud,
             upload_cloud_manifest,
+            export_account_state,
+            import_account_state,
             data_directory,
         ])
         .run(tauri::generate_context!())
