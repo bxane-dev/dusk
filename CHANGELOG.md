@@ -2,6 +2,19 @@
 
 All notable Dusk changes are documented here.
 
+## 1.0.3 - 2026-10-05
+
+Automatic discovery and responsiveness hardening.
+
+- Dusk now automatically scans for games shortly after startup.
+- Automatic rescans run about every 10 minutes while Dusk remains open and when the app becomes active after a stale scan.
+- Added bounded discovery for common game folders across available Windows drives and common profile game folders.
+- Device-folder scans run on blocking workers and use strict time, folder-count, depth, and entry limits.
+- Added a Settings toggle for automatic device scanning plus last-scan status.
+- Added a Device source/filter for games found outside supported launcher manifests.
+- Manual and automatic scans share one hard lock so repeated clicks cannot stack scan jobs.
+- Preserved the v1.0.2 anti-freeze changes: coalesced refreshes, click deduplication, SQLite busy handling, lazy local media loading, and background filesystem work.
+
 ## 1.0.2 - 2026-10-05
 
 Stability and responsiveness hotfix.
