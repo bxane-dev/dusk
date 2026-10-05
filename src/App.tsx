@@ -889,44 +889,9 @@ export default function App() {
   }, [showToast]);
 
   useEffect(() => {
-    let cancelled = false;
-    let scanTimer: number | null = null;
-
-    void (async () => {
-      await refreshCore(true);
-      if (cancelled) return;
-
-      scanTimer = window.setTimeout(() => {
-        if (cancelled || screenshotScanLockRef.current) return;
-        screenshotScanLockRef.current = true;
-
-        void api
-          .scanScreenshots()
-          .then(async (result) => {
-            if (!cancelled && result.imported > 0) {
-              await Promise.all([refreshScreenshots(), refreshCore(false)]);
-              showToast(
-                "Dusk automatically found " +
-                  String(result.imported) +
-                  " new screenshot" +
-                  (result.imported === 1 ? "." : "s."),
-              );
-            }
-          })
-          .catch(() => undefined)
-          .finally(() => {
-            screenshotScanLockRef.current = false;
-          });
-      }, 1400);
-    })();
-
+    void refreshCore(true);
     void api.dataDirectory().then(setDataDirectory).catch(() => undefined);
-
-    return () => {
-      cancelled = true;
-      if (scanTimer !== null) window.clearTimeout(scanTimer);
-    };
-  }, [refreshCore, refreshScreenshots, showToast]);
+  }, [refreshCore]);
 
   useEffect(() => {
     if (view === "screenshots" && !screenshotsLoadedRef.current) {
