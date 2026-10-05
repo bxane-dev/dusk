@@ -2,6 +2,21 @@
 
 All notable Dusk changes are documented here.
 
+## 1.6.0 - 2026-10-05
+
+Dusk accounts and cross-device account state.
+
+- Added a custom Dusk login and registration screen.
+- Registration now uses email, username, and password; login uses username and password.
+- Added Supabase-backed Dusk accounts with unique usernames and persistent sessions.
+- Replaced anonymous per-install cloud identities with authenticated account-owned save storage.
+- Added cross-device sync for owner profiles, library membership, favorites, playtime, launch counts, collections, and active profile.
+- Added safe local merge behavior so device-specific executable paths and save-folder paths are never copied blindly from another PC.
+- Added account sign-out from Settings.
+- Added private per-account state storage with Row Level Security.
+- Added a username login Edge Function that resolves usernames server-side without exposing privileged keys to the desktop client.
+- Preserved private physical save-backup uploads under the authenticated user's Storage namespace.
+
 ## 1.5.0 - 2026-10-05
 
 Installer hub and bxane branding.
