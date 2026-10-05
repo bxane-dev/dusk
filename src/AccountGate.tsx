@@ -8,6 +8,7 @@ import {
   type DuskAccount,
 } from "./lib/auth";
 import { hydrateAccountState } from "./lib/accountSync";
+import { api } from "./lib/api";
 
 type Mode = "login" | "register";
 
@@ -26,8 +27,11 @@ export default function AccountGate(props: { children: ReactNode }) {
       try {
         const existing = await currentDuskAccount();
         if (existing) {
+          await api.setAccountScope(existing.user.id);
           await hydrateAccountState().catch(() => false);
           setAccount(existing);
+        } else {
+          await api.setAccountScope(null);
         }
       } catch (error) {
         setMessage(error instanceof Error ? error.message : String(error));
@@ -48,11 +52,13 @@ export default function AccountGate(props: { children: ReactNode }) {
         const result = await registerDuskAccount({ email, username, password });
         setMessage(result.message);
         if (result.account) {
+          await api.setAccountScope(result.account.user.id);
           await hydrateAccountState();
           setAccount(result.account);
         }
       } else {
         const signedIn = await loginDuskAccount(username, password);
+        await api.setAccountScope(signedIn.user.id);
         await hydrateAccountState();
         setAccount(signedIn);
       }
