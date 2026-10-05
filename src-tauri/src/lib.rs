@@ -1964,6 +1964,26 @@ fn validate_save_directory(path: &Path) -> Result<PathBuf, String> {
         return Err("A drive root cannot be used as a save folder.".into());
     }
 
+    let protected_roots = [
+        env::var("USERPROFILE").ok(),
+        env::var("WINDIR").ok(),
+        env::var("PROGRAMFILES").ok(),
+        env::var("PROGRAMFILES(X86)").ok(),
+        env::var("APPDATA").ok(),
+        env::var("LOCALAPPDATA").ok(),
+    ];
+
+    for protected in protected_roots.into_iter().flatten() {
+        if let Ok(protected) = PathBuf::from(protected).canonicalize() {
+            if canonical == protected {
+                return Err(
+                    "Choose the game's specific save folder, not a broad system or profile folder."
+                        .into(),
+                );
+            }
+        }
+    }
+
     Ok(canonical)
 }
 
