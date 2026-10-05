@@ -2,6 +2,20 @@
 
 All notable Dusk changes are documented here.
 
+## 1.0.4 - 2026-10-05
+
+Desktop window and scan UX hardening.
+
+- Replaced the native frame with a Dusk custom title bar.
+- The default window is larger and centered on screen.
+- The top title area can be dragged to move the window.
+- Added working minimize, maximize/restore, and close controls.
+- Double-clicking the draggable title area toggles maximize/restore.
+- Internal Windows helper commands used for scanning and process tracking now run with CREATE_NO_WINDOW, eliminating flashing console windows.
+- Downloads and Downloads/Games are now included in the default bounded device scan roots.
+- Loose installer executables in Downloads are not blindly imported; Dusk scans contained game folders conservatively.
+- Preserves v1.0.3 automatic background scanning and v1.0.2 rapid-click stability protections.
+
 ## 1.0.3 - 2026-10-05
 
 Automatic discovery and responsiveness hardening.
