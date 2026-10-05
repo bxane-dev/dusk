@@ -77,3 +77,19 @@ export interface AutoScreenshotScanResult {
   matchedImported: number;
   skippedDuplicates: number;
 }
+
+export interface SaveConfig {
+  gameId: string;
+  savePath: string;
+  configuredAt: string;
+}
+
+export interface SaveBackupRecord {
+  id: string;
+  gameId: string;
+  backupPath: string;
+  createdAt: string;
+  fileCount: number;
+  totalBytes: number;
+  kind: "manual" | "pre-restore" | string;
+}
