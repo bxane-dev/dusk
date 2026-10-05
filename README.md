@@ -8,6 +8,8 @@ It scans real local game installations, launches games, tracks sessions it can o
 
 - Steam library scanning from local app manifests and library folders
 - Epic Games scanning from local manifest files
+- GOG scanning from local Windows install records
+- Common emulator detection (Dolphin, PCSX2, RetroArch, Ryujinx, Cemu, PPSSPP, DuckStation)
 - Manual game entries for any local Windows executable
 - Native game launching
 - Steam launch through the Steam protocol
@@ -65,8 +67,10 @@ Current scanners:
 
 - Steam
 - Epic Games
+- GOG
+- Common emulator installations
 
-Anything else can be added manually by selecting its executable.
+Detected emulators are added as launchable library entries. ROM-specific launching will be handled separately; any other Windows game can still be added manually by selecting its executable.
 
 ## CI and releases
 
