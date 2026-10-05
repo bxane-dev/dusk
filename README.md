@@ -2,7 +2,7 @@
 
 Dusk is a local-first Windows game launcher built with Tauri, Rust, React, TypeScript, and SQLite.
 
-**Current stable version: 1.0.4**
+**Current stable version: 1.5.0**
 
 It scans real local game installations, launches games, tracks sessions it can observe, and keeps the library database on the user's PC. Dusk does not ship with fake games or seeded playtime.
 
@@ -16,6 +16,9 @@ It scans real local game installations, launches games, tracks sessions it can o
 - Bounded common game-folder discovery across available Windows drives and Downloads
 - Custom draggable Windows title bar with minimize, maximize/restore, and close controls
 - Hidden background Windows scan helpers with no flashing terminal windows
+- Safe local installer hub for user-selected EXE/MSI installers
+- Official store shortcuts for Steam, Epic Games, GOG, and itch.io
+- Clickable bxane creator pill linking to https://guns.lol/bxane
 - Manual game entries for any local Windows executable
 - Native game launching
 - Steam launch through the Steam protocol
