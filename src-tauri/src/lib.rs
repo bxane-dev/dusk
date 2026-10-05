@@ -2324,7 +2324,22 @@ fn data_directory(app: AppHandle) -> Result<String, String> {
 pub fn run() {
     tauri::Builder::default()
         .setup(|app| {
-            open_database(app.handle()).map_err(std::io::Error::other)?;
+            if let Err(error) = open_database(app.handle()) {
+                let diagnostic = format!(
+                    "Dusk startup database initialization warning at {}\n{}\n",
+                    now(),
+                    error
+                );
+                let log_path = app
+                    .path()
+                    .app_data_dir()
+                    .unwrap_or_else(|_| env::temp_dir().join("Dusk"))
+                    .join("startup-error.log");
+                if let Some(parent) = log_path.parent() {
+                    let _ = fs::create_dir_all(parent);
+                }
+                let _ = fs::write(log_path, diagnostic);
+            }
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
