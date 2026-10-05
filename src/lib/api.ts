@@ -1,6 +1,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import type {
   Achievement,
+  AutoScreenshotScanResult,
   CollectionMembership,
   CollectionRecord,
   GameRecord,
@@ -28,6 +29,8 @@ export const api = {
     invoke<void>("open_game_folder", { gameId }),
   importScreenshots: (gameId: string) =>
     invoke<number>("import_screenshots", { gameId }),
+  scanScreenshots: () =>
+    invoke<AutoScreenshotScanResult>("scan_screenshots"),
   listScreenshots: (gameId?: string) =>
     invoke<ScreenshotRecord[]>("list_screenshots", { gameId: gameId ?? null }),
   deleteScreenshot: (screenshotId: number) =>
