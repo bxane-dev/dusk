@@ -1,38 +1,14 @@
-import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import { api } from "./api";
+import { getSupabaseClient, SUPABASE_KEY, SUPABASE_URL, supabaseConfigured } from "./auth";
 import type { CloudSaveStatus, SaveBackupRecord } from "../types";
 
-const SUPABASE_URL = (import.meta.env.VITE_SUPABASE_URL as string | undefined)?.trim() || "";
-const SUPABASE_KEY =
-  (import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY as string | undefined)?.trim() || "";
-
-let client: SupabaseClient | null = null;
 let authPromise: Promise<{ client: SupabaseClient; userId: string; accessToken: string }> | null = null;
-
-function configured() {
-  return Boolean(SUPABASE_URL && SUPABASE_KEY);
-}
-
-function getClient() {
-  if (!configured()) return null;
-  if (!client) {
-    client = createClient(SUPABASE_URL, SUPABASE_KEY, {
-      auth: {
-        persistSession: true,
-        autoRefreshToken: true,
-        detectSessionInUrl: false,
-        storageKey: "dusk-supabase-auth",
-      },
-    });
-  }
-  return client;
-}
 
 async function ensureCloudIdentity() {
   if (authPromise) return authPromise;
 
   authPromise = (async () => {
-    const supabase = getClient();
+    const supabase = getSupabaseClient();
     if (!supabase) {
       throw new Error("Supabase cloud saves are not configured for this Dusk build.");
     }
@@ -40,12 +16,7 @@ async function ensureCloudIdentity() {
     const existing = await supabase.auth.getSession();
     if (existing.error) throw existing.error;
 
-    let session = existing.data.session;
-    if (!session) {
-      const created = await supabase.auth.signInAnonymously();
-      if (created.error) throw created.error;
-      session = created.data.session;
-    }
+    const session = existing.data.session;
 
     if (!session?.user?.id || !session.access_token) {
       throw new Error("Supabase did not return a usable cloud-save session.");
@@ -66,7 +37,7 @@ async function ensureCloudIdentity() {
 }
 
 export async function cloudSaveStatus(): Promise<CloudSaveStatus> {
-  if (!configured()) {
+  if (!supabaseConfigured()) {
     return {
       configured: false,
       authenticated: false,
@@ -81,7 +52,7 @@ export async function cloudSaveStatus(): Promise<CloudSaveStatus> {
       configured: true,
       authenticated: true,
       userId: identity.userId,
-      message: "Supabase cloud save storage is connected.",
+      message: "Dusk account cloud save storage is connected.",
     };
   } catch (error) {
     return {
