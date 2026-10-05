@@ -1,4 +1,5 @@
 import {
+  Archive,
   Check,
   Clock3,
   Database,
@@ -16,7 +17,9 @@ import {
   Play,
   Plus,
   RefreshCw,
+  RotateCcw,
   ScanSearch,
+  Save,
   Search,
   Settings,
   Sparkles,
@@ -42,6 +45,8 @@ import type {
   CollectionRecord,
   GameRecord,
   ScreenshotRecord,
+  SaveBackupRecord,
+  SaveConfig,
   Stats,
 } from "./types";
 
@@ -89,6 +94,18 @@ function formatDuration(totalSeconds: number) {
   if (hours >= 100) return String(hours) + "h";
   if (hours > 0) return String(hours) + "h " + String(minutes) + "m";
   return String(Math.max(1, minutes)) + "m";
+}
+
+function formatBytes(bytes: number) {
+  if (bytes <= 0) return "0 B";
+  const units = ["B", "KB", "MB", "GB"];
+  let value = bytes;
+  let unit = 0;
+  while (value >= 1024 && unit < units.length - 1) {
+    value /= 1024;
+    unit += 1;
+  }
+  return (unit === 0 ? String(Math.round(value)) : value.toFixed(value >= 10 ? 1 : 2)) + " " + units[unit];
 }
 
 function formatDate(value: string | null) {
@@ -325,6 +342,9 @@ function GameDetail(props: {
   onToast: (message: string, type?: "ok" | "error") => void;
 }) {
   const [busy, setBusy] = useState(false);
+  const [saveConfig, setSaveConfig] = useState<SaveConfig | null>(null);
+  const [saveBackups, setSaveBackups] = useState<SaveBackupRecord[]>([]);
+  const [saveLoading, setSaveLoading] = useState(true);
 
   const membershipSet = useMemo(() => {
     return new Set(
@@ -333,6 +353,121 @@ function GameDetail(props: {
         .map((item) => item.collectionId),
     );
   }, [props.memberships, props.game.id]);
+
+  async function refreshSaveData() {
+    setSaveLoading(true);
+    try {
+      const values = await Promise.all([
+        api.getSaveConfig(props.game.id),
+        api.listSaveBackups(props.game.id),
+      ]);
+      setSaveConfig(values[0]);
+      setSaveBackups(values[1]);
+    } catch (error) {
+      props.onToast(readableError(error), "error");
+    } finally {
+      setSaveLoading(false);
+    }
+  }
+
+  useEffect(() => {
+    void refreshSaveData();
+  }, [props.game.id]);
+
+  async function configureSaveFolder() {
+    setBusy(true);
+    try {
+      const config = await api.chooseSaveFolder(props.game.id);
+      if (config) {
+        setSaveConfig(config);
+        props.onToast("Save folder configured.");
+        await refreshSaveData();
+      }
+    } catch (error) {
+      props.onToast(readableError(error), "error");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function backupSaves() {
+    setBusy(true);
+    try {
+      const backup = await api.createSaveBackup(props.game.id);
+      props.onToast(
+        "Save backup created: " +
+          String(backup.fileCount) +
+          " files · " +
+          formatBytes(backup.totalBytes) +
+          ".",
+      );
+      await refreshSaveData();
+    } catch (error) {
+      props.onToast(readableError(error), "error");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function restoreBackup(backup: SaveBackupRecord) {
+    const okay = window.confirm(
+      "Restore this save backup from " +
+        formatDate(backup.createdAt) +
+        "? Dusk will create a safety backup of your current saves first.",
+    );
+    if (!okay) return;
+
+    setBusy(true);
+    try {
+      const safety = await api.restoreSaveBackup(props.game.id, backup.id);
+      props.onToast(
+        "Save restored. Safety backup created with " +
+          String(safety.fileCount) +
+          " files.",
+      );
+      await refreshSaveData();
+    } catch (error) {
+      props.onToast(readableError(error), "error");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function deleteBackup(backup: SaveBackupRecord) {
+    const okay = window.confirm(
+      "Delete this Dusk backup? Your current live save files will not be changed.",
+    );
+    if (!okay) return;
+
+    setBusy(true);
+    try {
+      await api.deleteSaveBackup(props.game.id, backup.id);
+      props.onToast("Save backup deleted.");
+      await refreshSaveData();
+    } catch (error) {
+      props.onToast(readableError(error), "error");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function clearSaveFolder() {
+    const okay = window.confirm(
+      "Stop managing this save folder? Existing Dusk backups will be kept.",
+    );
+    if (!okay) return;
+
+    setBusy(true);
+    try {
+      await api.clearSaveConfig(props.game.id);
+      props.onToast("Save folder disconnected.");
+      await refreshSaveData();
+    } catch (error) {
+      props.onToast(readableError(error), "error");
+    } finally {
+      setBusy(false);
+    }
+  }
 
   async function run(action: () => Promise<unknown>, success?: string) {
     setBusy(true);
@@ -467,6 +602,107 @@ function GameDetail(props: {
                     </button>
                   );
                 })}
+              </div>
+            )}
+          </section>
+
+          <section className="detail-section">
+            <div className="detail-section-heading">
+              <h3>Save backups</h3>
+              {saveConfig && (
+                <button className="text-action" disabled={busy} onClick={() => void backupSaves()}>
+                  <Save size={14} />
+                  Back up now
+                </button>
+              )}
+            </div>
+
+            {saveLoading ? (
+              <p className="muted">Loading save backup settings…</p>
+            ) : !saveConfig ? (
+              <div className="save-empty">
+                <Archive size={18} />
+                <div>
+                  <strong>No save folder configured</strong>
+                  <p>
+                    Select the exact folder this game uses for saves. Dusk will not guess or
+                    modify save locations automatically.
+                  </p>
+                </div>
+                <button
+                  className="button secondary"
+                  disabled={busy}
+                  onClick={() => void configureSaveFolder()}
+                >
+                  Choose folder
+                </button>
+              </div>
+            ) : (
+              <div className="save-manager">
+                <div className="save-config-row">
+                  <div>
+                    <span>Managed save folder</span>
+                    <code title={saveConfig.savePath}>{saveConfig.savePath}</code>
+                  </div>
+                  <div className="save-config-actions">
+                    <button
+                      className="text-action"
+                      disabled={busy}
+                      onClick={() => void configureSaveFolder()}
+                    >
+                      <FolderOpen size={14} />
+                      Change
+                    </button>
+                    <button
+                      className="text-action danger"
+                      disabled={busy}
+                      onClick={() => void clearSaveFolder()}
+                    >
+                      <X size={14} />
+                      Disconnect
+                    </button>
+                  </div>
+                </div>
+
+                {saveBackups.length === 0 ? (
+                  <p className="muted">
+                    No restore points yet. Create one before changing mods, settings, or game files.
+                  </p>
+                ) : (
+                  <div className="backup-list">
+                    {saveBackups.map((backup) => (
+                      <div className="backup-row" key={backup.id}>
+                        <div className="backup-copy">
+                          <strong>
+                            {backup.kind === "pre-restore" ? "Safety backup" : "Manual backup"}
+                          </strong>
+                          <span>
+                            {formatDate(backup.createdAt)} · {backup.fileCount} files ·{" "}
+                            {formatBytes(backup.totalBytes)}
+                          </span>
+                        </div>
+                        <div className="backup-actions">
+                          <button
+                            className="icon-button"
+                            disabled={busy}
+                            title="Restore this backup"
+                            onClick={() => void restoreBackup(backup)}
+                          >
+                            <RotateCcw size={15} />
+                          </button>
+                          <button
+                            className="icon-button"
+                            disabled={busy}
+                            title="Delete this backup"
+                            onClick={() => void deleteBackup(backup)}
+                          >
+                            <Trash2 size={15} />
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
             )}
           </section>
