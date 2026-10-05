@@ -143,6 +143,7 @@ struct CollectionMembership {
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 struct SaveConfig {
+    profile_id: String,
     game_id: String,
     save_path: String,
     configured_at: String,
@@ -152,12 +153,24 @@ struct SaveConfig {
 #[serde(rename_all = "camelCase")]
 struct SaveBackupRecord {
     id: String,
+    profile_id: String,
     game_id: String,
     backup_path: String,
     created_at: String,
     file_count: i64,
     total_bytes: i64,
     kind: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct ProfileRecord {
+    id: String,
+    name: String,
+    created_at: String,
+    last_used_at: String,
+    game_count: i64,
+    backup_count: i64,
 }
 
 fn app_data_dir(app: &AppHandle) -> Result<PathBuf, String> {
@@ -248,6 +261,56 @@ fn initialize_schema(connection: &Connection) -> Result<(), String> {
                 FOREIGN KEY(game_id) REFERENCES games(id) ON DELETE CASCADE
             );
 
+            CREATE TABLE IF NOT EXISTS profiles (
+                id TEXT PRIMARY KEY,
+                name TEXT NOT NULL COLLATE NOCASE,
+                created_at TEXT NOT NULL,
+                last_used_at TEXT NOT NULL
+            );
+
+            CREATE TABLE IF NOT EXISTS app_settings (
+                key TEXT PRIMARY KEY,
+                value TEXT NOT NULL
+            );
+
+            CREATE TABLE IF NOT EXISTS profile_games (
+                profile_id TEXT NOT NULL,
+                game_id TEXT NOT NULL,
+                added_at TEXT NOT NULL,
+                PRIMARY KEY(profile_id, game_id),
+                FOREIGN KEY(profile_id) REFERENCES profiles(id) ON DELETE CASCADE,
+                FOREIGN KEY(game_id) REFERENCES games(id) ON DELETE CASCADE
+            );
+
+            CREATE TABLE IF NOT EXISTS profile_save_configs (
+                profile_id TEXT NOT NULL,
+                game_id TEXT NOT NULL,
+                save_path TEXT NOT NULL,
+                configured_at TEXT NOT NULL,
+                PRIMARY KEY(profile_id, game_id),
+                FOREIGN KEY(profile_id) REFERENCES profiles(id) ON DELETE CASCADE,
+                FOREIGN KEY(game_id) REFERENCES games(id) ON DELETE CASCADE
+            );
+
+            CREATE TABLE IF NOT EXISTS profile_save_backups (
+                id TEXT PRIMARY KEY,
+                profile_id TEXT NOT NULL,
+                game_id TEXT NOT NULL,
+                backup_path TEXT NOT NULL UNIQUE,
+                created_at TEXT NOT NULL,
+                file_count INTEGER NOT NULL,
+                total_bytes INTEGER NOT NULL,
+                kind TEXT NOT NULL DEFAULT 'manual',
+                FOREIGN KEY(profile_id) REFERENCES profiles(id) ON DELETE CASCADE,
+                FOREIGN KEY(game_id) REFERENCES games(id) ON DELETE CASCADE
+            );
+
+            CREATE INDEX IF NOT EXISTS idx_profile_games_profile
+            ON profile_games(profile_id, game_id);
+
+            CREATE INDEX IF NOT EXISTS idx_profile_save_backups_profile_game
+            ON profile_save_backups(profile_id, game_id, created_at DESC);
+
             CREATE TABLE IF NOT EXISTS save_configs (
                 game_id TEXT PRIMARY KEY,
                 save_path TEXT NOT NULL,
@@ -276,6 +339,29 @@ fn initialize_schema(connection: &Connection) -> Result<(), String> {
         )
         .map_err(|error| format!("Could not initialize Dusk database: {error}"))?;
 
+    connection
+        .execute_batch(
+            r#"
+            INSERT OR IGNORE INTO profiles (id, name, created_at, last_used_at)
+            VALUES ('default', 'Player 1', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP);
+
+            INSERT OR IGNORE INTO app_settings (key, value)
+            VALUES ('active_profile_id', 'default');
+
+            INSERT OR IGNORE INTO profile_games (profile_id, game_id, added_at)
+            SELECT 'default', id, added_at FROM games;
+
+            INSERT OR IGNORE INTO profile_save_configs (profile_id, game_id, save_path, configured_at)
+            SELECT 'default', game_id, save_path, configured_at FROM save_configs;
+
+            INSERT OR IGNORE INTO profile_save_backups
+                (id, profile_id, game_id, backup_path, created_at, file_count, total_bytes, kind)
+            SELECT id, 'default', game_id, backup_path, created_at, file_count, total_bytes, kind
+            FROM save_backups;
+            "#,
+        )
+        .map_err(|error| format!("Could not migrate Dusk profiles: {error}"))?;
+
     // Existing Dusk databases predate automatic screenshot source tracking.
     let _ = connection.execute("ALTER TABLE screenshots ADD COLUMN source_path TEXT", []);
     connection
@@ -296,6 +382,38 @@ fn initialize_schema(connection: &Connection) -> Result<(), String> {
 
 fn now() -> String {
     Utc::now().to_rfc3339()
+}
+
+fn active_profile_id(connection: &Connection) -> Result<String, String> {
+    connection
+        .query_row(
+            "SELECT value FROM app_settings WHERE key = 'active_profile_id'",
+            [],
+            |row| row.get(0),
+        )
+        .map_err(|error| format!("Could not load active profile: {error}"))
+}
+
+fn attach_game_to_active_profile(connection: &Connection, game_id: &str) -> Result<(), String> {
+    let profile_id = active_profile_id(connection)?;
+    connection
+        .execute(
+            "INSERT OR IGNORE INTO profile_games (profile_id, game_id, added_at) VALUES (?1, ?2, ?3)",
+            params![profile_id, game_id, now()],
+        )
+        .map_err(|error| format!("Could not attach game to profile: {error}"))?;
+    Ok(())
+}
+
+fn row_to_profile(row: &rusqlite::Row<'_>) -> rusqlite::Result<ProfileRecord> {
+    Ok(ProfileRecord {
+        id: row.get(0)?,
+        name: row.get(1)?,
+        created_at: row.get(2)?,
+        last_used_at: row.get(3)?,
+        game_count: row.get(4)?,
+        backup_count: row.get(5)?,
+    })
 }
 
 fn row_to_game(row: &rusqlite::Row<'_>) -> rusqlite::Result<GameRecord> {
@@ -370,6 +488,7 @@ fn upsert_discovered(connection: &Connection, game: &DiscoveredGame) -> Result<b
         )
         .map_err(|error| format!("Could not save discovered game: {error}"))?;
 
+    attach_game_to_active_profile(connection, &game.id)?;
     Ok(existed)
 }
 
@@ -1134,78 +1253,29 @@ fn scan_common_device_game_folders() -> (Vec<DiscoveredGame>, Vec<String>) {
 #[tauri::command]
 fn list_games(app: AppHandle) -> Result<Vec<GameRecord>, String> {
     let connection = open_database(&app)?;
+    let profile_id = active_profile_id(&connection)?;
     let mut statement = connection
         .prepare(
             r#"
-            SELECT id, title, exe_path, install_path, source, source_id, favorite,
-                   cover_path, added_at, last_played, total_seconds, launch_count
-            FROM games
-            WHERE hidden = 0
-            ORDER BY title COLLATE NOCASE ASC
+            SELECT g.id, g.title, g.exe_path, g.install_path, g.source, g.source_id, g.favorite,
+                   g.cover_path, g.added_at, g.last_played, g.total_seconds, g.launch_count
+            FROM games g
+            INNER JOIN profile_games pg ON pg.game_id = g.id
+            WHERE pg.profile_id = ?1 AND g.hidden = 0
+            ORDER BY LOWER(g.title)
             "#,
         )
         .map_err(|error| format!("Could not prepare game list: {error}"))?;
 
     let rows = statement
-        .query_map([], row_to_game)
-        .map_err(|error| format!("Could not read game list: {error}"))?;
+        .query_map(params![profile_id], row_to_game)
+        .map_err(|error| format!("Could not load games: {error}"))?;
 
     let mut games = Vec::new();
     for row in rows {
         games.push(row.map_err(|error| format!("Could not decode game: {error}"))?);
     }
     Ok(games)
-}
-
-fn scan_games_blocking(app: AppHandle) -> Result<ScanResult, String> {
-    let (steam_games, mut warnings) = scan_steam();
-    let (epic_games, epic_warnings) = scan_epic();
-    let (gog_games, gog_warnings) = scan_gog();
-    let (emulator_games, emulator_warnings) = scan_emulators();
-    let (device_games, device_warnings) = scan_common_device_game_folders();
-
-    warnings.extend(epic_warnings);
-    warnings.extend(gog_warnings);
-    warnings.extend(emulator_warnings);
-    warnings.extend(device_warnings);
-
-    let steam_found = steam_games.len();
-    let epic_found = epic_games.len();
-    let gog_found = gog_games.len();
-    let emulator_found = emulator_games.len();
-    let device_found = device_games.len();
-
-    let all_games: Vec<DiscoveredGame> = steam_games
-        .into_iter()
-        .chain(epic_games)
-        .chain(gog_games)
-        .chain(emulator_games)
-        .chain(device_games)
-        .collect();
-
-    let connection = open_database(&app)?;
-    let mut added = 0;
-    let mut updated = 0;
-
-    for game in &all_games {
-        if upsert_discovered(&connection, game)? {
-            updated += 1;
-        } else {
-            added += 1;
-        }
-    }
-
-    Ok(ScanResult {
-        found: all_games.len(),
-        added,
-        updated,
-        steam_found,
-        epic_found,
-        gog_found,
-        emulator_found,
-        device_found,
-        warnings,
-    })
 }
 
 #[tauri::command]
@@ -1215,6 +1285,164 @@ async fn scan_games(app: AppHandle) -> Result<ScanResult, String> {
         .map_err(|error| format!("Game scan worker failed: {error}"))?
 }
 
+
+#[tauri::command]
+fn list_profiles(app: AppHandle) -> Result<Vec<ProfileRecord>, String> {
+    let connection = open_database(&app)?;
+    let mut statement = connection
+        .prepare(
+            r#"
+            SELECT p.id, p.name, p.created_at, p.last_used_at,
+                   COUNT(DISTINCT pg.game_id) AS game_count,
+                   COUNT(DISTINCT psb.id) AS backup_count
+            FROM profiles p
+            LEFT JOIN profile_games pg ON pg.profile_id = p.id
+            LEFT JOIN profile_save_backups psb ON psb.profile_id = p.id
+            GROUP BY p.id, p.name, p.created_at, p.last_used_at
+            ORDER BY p.last_used_at DESC, LOWER(p.name)
+            "#,
+        )
+        .map_err(|error| format!("Could not prepare profile list: {error}"))?;
+    let rows = statement
+        .query_map([], row_to_profile)
+        .map_err(|error| format!("Could not load profiles: {error}"))?;
+    let mut profiles = Vec::new();
+    for row in rows {
+        profiles.push(row.map_err(|error| format!("Could not decode profile: {error}"))?);
+    }
+    Ok(profiles)
+}
+
+#[tauri::command]
+fn get_active_profile(app: AppHandle) -> Result<ProfileRecord, String> {
+    let connection = open_database(&app)?;
+    let profile_id = active_profile_id(&connection)?;
+    connection
+        .query_row(
+            r#"
+            SELECT p.id, p.name, p.created_at, p.last_used_at,
+                   COUNT(DISTINCT pg.game_id),
+                   COUNT(DISTINCT psb.id)
+            FROM profiles p
+            LEFT JOIN profile_games pg ON pg.profile_id = p.id
+            LEFT JOIN profile_save_backups psb ON psb.profile_id = p.id
+            WHERE p.id = ?1
+            GROUP BY p.id, p.name, p.created_at, p.last_used_at
+            "#,
+            params![profile_id],
+            row_to_profile,
+        )
+        .map_err(|error| format!("Could not load active profile: {error}"))
+}
+
+#[tauri::command]
+fn create_profile(app: AppHandle, name: String) -> Result<ProfileRecord, String> {
+    let name = name.trim();
+    if name.is_empty() {
+        return Err("Profile name cannot be empty.".into());
+    }
+
+    let connection = open_database(&app)?;
+    let duplicate: bool = connection
+        .query_row(
+            "SELECT EXISTS(SELECT 1 FROM profiles WHERE LOWER(name) = LOWER(?1))",
+            params![name],
+            |row| row.get(0),
+        )
+        .map_err(|error| format!("Could not check profile name: {error}"))?;
+    if duplicate {
+        return Err("A profile with that name already exists.".into());
+    }
+
+    let id = Uuid::new_v4().to_string();
+    let timestamp = now();
+    connection
+        .execute(
+            "INSERT INTO profiles (id, name, created_at, last_used_at) VALUES (?1, ?2, ?3, ?4)",
+            params![id, name, timestamp, timestamp],
+        )
+        .map_err(|error| format!("Could not create profile: {error}"))?;
+
+    connection
+        .execute(
+            "INSERT OR REPLACE INTO app_settings (key, value) VALUES ('active_profile_id', ?1)",
+            params![id],
+        )
+        .map_err(|error| format!("Could not activate profile: {error}"))?;
+
+    get_active_profile(app)
+}
+
+#[tauri::command]
+fn set_active_profile(app: AppHandle, profile_id: String) -> Result<ProfileRecord, String> {
+    let connection = open_database(&app)?;
+    let exists: bool = connection
+        .query_row(
+            "SELECT EXISTS(SELECT 1 FROM profiles WHERE id = ?1)",
+            params![profile_id],
+            |row| row.get(0),
+        )
+        .map_err(|error| format!("Could not check profile: {error}"))?;
+    if !exists {
+        return Err("Profile not found.".into());
+    }
+
+    connection
+        .execute(
+            "INSERT OR REPLACE INTO app_settings (key, value) VALUES ('active_profile_id', ?1)",
+            params![profile_id],
+        )
+        .map_err(|error| format!("Could not switch profile: {error}"))?;
+    connection
+        .execute(
+            "UPDATE profiles SET last_used_at = ?1 WHERE id = ?2",
+            params![now(), profile_id],
+        )
+        .map_err(|error| format!("Could not update profile: {error}"))?;
+    drop(connection);
+    get_active_profile(app)
+}
+
+#[tauri::command]
+fn delete_profile(app: AppHandle, profile_id: String) -> Result<ProfileRecord, String> {
+    let connection = open_database(&app)?;
+    let count: i64 = connection
+        .query_row("SELECT COUNT(*) FROM profiles", [], |row| row.get(0))
+        .map_err(|error| format!("Could not count profiles: {error}"))?;
+    if count <= 1 {
+        return Err("Dusk must keep at least one profile.".into());
+    }
+
+    let active = active_profile_id(&connection)?;
+    let fallback: String = connection
+        .query_row(
+            "SELECT id FROM profiles WHERE id != ?1 ORDER BY last_used_at DESC LIMIT 1",
+            params![profile_id],
+            |row| row.get(0),
+        )
+        .map_err(|error| format!("Could not choose fallback profile: {error}"))?;
+
+    if active == profile_id {
+        connection
+            .execute(
+                "INSERT OR REPLACE INTO app_settings (key, value) VALUES ('active_profile_id', ?1)",
+                params![fallback],
+            )
+            .map_err(|error| format!("Could not switch fallback profile: {error}"))?;
+    }
+
+    connection
+        .execute("DELETE FROM profiles WHERE id = ?1", params![profile_id])
+        .map_err(|error| format!("Could not delete profile: {error}"))?;
+    drop(connection);
+
+    let backup_dir = app_data_dir(&app)?.join("save-backups").join(&profile_id);
+    if backup_dir.is_dir() {
+        let _ = fs::remove_dir_all(backup_dir);
+    }
+
+    get_active_profile(app)
+}
 
 #[tauri::command]
 fn choose_game_installer() -> Option<String> {
@@ -1364,9 +1592,13 @@ fn rename_game(app: AppHandle, game_id: String, title: String) -> Result<(), Str
 #[tauri::command]
 fn remove_game(app: AppHandle, game_id: String) -> Result<(), String> {
     let connection = open_database(&app)?;
+    let profile_id = active_profile_id(&connection)?;
     connection
-        .execute("UPDATE games SET hidden = 1 WHERE id = ?1", params![game_id])
-        .map_err(|error| format!("Could not remove game from library: {error}"))?;
+        .execute(
+            "DELETE FROM profile_games WHERE profile_id = ?1 AND game_id = ?2",
+            params![profile_id, game_id],
+        )
+        .map_err(|error| format!("Could not remove game from this profile: {error}"))?;
     Ok(())
 }
 
@@ -2381,15 +2613,17 @@ fn clear_directory_contents(path: &Path) -> Result<(), String> {
 }
 
 fn save_config_for_game(connection: &Connection, game_id: &str) -> Result<SaveConfig, String> {
+    let profile_id = active_profile_id(connection)?;
     connection
         .query_row(
-            "SELECT game_id, save_path, configured_at FROM save_configs WHERE game_id = ?1",
-            params![game_id],
+            "SELECT profile_id, game_id, save_path, configured_at FROM profile_save_configs WHERE profile_id = ?1 AND game_id = ?2",
+            params![profile_id, game_id],
             |row| {
                 Ok(SaveConfig {
-                    game_id: row.get(0)?,
-                    save_path: row.get(1)?,
-                    configured_at: row.get(2)?,
+                    profile_id: row.get(0)?,
+                    game_id: row.get(1)?,
+                    save_path: row.get(2)?,
+                    configured_at: row.get(3)?,
                 })
             },
         )
@@ -2410,6 +2644,7 @@ fn create_save_backup_internal(
     let id = Uuid::new_v4().to_string();
     let backup_root = app_data_dir(app)?
         .join("save-backups")
+        .join(&config.profile_id)
         .join(game_id.replace(':', "_"))
         .join(&id);
 
@@ -2419,12 +2654,13 @@ fn create_save_backup_internal(
     connection
         .execute(
             r#"
-            INSERT INTO save_backups
-                (id, game_id, backup_path, created_at, file_count, total_bytes, kind)
-            VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)
+            INSERT INTO profile_save_backups
+                (id, profile_id, game_id, backup_path, created_at, file_count, total_bytes, kind)
+            VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)
             "#,
             params![
                 id,
+                config.profile_id,
                 game_id,
                 backup_root.to_string_lossy().into_owned(),
                 created_at,
@@ -2437,6 +2673,7 @@ fn create_save_backup_internal(
 
     Ok(SaveBackupRecord {
         id,
+        profile_id: config.profile_id,
         game_id: game_id.to_string(),
         backup_path: backup_root.to_string_lossy().into_owned(),
         created_at,
@@ -2459,16 +2696,18 @@ fn choose_save_folder(app: AppHandle, game_id: String) -> Result<Option<SaveConf
     let save_path = validate_save_directory(&selected)?;
     let configured_at = now();
 
+    let profile_id = active_profile_id(&connection)?;
     connection
         .execute(
             r#"
-            INSERT INTO save_configs (game_id, save_path, configured_at)
-            VALUES (?1, ?2, ?3)
-            ON CONFLICT(game_id) DO UPDATE SET
+            INSERT INTO profile_save_configs (profile_id, game_id, save_path, configured_at)
+            VALUES (?1, ?2, ?3, ?4)
+            ON CONFLICT(profile_id, game_id) DO UPDATE SET
                 save_path = excluded.save_path,
                 configured_at = excluded.configured_at
             "#,
             params![
+                profile_id,
                 game_id,
                 save_path.to_string_lossy().into_owned(),
                 configured_at
@@ -2477,6 +2716,7 @@ fn choose_save_folder(app: AppHandle, game_id: String) -> Result<Option<SaveConf
         .map_err(|error| format!("Could not save backup configuration: {error}"))?;
 
     Ok(Some(SaveConfig {
+        profile_id,
         game_id,
         save_path: save_path.to_string_lossy().into_owned(),
         configured_at,
@@ -2486,15 +2726,17 @@ fn choose_save_folder(app: AppHandle, game_id: String) -> Result<Option<SaveConf
 #[tauri::command]
 fn get_save_config(app: AppHandle, game_id: String) -> Result<Option<SaveConfig>, String> {
     let connection = open_database(&app)?;
+    let profile_id = active_profile_id(&connection)?;
     connection
         .query_row(
-            "SELECT game_id, save_path, configured_at FROM save_configs WHERE game_id = ?1",
-            params![game_id],
+            "SELECT profile_id, game_id, save_path, configured_at FROM profile_save_configs WHERE profile_id = ?1 AND game_id = ?2",
+            params![profile_id, game_id],
             |row| {
                 Ok(SaveConfig {
-                    game_id: row.get(0)?,
-                    save_path: row.get(1)?,
-                    configured_at: row.get(2)?,
+                    profile_id: row.get(0)?,
+                    game_id: row.get(1)?,
+                    save_path: row.get(2)?,
+                    configured_at: row.get(3)?,
                 })
             },
         )
@@ -2505,8 +2747,12 @@ fn get_save_config(app: AppHandle, game_id: String) -> Result<Option<SaveConfig>
 #[tauri::command]
 fn clear_save_config(app: AppHandle, game_id: String) -> Result<(), String> {
     let connection = open_database(&app)?;
+    let profile_id = active_profile_id(&connection)?;
     connection
-        .execute("DELETE FROM save_configs WHERE game_id = ?1", params![game_id])
+        .execute(
+            "DELETE FROM profile_save_configs WHERE profile_id = ?1 AND game_id = ?2",
+            params![profile_id, game_id],
+        )
         .map_err(|error| format!("Could not clear save configuration: {error}"))?;
     Ok(())
 }
@@ -2567,10 +2813,11 @@ fn restore_save_backup_blocking(
     let config = save_config_for_game(&connection, &game_id)?;
     let destination = validate_save_directory(Path::new(&config.save_path))?;
 
+    let profile_id = active_profile_id(&connection)?;
     let backup_path: String = connection
         .query_row(
-            "SELECT backup_path FROM save_backups WHERE id = ?1 AND game_id = ?2",
-            params![backup_id, game_id],
+            "SELECT backup_path FROM profile_save_backups WHERE id = ?1 AND profile_id = ?2 AND game_id = ?3",
+            params![backup_id, profile_id, game_id],
             |row| row.get(0),
         )
         .optional()
@@ -2612,10 +2859,11 @@ async fn restore_save_backup(
 #[tauri::command]
 fn delete_save_backup(app: AppHandle, game_id: String, backup_id: String) -> Result<(), String> {
     let connection = open_database(&app)?;
+    let profile_id = active_profile_id(&connection)?;
     let backup_path: Option<String> = connection
         .query_row(
-            "SELECT backup_path FROM save_backups WHERE id = ?1 AND game_id = ?2",
-            params![backup_id, game_id],
+            "SELECT backup_path FROM profile_save_backups WHERE id = ?1 AND profile_id = ?2 AND game_id = ?3",
+            params![backup_id, profile_id, game_id],
             |row| row.get(0),
         )
         .optional()
@@ -2631,8 +2879,8 @@ fn delete_save_backup(app: AppHandle, game_id: String, backup_id: String) -> Res
 
     connection
         .execute(
-            "DELETE FROM save_backups WHERE id = ?1 AND game_id = ?2",
-            params![backup_id, game_id],
+            "DELETE FROM profile_save_backups WHERE id = ?1 AND profile_id = ?2 AND game_id = ?3",
+            params![backup_id, profile_id, game_id],
         )
         .map_err(|error| format!("Could not delete backup record: {error}"))?;
 
@@ -2668,6 +2916,11 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             list_games,
             scan_games,
+            list_profiles,
+            get_active_profile,
+            create_profile,
+            set_active_profile,
+            delete_profile,
             choose_game_installer,
             run_game_installer,
             open_external_target,
