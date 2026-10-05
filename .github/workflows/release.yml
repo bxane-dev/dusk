@@ -118,10 +118,27 @@ jobs:
           tagName: dusk-v__VERSION__
           releaseName: Dusk v__VERSION__
           releaseBody: |
-            Dusk v__VERSION__ — Windows release by bxane.
+            # Dusk v1.5.0
 
-            Includes owner profiles, profile-specific game libraries and save backups, optional private Supabase save-file sync, automatic game discovery, installer hub, controller navigation, and fullscreen console mode.
+            Installer hub, bxane branding, owner profiles, and physical save-file vaults.
 
-            The installer is built from this public repository on GitHub Actions.
+            ## What's new
+
+            - Added a safe local game-installer flow for user-selected .exe and .msi files.
+            - Added one-click browser links for Steam, Epic Games, GOG, and itch.io.
+            - Added a persistent clickable bxane creator pill linking to https://guns.lol/bxane.
+            - Added local owner profiles with profile-specific game libraries.
+            - Added physical owner save-file vaults: each profile stores actual save files separately for every configured game.
+            - Added Save to profile / Load profile files controls with pre-load safety backups.
+            - Added profile-specific save backup metadata and vault storage.
+            - Added optional private Supabase save-file sync for owner profiles.
+            - Kept automatic game discovery, Downloads scanning, hidden scan helper processes, custom window controls, controller navigation, and rapid-click stability protections.
+            - Publisher / authorship branding: bxane.
+
+            ## Notes
+
+            Dusk does not automatically download or install games from unofficial redistribution sites. Local installers stay under your control, and official store links open in your default browser.
+
+            The Windows installer is built from this public repository on GitHub Actions.
           releaseDraft: false
           prerelease: false
