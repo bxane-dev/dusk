@@ -1215,6 +1215,84 @@ async fn scan_games(app: AppHandle) -> Result<ScanResult, String> {
         .map_err(|error| format!("Game scan worker failed: {error}"))?
 }
 
+
+#[tauri::command]
+fn choose_game_installer() -> Option<String> {
+    rfd::FileDialog::new()
+        .add_filter("Game installer", &["exe", "msi"])
+        .pick_file()
+        .map(|path| path.to_string_lossy().into_owned())
+}
+
+#[cfg(target_os = "windows")]
+#[tauri::command]
+fn run_game_installer(installer_path: String) -> Result<(), String> {
+    let path = PathBuf::from(installer_path.trim());
+    if !path.is_file() {
+        return Err("The selected installer does not exist.".into());
+    }
+
+    let canonical = path
+        .canonicalize()
+        .map_err(|error| format!("Could not resolve installer path: {error}"))?;
+    let extension = canonical
+        .extension()
+        .and_then(|value| value.to_str())
+        .unwrap_or_default()
+        .to_ascii_lowercase();
+
+    match extension.as_str() {
+        "exe" => {
+            Command::new(&canonical)
+                .current_dir(canonical.parent().unwrap_or_else(|| Path::new("")))
+                .spawn()
+                .map_err(|error| format!("Could not start installer: {error}"))?;
+        }
+        "msi" => {
+            Command::new("msiexec")
+                .arg("/i")
+                .arg(&canonical)
+                .spawn()
+                .map_err(|error| format!("Could not start MSI installer: {error}"))?;
+        }
+        _ => return Err("Dusk only runs local .exe or .msi installers.".into()),
+    }
+
+    Ok(())
+}
+
+#[cfg(not(target_os = "windows"))]
+#[tauri::command]
+fn run_game_installer(_installer_path: String) -> Result<(), String> {
+    Err("Local installer launching is currently implemented for Windows.".into())
+}
+
+#[cfg(target_os = "windows")]
+#[tauri::command]
+fn open_external_target(target: String) -> Result<(), String> {
+    let url = match target.as_str() {
+        "creator" => "https://guns.lol/bxane",
+        "steam" => "https://store.steampowered.com/",
+        "epic" => "https://store.epicgames.com/",
+        "gog" => "https://www.gog.com/",
+        "itch" => "https://itch.io/",
+        _ => return Err("That external destination is not allowed.".into()),
+    };
+
+    hidden_windows_command("cmd")
+        .args(["/C", "start", "", url])
+        .spawn()
+        .map_err(|error| format!("Could not open link: {error}"))?;
+
+    Ok(())
+}
+
+#[cfg(not(target_os = "windows"))]
+#[tauri::command]
+fn open_external_target(_target: String) -> Result<(), String> {
+    Err("Opening external destinations is currently implemented for Windows.".into())
+}
+
 #[tauri::command]
 fn choose_executable() -> Option<String> {
     rfd::FileDialog::new()
@@ -2590,6 +2668,9 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             list_games,
             scan_games,
+            choose_game_installer,
+            run_game_installer,
+            open_external_target,
             choose_executable,
             add_manual_game,
             set_favorite,
