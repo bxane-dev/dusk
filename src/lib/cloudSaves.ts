@@ -113,3 +113,13 @@ export async function syncCloudManifest() {
     authUserId: identity.userId,
   });
 }
+
+export async function syncAllBackupsToSupabase() {
+  const identity = await ensureCloudIdentity();
+  return api.uploadAllSaveBackupsToCloud({
+    supabaseUrl: SUPABASE_URL,
+    publishableKey: SUPABASE_KEY,
+    accessToken: identity.accessToken,
+    authUserId: identity.userId,
+  });
+}
