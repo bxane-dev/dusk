@@ -377,20 +377,49 @@ fn initialize_schema(connection: &Connection) -> Result<(), String> {
 
             INSERT OR IGNORE INTO app_settings (key, value)
             VALUES ('active_profile_id', 'default');
-
-            INSERT OR IGNORE INTO profile_games (profile_id, game_id, added_at)
-            SELECT 'default', id, added_at FROM games;
-
-            INSERT OR IGNORE INTO profile_save_configs (profile_id, game_id, save_path, configured_at)
-            SELECT 'default', game_id, save_path, configured_at FROM save_configs;
-
-            INSERT OR IGNORE INTO profile_save_backups
-                (id, profile_id, game_id, backup_path, created_at, file_count, total_bytes, kind)
-            SELECT id, 'default', game_id, backup_path, created_at, file_count, total_bytes, kind
-            FROM save_backups;
             "#,
         )
-        .map_err(|error| format!("Could not migrate Dusk profiles: {error}"))?;
+        .map_err(|error| format!("Could not initialize Dusk profiles: {error}"))?;
+
+    let profiles_migrated: bool = connection
+        .query_row(
+            "SELECT EXISTS(SELECT 1 FROM app_settings WHERE key = 'profiles_v1_migrated' AND value = '1')",
+            [],
+            |row| row.get(0),
+        )
+        .map_err(|error| format!("Could not inspect profile migration state: {error}"))?;
+
+    if !profiles_migrated {
+        let transaction = connection
+            .unchecked_transaction()
+            .map_err(|error| format!("Could not begin profile migration: {error}"))?;
+
+        transaction
+            .execute_batch(
+                r#"
+                INSERT OR IGNORE INTO profile_games (profile_id, game_id, added_at)
+                SELECT 'default', id, added_at FROM games;
+
+                INSERT OR IGNORE INTO profile_save_configs
+                    (profile_id, game_id, save_path, configured_at)
+                SELECT 'default', game_id, save_path, configured_at
+                FROM save_configs;
+
+                INSERT OR IGNORE INTO profile_save_backups
+                    (id, profile_id, game_id, backup_path, created_at, file_count, total_bytes, kind)
+                SELECT id, 'default', game_id, backup_path, created_at, file_count, total_bytes, kind
+                FROM save_backups;
+
+                INSERT OR REPLACE INTO app_settings (key, value)
+                VALUES ('profiles_v1_migrated', '1');
+                "#,
+            )
+            .map_err(|error| format!("Could not migrate legacy Dusk data into profiles: {error}"))?;
+
+        transaction
+            .commit()
+            .map_err(|error| format!("Could not commit profile migration: {error}"))?;
+    }
 
     // Existing Dusk databases predate automatic screenshot source tracking.
     let _ = connection.execute("ALTER TABLE screenshots ADD COLUMN source_path TEXT", []);
