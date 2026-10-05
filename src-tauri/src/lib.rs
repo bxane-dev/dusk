@@ -52,6 +52,8 @@ struct ScanResult {
     updated: usize,
     steam_found: usize,
     epic_found: usize,
+    gog_found: usize,
+    emulator_found: usize,
     warnings: Vec<String>,
 }
 
@@ -558,6 +560,276 @@ fn scan_epic() -> (Vec<DiscoveredGame>, Vec<String>) {
     (games, warnings)
 }
 
+
+#[cfg(target_os = "windows")]
+fn parse_gog_registry_output(output: &str) -> Vec<DiscoveredGame> {
+    let mut games = Vec::new();
+    let mut current_key = String::new();
+    let mut values: HashMap<String, String> = HashMap::new();
+
+    let flush = |key: &str, values: &mut HashMap<String, String>, games: &mut Vec<DiscoveredGame>| {
+        if key.is_empty() {
+            values.clear();
+            return;
+        }
+
+        let title = values
+            .get("gamename")
+            .or_else(|| values.get("displayname"))
+            .cloned();
+
+        let install_path = values
+            .get("path")
+            .or_else(|| values.get("installlocation"))
+            .cloned();
+
+        let Some(title) = title else {
+            values.clear();
+            return;
+        };
+        let Some(install_path) = install_path else {
+            values.clear();
+            return;
+        };
+
+        let install = PathBuf::from(&install_path);
+        if !install.exists() {
+            values.clear();
+            return;
+        }
+
+        let source_id = values
+            .get("gameid")
+            .cloned()
+            .or_else(|| key.rsplit('\\').next().map(ToOwned::to_owned))
+            .unwrap_or_else(|| title.clone());
+
+        let exe_path = values
+            .get("exe")
+            .map(PathBuf::from)
+            .filter(|value| value.exists())
+            .or_else(|| find_best_executable(&install, &title))
+            .map(|value| value.to_string_lossy().into_owned());
+
+        games.push(DiscoveredGame {
+            id: format!("gog:{source_id}"),
+            title,
+            exe_path,
+            install_path: install.to_string_lossy().into_owned(),
+            source: "gog".into(),
+            source_id: Some(source_id),
+        });
+
+        values.clear();
+    };
+
+    for raw_line in output.lines() {
+        let line = raw_line.trim();
+        if line.is_empty() {
+            continue;
+        }
+
+        if line.starts_with("HKEY_") {
+            flush(&current_key, &mut values, &mut games);
+            current_key = line.to_string();
+            continue;
+        }
+
+        let parts: Vec<&str> = line.split_whitespace().collect();
+        if parts.len() < 3 {
+            continue;
+        }
+
+        let name = parts[0].to_ascii_lowercase();
+        let value = parts[2..].join(" ");
+        values.insert(name, value);
+    }
+
+    flush(&current_key, &mut values, &mut games);
+    games
+}
+
+#[cfg(target_os = "windows")]
+fn scan_gog() -> (Vec<DiscoveredGame>, Vec<String>) {
+    let roots = [
+        r"HKLM\SOFTWARE\WOW6432Node\GOG.com\Games",
+        r"HKLM\SOFTWARE\GOG.com\Games",
+        r"HKCU\SOFTWARE\GOG.com\Games",
+    ];
+
+    let mut games = Vec::new();
+    let mut warnings = Vec::new();
+    let mut seen = HashSet::new();
+
+    for root in roots {
+        let output = Command::new("reg")
+            .args(["query", root, "/s"])
+            .output();
+
+        match output {
+            Ok(output) if output.status.success() => {
+                let text = String::from_utf8_lossy(&output.stdout);
+                for game in parse_gog_registry_output(&text) {
+                    if seen.insert(game.id.clone()) {
+                        games.push(game);
+                    }
+                }
+            }
+            Ok(_) => {}
+            Err(error) => warnings.push(format!("Could not query GOG registry data: {error}")),
+        }
+    }
+
+    (games, warnings)
+}
+
+#[cfg(not(target_os = "windows"))]
+fn scan_gog() -> (Vec<DiscoveredGame>, Vec<String>) {
+    (Vec::new(), Vec::new())
+}
+
+#[cfg(target_os = "windows")]
+fn resolve_windows_executable(name: &str, candidates: &[PathBuf]) -> Option<PathBuf> {
+    for candidate in candidates {
+        if candidate.is_file() {
+            return Some(candidate.clone());
+        }
+    }
+
+    let output = Command::new("where").arg(name).output().ok()?;
+    if !output.status.success() {
+        return None;
+    }
+
+    String::from_utf8_lossy(&output.stdout)
+        .lines()
+        .map(str::trim)
+        .filter(|line| !line.is_empty())
+        .map(PathBuf::from)
+        .find(|path| path.is_file())
+}
+
+#[cfg(target_os = "windows")]
+fn scan_emulators() -> (Vec<DiscoveredGame>, Vec<String>) {
+    let mut games = Vec::new();
+
+    let program_files = env::var("PROGRAMFILES").ok().map(PathBuf::from);
+    let program_files_x86 = env::var("PROGRAMFILES(X86)").ok().map(PathBuf::from);
+    let local_app_data = env::var("LOCALAPPDATA").ok().map(PathBuf::from);
+    let app_data = env::var("APPDATA").ok().map(PathBuf::from);
+
+    let specs: Vec<(&str, &str, Vec<PathBuf>)> = vec![
+        (
+            "Dolphin Emulator",
+            "Dolphin.exe",
+            [
+                program_files.as_ref().map(|p| p.join("Dolphin").join("Dolphin.exe")),
+                local_app_data.as_ref().map(|p| p.join("Dolphin").join("Dolphin.exe")),
+            ]
+            .into_iter()
+            .flatten()
+            .collect(),
+        ),
+        (
+            "PCSX2",
+            "pcsx2-qt.exe",
+            [
+                program_files.as_ref().map(|p| p.join("PCSX2").join("pcsx2-qt.exe")),
+                local_app_data.as_ref().map(|p| p.join("PCSX2").join("pcsx2-qt.exe")),
+            ]
+            .into_iter()
+            .flatten()
+            .collect(),
+        ),
+        (
+            "RetroArch",
+            "retroarch.exe",
+            [
+                program_files.as_ref().map(|p| p.join("RetroArch-Win64").join("retroarch.exe")),
+                program_files_x86.as_ref().map(|p| p.join("RetroArch-Win64").join("retroarch.exe")),
+                app_data.as_ref().map(|p| p.join("RetroArch").join("retroarch.exe")),
+            ]
+            .into_iter()
+            .flatten()
+            .collect(),
+        ),
+        (
+            "Ryujinx",
+            "Ryujinx.exe",
+            [
+                local_app_data.as_ref().map(|p| p.join("Ryujinx").join("Ryujinx.exe")),
+                app_data.as_ref().map(|p| p.join("Ryujinx").join("Ryujinx.exe")),
+            ]
+            .into_iter()
+            .flatten()
+            .collect(),
+        ),
+        (
+            "Cemu",
+            "Cemu.exe",
+            [
+                program_files.as_ref().map(|p| p.join("Cemu").join("Cemu.exe")),
+                local_app_data.as_ref().map(|p| p.join("Cemu").join("Cemu.exe")),
+            ]
+            .into_iter()
+            .flatten()
+            .collect(),
+        ),
+        (
+            "PPSSPP",
+            "PPSSPPWindows64.exe",
+            [
+                program_files.as_ref().map(|p| p.join("PPSSPP").join("PPSSPPWindows64.exe")),
+                program_files_x86.as_ref().map(|p| p.join("PPSSPP").join("PPSSPPWindows64.exe")),
+            ]
+            .into_iter()
+            .flatten()
+            .collect(),
+        ),
+        (
+            "DuckStation",
+            "duckstation-qt-x64-ReleaseLTCG.exe",
+            [
+                local_app_data.as_ref().map(|p| p.join("DuckStation").join("duckstation-qt-x64-ReleaseLTCG.exe")),
+                program_files.as_ref().map(|p| p.join("DuckStation").join("duckstation-qt-x64-ReleaseLTCG.exe")),
+            ]
+            .into_iter()
+            .flatten()
+            .collect(),
+        ),
+    ];
+
+    for (title, executable_name, candidates) in specs {
+        if let Some(executable) = resolve_windows_executable(executable_name, &candidates) {
+            let install_path = executable
+                .parent()
+                .unwrap_or_else(|| Path::new(""))
+                .to_string_lossy()
+                .into_owned();
+
+            let source_id = title
+                .to_ascii_lowercase()
+                .replace(' ', "-");
+
+            games.push(DiscoveredGame {
+                id: format!("emulator:{source_id}"),
+                title: title.to_string(),
+                exe_path: Some(executable.to_string_lossy().into_owned()),
+                install_path,
+                source: "emulator".into(),
+                source_id: Some(source_id),
+            });
+        }
+    }
+
+    (games, Vec::new())
+}
+
+#[cfg(not(target_os = "windows"))]
+fn scan_emulators() -> (Vec<DiscoveredGame>, Vec<String>) {
+    (Vec::new(), Vec::new())
+}
+
 #[tauri::command]
 fn list_games(app: AppHandle) -> Result<Vec<GameRecord>, String> {
     let connection = open_database(&app)?;
@@ -588,11 +860,24 @@ fn list_games(app: AppHandle) -> Result<Vec<GameRecord>, String> {
 fn scan_games(app: AppHandle) -> Result<ScanResult, String> {
     let (steam_games, mut warnings) = scan_steam();
     let (epic_games, epic_warnings) = scan_epic();
+    let (gog_games, gog_warnings) = scan_gog();
+    let (emulator_games, emulator_warnings) = scan_emulators();
+
     warnings.extend(epic_warnings);
+    warnings.extend(gog_warnings);
+    warnings.extend(emulator_warnings);
 
     let steam_found = steam_games.len();
     let epic_found = epic_games.len();
-    let all_games: Vec<DiscoveredGame> = steam_games.into_iter().chain(epic_games).collect();
+    let gog_found = gog_games.len();
+    let emulator_found = emulator_games.len();
+
+    let all_games: Vec<DiscoveredGame> = steam_games
+        .into_iter()
+        .chain(epic_games)
+        .chain(gog_games)
+        .chain(emulator_games)
+        .collect();
 
     let connection = open_database(&app)?;
     let mut added = 0;
@@ -612,6 +897,8 @@ fn scan_games(app: AppHandle) -> Result<ScanResult, String> {
         updated,
         steam_found,
         epic_found,
+        gog_found,
+        emulator_found,
         warnings,
     })
 }
