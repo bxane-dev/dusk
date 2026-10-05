@@ -11,6 +11,10 @@ jobs:
     permissions:
       contents: write
     runs-on: windows-latest
+    env:
+      TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+      TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+      TAURI_SIGNING_PUBLIC_KEY: ${{ secrets.TAURI_SIGNING_PUBLIC_KEY }}
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-node@v6
@@ -22,13 +26,33 @@ jobs:
           workspaces: ./src-tauri -> target
       - name: Install frontend dependencies
         run: npm install
+      - name: Configure signed updater
+        shell: pwsh
+        run: |
+          if ([string]::IsNullOrWhiteSpace($env:TAURI_SIGNING_PRIVATE_KEY)) { throw 'Missing TAURI_SIGNING_PRIVATE_KEY repository secret.' }
+          if ([string]::IsNullOrWhiteSpace($env:TAURI_SIGNING_PUBLIC_KEY)) { throw 'Missing TAURI_SIGNING_PUBLIC_KEY repository secret.' }
+          $path = 'src-tauri/tauri.conf.json'
+          $config = Get-Content $path -Raw | ConvertFrom-Json
+          $config.bundle | Add-Member -NotePropertyName createUpdaterArtifacts -NotePropertyValue $true -Force
+          if ($null -eq $config.plugins) {
+            $config | Add-Member -NotePropertyName plugins -NotePropertyValue ([pscustomobject]@{})
+          }
+          $updater = [pscustomobject]@{
+            pubkey = $env:TAURI_SIGNING_PUBLIC_KEY
+            endpoints = @('https://github.com/bxane-dev/dusk/releases/latest/download/latest.json')
+            windows = [pscustomobject]@{ installMode = 'passive' }
+          }
+          $config.plugins | Add-Member -NotePropertyName updater -NotePropertyValue $updater -Force
+          $config | ConvertTo-Json -Depth 20 | Set-Content $path
       - name: Build Dusk and publish Windows installer
         uses: tauri-apps/tauri-action@v1
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         with:
           tagName: dusk-v__VERSION__
           releaseName: Dusk v__VERSION__
-          releaseBody: Installable Windows release for Dusk.
+          releaseBody: Signed updater-enabled Windows release for Dusk.
           releaseDraft: false
           prerelease: false
