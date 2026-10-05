@@ -22,6 +22,8 @@ It scans real local game installations, launches games, tracks sessions it can o
 - Imported local screenshot gallery with duplicate protection
 - Per-game save-folder backups and restore points
 - Automatic pre-restore safety snapshots
+- Controller navigation using the standard Gamepad API
+- Fullscreen console mode with controller focus and shortcuts
 - Dusk achievements calculated from real local Dusk data
 - Local stats dashboard
 - Night, OLED, and Slate themes
@@ -101,6 +103,21 @@ From a game's details panel:
 Before every restore, Dusk first creates a `pre-restore` safety backup of the current saves. Restore operations replace the contents of the configured save folder with the selected snapshot.
 
 Dusk rejects drive roots and broad Windows, Program Files, user-profile, and AppData roots as backup targets. Backups stay local under Dusk's application data directory.
+
+## Controller and console mode
+
+Dusk supports standard gamepads through the browser Gamepad API used by the Tauri webview.
+
+Default controls:
+
+- D-pad / left stick: move focus
+- A / Cross: select the focused control
+- X / Square: launch the focused game card
+- B / Circle: go back / close the current panel
+- Menu / Start: toggle fullscreen console mode
+- F11: keyboard shortcut for console mode
+
+Console mode switches the Tauri window into native fullscreen, collapses Dusk to an icon rail, increases card sizing and focus visibility, and shows an on-screen controller hint bar. The setting is stored locally.
 
 ## CI and releases
 
