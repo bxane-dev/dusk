@@ -4,6 +4,7 @@ import type {
   AutoScreenshotScanResult,
   CollectionMembership,
   CollectionRecord,
+  CloudUploadResult,
   GameRecord,
   LaunchResult,
   ProfileRecord,
@@ -84,5 +85,18 @@ export const api = {
     invoke<SaveBackupRecord>("restore_save_backup", { gameId, backupId }),
   deleteSaveBackup: (gameId: string, backupId: string) =>
     invoke<void>("delete_save_backup", { gameId, backupId }),
+  uploadSaveBackupToCloud: (input: {
+    backupId: string;
+    supabaseUrl: string;
+    publishableKey: string;
+    accessToken: string;
+    authUserId: string;
+  }) => invoke<CloudUploadResult>("upload_save_backup_to_cloud", input),
+  uploadCloudManifest: (input: {
+    supabaseUrl: string;
+    publishableKey: string;
+    accessToken: string;
+    authUserId: string;
+  }) => invoke<void>("upload_cloud_manifest", input),
   dataDirectory: () => invoke<string>("data_directory"),
 };
