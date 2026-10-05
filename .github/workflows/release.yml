@@ -21,6 +21,8 @@ jobs:
       TAURI_SIGNING_PUBLIC_KEY: ${{ secrets.TAURI_SIGNING_PUBLIC_KEY }}
       WINDOWS_CERTIFICATE: ${{ secrets.WINDOWS_CERTIFICATE }}
       WINDOWS_CERTIFICATE_PASSWORD: ${{ secrets.WINDOWS_CERTIFICATE_PASSWORD }}
+      VITE_SUPABASE_URL: ${{ vars.DUSK_SUPABASE_URL }}
+      VITE_SUPABASE_PUBLISHABLE_KEY: ${{ vars.DUSK_SUPABASE_PUBLISHABLE_KEY }}
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-node@v6
@@ -116,9 +118,9 @@ jobs:
           tagName: dusk-v__VERSION__
           releaseName: Dusk v__VERSION__
           releaseBody: |
-            Dusk v1.0.2 — stability and responsiveness hotfix for Windows.
+            Dusk v__VERSION__ — Windows release by bxane.
 
-            Includes Steam, Epic and GOG scanning, common emulator detection, playtime tracking, collections, screenshots, save backups, controller navigation, and fullscreen console mode.
+            Includes owner profiles, profile-specific game libraries and save backups, optional private Supabase save-file sync, automatic game discovery, installer hub, controller navigation, and fullscreen console mode.
 
             The installer is built from this public repository on GitHub Actions.
           releaseDraft: false
