@@ -25,4 +25,4 @@ uuid = { version = "1", features = ["v4"] }
 base64 = "0.22"
 mime_guess = "2"
 
-tauri-plugin-updater = "2.12.0"
+tauri-plugin-updater = "=2.12.0"
