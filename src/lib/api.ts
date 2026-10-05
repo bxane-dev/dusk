@@ -18,6 +18,7 @@ import type {
 } from "../types";
 
 export const api = {
+  setAccountScope: (userId: string | null) => invoke<void>("set_account_scope", { accountUserId: userId }),
   exportAccountState: () => invoke<Record<string, unknown>>("export_account_state"),
   importAccountState: (state: Record<string, unknown>) => invoke<void>("import_account_state", { state }),
   listProfiles: () => invoke<ProfileRecord[]>("list_profiles"),
