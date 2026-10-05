@@ -22,6 +22,7 @@ export interface ScanResult {
   epicFound: number;
   gogFound: number;
   emulatorFound: number;
+  deviceFound: number;
   warnings: string[];
 }
 
