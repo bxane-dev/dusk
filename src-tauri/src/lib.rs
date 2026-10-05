@@ -3,10 +3,11 @@ use regex::Regex;
 use rusqlite::{params, Connection, OptionalExtension};
 use serde::Serialize;
 use std::{
-    collections::{HashMap, HashSet},
+    collections::{hash_map::DefaultHasher, HashMap, HashSet},
     env,
     fs,
     path::{Path, PathBuf},
+    hash::{Hash, Hasher},
     process::Command,
     sync::OnceLock,
     thread,
@@ -1001,7 +1002,9 @@ fn scan_common_device_game_folders() -> (Vec<DiscoveredGame>, Vec<String>) {
                 continue;
             };
 
-            let source_id = format!("{:x}", md5::compute(canonical_key.as_bytes()));
+            let mut hasher = DefaultHasher::new();
+            canonical_key.hash(&mut hasher);
+            let source_id = format!("{:016x}", hasher.finish());
             games.push(DiscoveredGame {
                 id: format!("device:{source_id}"),
                 title,
