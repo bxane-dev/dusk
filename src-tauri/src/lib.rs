@@ -9,7 +9,7 @@ use std::{
     path::{Path, PathBuf},
     hash::{Hash, Hasher},
     process::Command,
-    sync::OnceLock,
+    sync::{Mutex, OnceLock},
     thread,
     time::{Duration, Instant},
 };
@@ -19,7 +19,8 @@ use tauri::{AppHandle, Manager};
 use uuid::Uuid;
 use walkdir::WalkDir;
 
-static SCHEMA_STATE: OnceLock<Result<(), String>> = OnceLock::new();
+static INITIALIZED_DATABASES: OnceLock<Mutex<HashSet<PathBuf>>> = OnceLock::new();
+static ACCOUNT_SCOPE: OnceLock<Mutex<Option<String>>> = OnceLock::new();
 
 #[cfg(target_os = "windows")]
 const CREATE_NO_WINDOW: u32 = 0x08000000;
@@ -203,11 +204,29 @@ struct CloudSyncAllResult {
     uploaded_bytes: u64,
 }
 
-fn app_data_dir(app: &AppHandle) -> Result<PathBuf, String> {
+fn base_app_data_dir(app: &AppHandle) -> Result<PathBuf, String> {
     let dir = app
         .path()
         .app_data_dir()
         .map_err(|error| format!("Could not resolve Dusk data directory: {error}"))?;
+    fs::create_dir_all(&dir).map_err(|error| format!("Could not create data directory: {error}"))?;
+    Ok(dir)
+}
+
+fn current_account_scope() -> Option<String> {
+    ACCOUNT_SCOPE
+        .get_or_init(|| Mutex::new(None))
+        .lock()
+        .ok()
+        .and_then(|guard| guard.clone())
+}
+
+fn app_data_dir(app: &AppHandle) -> Result<PathBuf, String> {
+    let base = base_app_data_dir(app)?;
+    let dir = match current_account_scope() {
+        Some(user_id) => base.join("accounts").join(user_id),
+        None => base,
+    };
     fs::create_dir_all(&dir).map_err(|error| format!("Could not create data directory: {error}"))?;
     Ok(dir)
 }
@@ -219,7 +238,7 @@ fn database_path(app: &AppHandle) -> Result<PathBuf, String> {
 fn open_database(app: &AppHandle) -> Result<Connection, String> {
     let path = database_path(app)?;
     let connection =
-        Connection::open(path).map_err(|error| format!("Could not open Dusk database: {error}"))?;
+        Connection::open(&path).map_err(|error| format!("Could not open Dusk database: {error}"))?;
 
     connection
         .busy_timeout(Duration::from_secs(2))
@@ -228,9 +247,20 @@ fn open_database(app: &AppHandle) -> Result<Connection, String> {
         .execute_batch("PRAGMA foreign_keys = ON;")
         .map_err(|error| format!("Could not configure Dusk database: {error}"))?;
 
-    let schema = SCHEMA_STATE.get_or_init(|| initialize_schema(&connection));
-    if let Err(error) = schema {
-        return Err(error.clone());
+    let initialized = INITIALIZED_DATABASES.get_or_init(|| Mutex::new(HashSet::new()));
+    let needs_schema = {
+        let guard = initialized
+            .lock()
+            .map_err(|_| "Could not lock Dusk database initialization state.".to_string())?;
+        !guard.contains(&path)
+    };
+
+    if needs_schema {
+        initialize_schema(&connection)?;
+        initialized
+            .lock()
+            .map_err(|_| "Could not lock Dusk database initialization state.".to_string())?
+            .insert(path);
     }
 
     Ok(connection)
@@ -3580,6 +3610,64 @@ async fn upload_all_save_backups_to_cloud(
 }
 
 
+
+fn migrate_legacy_data_to_account(app: &AppHandle, account_dir: &Path) -> Result<(), String> {
+    let base = base_app_data_dir(app)?;
+    let marker = base.join(".legacy-account-adopted");
+    if marker.exists() || account_dir.join("dusk.db").exists() || !base.join("dusk.db").exists() {
+        return Ok(());
+    }
+
+    fs::create_dir_all(account_dir)
+        .map_err(|error| format!("Could not create account data directory: {error}"))?;
+
+    for filename in ["dusk.db", "dusk.db-wal", "dusk.db-shm"] {
+        let source = base.join(filename);
+        if source.is_file() {
+            fs::copy(&source, account_dir.join(filename))
+                .map_err(|error| format!("Could not migrate legacy {filename}: {error}"))?;
+        }
+    }
+
+    for dirname in ["covers", "screenshots", "profile-saves", "save-backups"] {
+        let source = base.join(dirname);
+        if source.is_dir() {
+            copy_directory_tree(&source, &account_dir.join(dirname))?;
+        }
+    }
+
+    fs::write(&marker, "Dusk legacy data adopted by the first signed-in account.\n")
+        .map_err(|error| format!("Could not mark legacy account migration: {error}"))?;
+    Ok(())
+}
+
+#[tauri::command]
+fn set_account_scope(app: AppHandle, account_user_id: Option<String>) -> Result<(), String> {
+    let normalized = match account_user_id {
+        Some(value) => {
+            let parsed = Uuid::parse_str(value.trim())
+                .map_err(|_| "Invalid Dusk account user id.".to_string())?;
+            Some(parsed.to_string())
+        }
+        None => None,
+    };
+
+    if let Some(user_id) = normalized.as_ref() {
+        let account_dir = base_app_data_dir(&app)?.join("accounts").join(user_id);
+        migrate_legacy_data_to_account(&app, &account_dir)?;
+    }
+
+    *ACCOUNT_SCOPE
+        .get_or_init(|| Mutex::new(None))
+        .lock()
+        .map_err(|_| "Could not update Dusk account scope.".to_string())? = normalized;
+
+    if current_account_scope().is_some() {
+        let _ = open_database(&app)?;
+    }
+    Ok(())
+}
+
 #[tauri::command]
 fn export_account_state(app: AppHandle) -> Result<serde_json::Value, String> {
     let connection = open_database(&app)?;
@@ -4032,6 +4120,7 @@ pub fn run() {
             upload_save_backup_to_cloud,
             upload_all_save_backups_to_cloud,
             upload_cloud_manifest,
+            set_account_scope,
             export_account_state,
             import_account_state,
             data_directory,
