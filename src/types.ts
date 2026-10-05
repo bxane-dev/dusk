@@ -69,3 +69,11 @@ export interface CollectionMembership {
   collectionId: string;
   gameId: string;
 }
+
+export interface AutoScreenshotScanResult {
+  found: number;
+  imported: number;
+  steamImported: number;
+  matchedImported: number;
+  skippedDuplicates: number;
+}
