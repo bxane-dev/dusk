@@ -1232,3 +1232,93 @@ button:disabled { cursor: not-allowed; opacity: 0.55; }
     grid-template-columns: repeat(6, minmax(175px, 1fr));
   }
 }
+
+.creator-pill {
+  display: grid;
+  width: calc(100% - 16px);
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 7px;
+  margin: 0 8px;
+  padding: 8px 9px;
+  border: 1px solid rgba(var(--accent-rgb), 0.22);
+  border-radius: 999px;
+  color: var(--text);
+  background: rgba(var(--accent-rgb), 0.07);
+  cursor: pointer;
+  text-align: left;
+}
+
+.creator-pill:hover {
+  border-color: rgba(var(--accent-rgb), 0.38);
+  background: rgba(var(--accent-rgb), 0.12);
+}
+
+.creator-pill span {
+  font-size: 10px;
+  font-weight: 800;
+}
+
+.creator-pill small {
+  overflow: hidden;
+  color: var(--subtle);
+  font-size: 8px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.creator-pill svg {
+  color: var(--accent);
+}
+
+.official-store-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 7px;
+  padding: 12px 0;
+  border-top: 1px solid var(--border);
+}
+
+.official-store-grid .button {
+  min-width: 0;
+  justify-content: space-between;
+  padding-inline: 11px;
+}
+
+.about-card {
+  align-items: center;
+}
+
+.about-card > div:last-child {
+  min-width: 0;
+}
+
+.about-creator-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  margin-top: 7px;
+  padding: 5px 8px;
+  border: 1px solid rgba(var(--accent-rgb), 0.22);
+  border-radius: 999px;
+  color: var(--text);
+  background: rgba(var(--accent-rgb), 0.07);
+  cursor: pointer;
+  font-size: 9px;
+  font-weight: 700;
+}
+
+.about-creator-pill:hover {
+  border-color: rgba(var(--accent-rgb), 0.4);
+  background: rgba(var(--accent-rgb), 0.12);
+}
+
+.about-creator-pill svg {
+  color: var(--accent);
+}
+
+@media (max-width: 1250px) {
+  .official-store-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
