@@ -17,6 +17,11 @@ export const api = {
   listGames: () => invoke<GameRecord[]>("list_games"),
   scanGames: () => invoke<ScanResult>("scan_games"),
   chooseExecutable: () => invoke<string | null>("choose_executable"),
+  chooseGameInstaller: () => invoke<string | null>("choose_game_installer"),
+  runGameInstaller: (installerPath: string) =>
+    invoke<void>("run_game_installer", { installerPath }),
+  openExternalTarget: (target: "creator" | "steam" | "epic" | "gog" | "itch") =>
+    invoke<void>("open_external_target", { target }),
   addManualGame: (title: string, exePath: string) =>
     invoke<GameRecord>("add_manual_game", { title, exePath }),
   setFavorite: (gameId: string, favorite: boolean) =>
