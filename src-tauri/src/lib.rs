@@ -13,11 +13,23 @@ use std::{
     thread,
     time::{Duration, Instant},
 };
+#[cfg(target_os = "windows")]
+use std::os::windows::process::CommandExt;
 use tauri::{AppHandle, Manager};
 use uuid::Uuid;
 use walkdir::WalkDir;
 
 static SCHEMA_STATE: OnceLock<Result<(), String>> = OnceLock::new();
+
+#[cfg(target_os = "windows")]
+const CREATE_NO_WINDOW: u32 = 0x08000000;
+
+#[cfg(target_os = "windows")]
+fn hidden_windows_command(program: &str) -> Command {
+    let mut command = Command::new(program);
+    command.creation_flags(CREATE_NO_WINDOW);
+    command
+}
 
 #[derive(Debug, Clone)]
 struct DiscoveredGame {
@@ -826,7 +838,7 @@ fn scan_gog() -> (Vec<DiscoveredGame>, Vec<String>) {
     let mut seen = HashSet::new();
 
     for root in roots {
-        let output = Command::new("reg")
+        let output = hidden_windows_command("reg")
             .args(["query", root, "/s"])
             .output();
 
@@ -860,7 +872,7 @@ fn resolve_windows_executable(name: &str, candidates: &[PathBuf]) -> Option<Path
         }
     }
 
-    let output = Command::new("where").arg(name).output().ok()?;
+    let output = hidden_windows_command("where").arg(name).output().ok()?;
     if !output.status.success() {
         return None;
     }
@@ -1031,7 +1043,13 @@ fn common_device_game_roots() -> Vec<PathBuf> {
 
         if let Ok(profile) = env::var("USERPROFILE") {
             let profile = PathBuf::from(profile);
-            for relative in ["Games", "Desktop\\Games", "Documents\\Games"] {
+            for relative in [
+                "Games",
+                "Desktop\\Games",
+                "Documents\\Games",
+                "Downloads",
+                "Downloads\\Games",
+            ] {
                 let candidate = profile.join(relative);
                 if candidate.is_dir() {
                     roots.push(candidate);
@@ -1312,7 +1330,7 @@ fn choose_cover(app: AppHandle, game_id: String) -> Result<bool, String> {
 #[cfg(target_os = "windows")]
 fn process_running(executable_name: &str) -> bool {
     let filter = format!("IMAGENAME eq {executable_name}");
-    let output = Command::new("tasklist")
+    let output = hidden_windows_command("tasklist")
         .args(["/FI", &filter, "/FO", "CSV", "/NH"])
         .output();
 
@@ -1374,7 +1392,7 @@ fn launch_steam_game(
         .ok_or_else(|| "Steam App ID is missing.".to_string())?;
     let uri = format!("steam://rungameid/{app_id}");
 
-    Command::new("cmd")
+    hidden_windows_command("cmd")
         .args(["/C", "start", "", &uri])
         .spawn()
         .map_err(|error| format!("Could not ask Steam to launch the game: {error}"))?;
