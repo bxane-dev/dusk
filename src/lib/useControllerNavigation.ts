@@ -113,6 +113,7 @@ function focusedGameId() {
 
 export function useControllerNavigation(options: ControllerNavigationOptions) {
   const [connected, setConnected] = useState(false);
+  const connectedRef = useRef(false);
   const previousButtons = useRef<boolean[]>([]);
   const repeatState = useRef<{ direction: Direction | null; nextAt: number }>({
     direction: null,
@@ -126,21 +127,27 @@ export function useControllerNavigation(options: ControllerNavigationOptions) {
 
     let frame = 0;
 
-    const onConnected = () => setConnected(true);
+    const updateConnected = (value: boolean) => {
+      if (connectedRef.current === value) return;
+      connectedRef.current = value;
+      setConnected(value);
+    };
+
+    const onConnected = () => updateConnected(true);
     const onDisconnected = () => {
-      setConnected(navigator.getGamepads().some(Boolean));
+      updateConnected(navigator.getGamepads().some(Boolean));
       previousButtons.current = [];
     };
 
     window.addEventListener("gamepadconnected", onConnected);
     window.addEventListener("gamepaddisconnected", onDisconnected);
-    setConnected(navigator.getGamepads().some(Boolean));
+    updateConnected(navigator.getGamepads().some(Boolean));
 
     function loop(timestamp: number) {
       const gamepad = navigator.getGamepads().find(Boolean);
 
       if (gamepad) {
-        if (!connected) setConnected(true);
+        updateConnected(true);
 
         const pressed = gamepad.buttons.map((button) => button.pressed);
         const previous = previousButtons.current;
@@ -187,8 +194,8 @@ export function useControllerNavigation(options: ControllerNavigationOptions) {
         }
 
         previousButtons.current = pressed;
-      } else if (connected) {
-        setConnected(false);
+      } else if (connectedRef.current) {
+        updateConnected(false);
         previousButtons.current = [];
       }
 
@@ -202,7 +209,7 @@ export function useControllerNavigation(options: ControllerNavigationOptions) {
       window.removeEventListener("gamepadconnected", onConnected);
       window.removeEventListener("gamepaddisconnected", onDisconnected);
     };
-  }, [options.enabled, connected]);
+  }, [options.enabled]);
 
   return { connected };
 }
