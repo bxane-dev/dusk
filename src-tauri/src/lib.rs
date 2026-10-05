@@ -173,6 +173,16 @@ struct ProfileRecord {
     backup_count: i64,
 }
 
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct CloudUploadResult {
+    backup_id: String,
+    profile_id: String,
+    game_id: String,
+    uploaded_files: usize,
+    uploaded_bytes: u64,
+}
+
 fn app_data_dir(app: &AppHandle) -> Result<PathBuf, String> {
     let dir = app
         .path()
@@ -2772,27 +2782,29 @@ async fn create_save_backup(app: AppHandle, game_id: String) -> Result<SaveBacku
 #[tauri::command]
 fn list_save_backups(app: AppHandle, game_id: String) -> Result<Vec<SaveBackupRecord>, String> {
     let connection = open_database(&app)?;
+    let profile_id = active_profile_id(&connection)?;
     let mut statement = connection
         .prepare(
             r#"
-            SELECT id, game_id, backup_path, created_at, file_count, total_bytes, kind
-            FROM save_backups
-            WHERE game_id = ?1
+            SELECT id, profile_id, game_id, backup_path, created_at, file_count, total_bytes, kind
+            FROM profile_save_backups
+            WHERE profile_id = ?1 AND game_id = ?2
             ORDER BY created_at DESC
             "#,
         )
         .map_err(|error| format!("Could not prepare backup list: {error}"))?;
 
     let rows = statement
-        .query_map(params![game_id], |row| {
+        .query_map(params![profile_id, game_id], |row| {
             Ok(SaveBackupRecord {
                 id: row.get(0)?,
-                game_id: row.get(1)?,
-                backup_path: row.get(2)?,
-                created_at: row.get(3)?,
-                file_count: row.get(4)?,
-                total_bytes: row.get(5)?,
-                kind: row.get(6)?,
+                profile_id: row.get(1)?,
+                game_id: row.get(2)?,
+                backup_path: row.get(3)?,
+                created_at: row.get(4)?,
+                file_count: row.get(5)?,
+                total_bytes: row.get(6)?,
+                kind: row.get(7)?,
             })
         })
         .map_err(|error| format!("Could not load save backups: {error}"))?;
@@ -2887,6 +2899,405 @@ fn delete_save_backup(app: AppHandle, game_id: String, backup_id: String) -> Res
     Ok(())
 }
 
+
+fn safe_storage_segment(value: &str) -> String {
+    let cleaned: String = value
+        .chars()
+        .map(|character| {
+            if character.is_ascii_alphanumeric() || matches!(character, '-' | '_' | '.') {
+                character
+            } else {
+                '_'
+            }
+        })
+        .collect();
+
+    if cleaned.is_empty() {
+        "item".into()
+    } else {
+        cleaned
+    }
+}
+
+fn validate_cloud_identity(
+    supabase_url: &str,
+    publishable_key: &str,
+    access_token: &str,
+    auth_user_id: &str,
+) -> Result<reqwest::Url, String> {
+    if publishable_key.trim().is_empty() || access_token.trim().is_empty() {
+        return Err("Supabase cloud credentials are missing.".into());
+    }
+
+    Uuid::parse_str(auth_user_id)
+        .map_err(|_| "Supabase cloud user ID is invalid.".to_string())?;
+
+    let url = reqwest::Url::parse(supabase_url.trim())
+        .map_err(|error| format!("Supabase project URL is invalid: {error}"))?;
+
+    if url.scheme() != "https" {
+        return Err("Supabase cloud saves require an HTTPS project URL.".into());
+    }
+
+    Ok(url)
+}
+
+fn storage_object_url(
+    supabase_url: &reqwest::Url,
+    segments: &[String],
+) -> Result<reqwest::Url, String> {
+    let mut url = supabase_url
+        .join("storage/v1/object/")
+        .map_err(|error| format!("Could not build Supabase Storage URL: {error}"))?;
+
+    {
+        let mut path = url
+            .path_segments_mut()
+            .map_err(|_| "Supabase Storage URL cannot contain path segments.".to_string())?;
+        path.push("dusk-savefiles");
+        for segment in segments {
+            path.push(segment);
+        }
+    }
+
+    Ok(url)
+}
+
+fn upload_storage_object(
+    client: &reqwest::blocking::Client,
+    supabase_url: &reqwest::Url,
+    publishable_key: &str,
+    access_token: &str,
+    segments: &[String],
+    content_type: &str,
+    body: Vec<u8>,
+) -> Result<(), String> {
+    let url = storage_object_url(supabase_url, segments)?;
+    let response = client
+        .post(url)
+        .header("apikey", publishable_key)
+        .bearer_auth(access_token)
+        .header("x-upsert", "true")
+        .header(reqwest::header::CONTENT_TYPE, content_type)
+        .body(body)
+        .send()
+        .map_err(|error| format!("Supabase upload failed: {error}"))?;
+
+    if response.status().is_success() {
+        return Ok(());
+    }
+
+    let status = response.status();
+    let body = response.text().unwrap_or_default();
+    Err(format!(
+        "Supabase Storage rejected an upload ({status}): {}",
+        body.chars().take(300).collect::<String>()
+    ))
+}
+
+fn upload_save_backup_to_cloud_blocking(
+    app: AppHandle,
+    backup_id: String,
+    supabase_url: String,
+    publishable_key: String,
+    access_token: String,
+    auth_user_id: String,
+) -> Result<CloudUploadResult, String> {
+    let supabase_url = validate_cloud_identity(
+        &supabase_url,
+        &publishable_key,
+        &access_token,
+        &auth_user_id,
+    )?;
+
+    let connection = open_database(&app)?;
+    let active_profile = active_profile_id(&connection)?;
+
+    let backup: SaveBackupRecord = connection
+        .query_row(
+            r#"
+            SELECT id, profile_id, game_id, backup_path, created_at, file_count, total_bytes, kind
+            FROM profile_save_backups
+            WHERE id = ?1 AND profile_id = ?2
+            "#,
+            params![backup_id, active_profile],
+            |row| {
+                Ok(SaveBackupRecord {
+                    id: row.get(0)?,
+                    profile_id: row.get(1)?,
+                    game_id: row.get(2)?,
+                    backup_path: row.get(3)?,
+                    created_at: row.get(4)?,
+                    file_count: row.get(5)?,
+                    total_bytes: row.get(6)?,
+                    kind: row.get(7)?,
+                })
+            },
+        )
+        .optional()
+        .map_err(|error| format!("Could not load backup for cloud sync: {error}"))?
+        .ok_or_else(|| "Save backup not found for the active profile.".to_string())?;
+
+    let backup_root = PathBuf::from(&backup.backup_path);
+    if !backup_root.is_dir() {
+        return Err("The local backup files are missing.".into());
+    }
+
+    let client = reqwest::blocking::Client::builder()
+        .connect_timeout(Duration::from_secs(10))
+        .timeout(Duration::from_secs(90))
+        .build()
+        .map_err(|error| format!("Could not initialize cloud client: {error}"))?;
+
+    let base_segments = vec![
+        auth_user_id.clone(),
+        "profiles".into(),
+        safe_storage_segment(&backup.profile_id),
+        "games".into(),
+        safe_storage_segment(&backup.game_id),
+        "backups".into(),
+        safe_storage_segment(&backup.id),
+    ];
+
+    let mut uploaded_files = 0_usize;
+    let mut uploaded_bytes = 0_u64;
+
+    for entry in WalkDir::new(&backup_root)
+        .follow_links(false)
+        .into_iter()
+        .filter_map(Result::ok)
+    {
+        if !entry.file_type().is_file() {
+            continue;
+        }
+
+        if uploaded_files >= 10_000 {
+            return Err("Cloud backup stopped because it exceeded 10,000 save files.".into());
+        }
+
+        let relative = entry
+            .path()
+            .strip_prefix(&backup_root)
+            .map_err(|error| format!("Could not map backup file for upload: {error}"))?;
+
+        let mut segments = base_segments.clone();
+        for component in relative.components() {
+            let segment = component.as_os_str().to_string_lossy();
+            segments.push(safe_storage_segment(&segment));
+        }
+
+        let bytes = fs::read(entry.path())
+            .map_err(|error| format!("Could not read save file for cloud upload: {error}"))?;
+        uploaded_bytes = uploaded_bytes.saturating_add(bytes.len() as u64);
+
+        upload_storage_object(
+            &client,
+            &supabase_url,
+            &publishable_key,
+            &access_token,
+            &segments,
+            "application/octet-stream",
+            bytes,
+        )?;
+
+        uploaded_files += 1;
+    }
+
+    let metadata = serde_json::to_vec_pretty(&serde_json::json!({
+        "backupId": backup.id,
+        "profileId": backup.profile_id,
+        "gameId": backup.game_id,
+        "createdAt": backup.created_at,
+        "fileCount": backup.file_count,
+        "totalBytes": backup.total_bytes,
+        "kind": backup.kind,
+        "uploadedFiles": uploaded_files,
+        "uploadedBytes": uploaded_bytes
+    }))
+    .map_err(|error| format!("Could not encode cloud backup metadata: {error}"))?;
+
+    let mut metadata_segments = base_segments;
+    metadata_segments.push("_backup.json".into());
+    upload_storage_object(
+        &client,
+        &supabase_url,
+        &publishable_key,
+        &access_token,
+        &metadata_segments,
+        "application/json",
+        metadata,
+    )?;
+
+    Ok(CloudUploadResult {
+        backup_id: backup.id,
+        profile_id: backup.profile_id,
+        game_id: backup.game_id,
+        uploaded_files,
+        uploaded_bytes,
+    })
+}
+
+#[tauri::command]
+async fn upload_save_backup_to_cloud(
+    app: AppHandle,
+    backup_id: String,
+    supabase_url: String,
+    publishable_key: String,
+    access_token: String,
+    auth_user_id: String,
+) -> Result<CloudUploadResult, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        upload_save_backup_to_cloud_blocking(
+            app,
+            backup_id,
+            supabase_url,
+            publishable_key,
+            access_token,
+            auth_user_id,
+        )
+    })
+    .await
+    .map_err(|error| format!("Cloud backup worker failed: {error}"))?
+}
+
+fn upload_cloud_manifest_blocking(
+    app: AppHandle,
+    supabase_url: String,
+    publishable_key: String,
+    access_token: String,
+    auth_user_id: String,
+) -> Result<(), String> {
+    let supabase_url = validate_cloud_identity(
+        &supabase_url,
+        &publishable_key,
+        &access_token,
+        &auth_user_id,
+    )?;
+    let connection = open_database(&app)?;
+
+    let mut profiles_statement = connection
+        .prepare(
+            "SELECT id, name, created_at, last_used_at FROM profiles ORDER BY last_used_at DESC",
+        )
+        .map_err(|error| format!("Could not prepare cloud profile manifest: {error}"))?;
+
+    let profile_rows = profiles_statement
+        .query_map([], |row| {
+            Ok(serde_json::json!({
+                "id": row.get::<_, String>(0)?,
+                "name": row.get::<_, String>(1)?,
+                "createdAt": row.get::<_, String>(2)?,
+                "lastUsedAt": row.get::<_, String>(3)?
+            }))
+        })
+        .map_err(|error| format!("Could not load cloud profile manifest: {error}"))?;
+
+    let profiles = profile_rows
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|error| format!("Could not decode cloud profile manifest: {error}"))?;
+
+    let mut games_statement = connection
+        .prepare(
+            r#"
+            SELECT pg.profile_id, g.id, g.title, g.source, pg.added_at
+            FROM profile_games pg
+            INNER JOIN games g ON g.id = pg.game_id
+            ORDER BY pg.profile_id, LOWER(g.title)
+            "#,
+        )
+        .map_err(|error| format!("Could not prepare cloud game manifest: {error}"))?;
+
+    let game_rows = games_statement
+        .query_map([], |row| {
+            Ok(serde_json::json!({
+                "profileId": row.get::<_, String>(0)?,
+                "gameId": row.get::<_, String>(1)?,
+                "title": row.get::<_, String>(2)?,
+                "source": row.get::<_, String>(3)?,
+                "addedAt": row.get::<_, String>(4)?
+            }))
+        })
+        .map_err(|error| format!("Could not load cloud game manifest: {error}"))?;
+
+    let games = game_rows
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|error| format!("Could not decode cloud game manifest: {error}"))?;
+
+    let mut backups_statement = connection
+        .prepare(
+            r#"
+            SELECT id, profile_id, game_id, created_at, file_count, total_bytes, kind
+            FROM profile_save_backups
+            ORDER BY profile_id, game_id, created_at DESC
+            "#,
+        )
+        .map_err(|error| format!("Could not prepare cloud backup manifest: {error}"))?;
+
+    let backup_rows = backups_statement
+        .query_map([], |row| {
+            Ok(serde_json::json!({
+                "id": row.get::<_, String>(0)?,
+                "profileId": row.get::<_, String>(1)?,
+                "gameId": row.get::<_, String>(2)?,
+                "createdAt": row.get::<_, String>(3)?,
+                "fileCount": row.get::<_, i64>(4)?,
+                "totalBytes": row.get::<_, i64>(5)?,
+                "kind": row.get::<_, String>(6)?
+            }))
+        })
+        .map_err(|error| format!("Could not load cloud backup manifest: {error}"))?;
+
+    let backups = backup_rows
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|error| format!("Could not decode cloud backup manifest: {error}"))?;
+
+    let manifest = serde_json::to_vec_pretty(&serde_json::json!({
+        "schemaVersion": 1,
+        "generatedAt": now(),
+        "profiles": profiles,
+        "games": games,
+        "backups": backups
+    }))
+    .map_err(|error| format!("Could not encode cloud manifest: {error}"))?;
+
+    let client = reqwest::blocking::Client::builder()
+        .connect_timeout(Duration::from_secs(10))
+        .timeout(Duration::from_secs(60))
+        .build()
+        .map_err(|error| format!("Could not initialize cloud client: {error}"))?;
+
+    upload_storage_object(
+        &client,
+        &supabase_url,
+        &publishable_key,
+        &access_token,
+        &[auth_user_id, "manifest.json".into()],
+        "application/json",
+        manifest,
+    )
+}
+
+#[tauri::command]
+async fn upload_cloud_manifest(
+    app: AppHandle,
+    supabase_url: String,
+    publishable_key: String,
+    access_token: String,
+    auth_user_id: String,
+) -> Result<(), String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        upload_cloud_manifest_blocking(
+            app,
+            supabase_url,
+            publishable_key,
+            access_token,
+            auth_user_id,
+        )
+    })
+    .await
+    .map_err(|error| format!("Cloud manifest worker failed: {error}"))?
+}
+
 #[tauri::command]
 fn data_directory(app: AppHandle) -> Result<String, String> {
     Ok(app_data_dir(&app)?.to_string_lossy().into_owned())
@@ -2950,6 +3361,8 @@ pub fn run() {
             list_save_backups,
             restore_save_backup,
             delete_save_backup,
+            upload_save_backup_to_cloud,
+            upload_cloud_manifest,
             data_directory,
         ])
         .run(tauri::generate_context!())
