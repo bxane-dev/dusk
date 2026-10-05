@@ -2,6 +2,17 @@
 
 All notable Dusk changes are documented here.
 
+## 1.5.0 - 2026-10-05
+
+Installer hub and bxane branding.
+
+- Added a safe local game-installer flow for user-selected .exe and .msi files.
+- Added one-click browser links for Steam, Epic Games, GOG, and itch.io.
+- Added a persistent clickable bxane creator pill linking to https://guns.lol/bxane.
+- Updated package authorship/publisher branding to bxane.
+- Dusk does not automatically download or install games from unofficial redistribution sites.
+- Preserves automatic game discovery, Downloads scanning, hidden scan helper processes, custom window controls, and rapid-click stability protections from earlier releases.
+
 ## 1.0.4 - 2026-10-05
 
 Desktop window and scan UX hardening.
