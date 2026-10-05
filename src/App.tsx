@@ -254,24 +254,32 @@ function AddGameModal(props: {
   const [path, setPath] = useState("");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
+  const savingRef = useRef(false);
+  const browsingRef = useRef(false);
 
   async function browse() {
+    if (browsingRef.current || savingRef.current) return;
+    browsingRef.current = true;
     try {
       const picked = await api.chooseExecutable();
       if (picked) setPath(picked);
     } catch (err) {
       setError(readableError(err));
+    } finally {
+      browsingRef.current = false;
     }
   }
 
   async function submit(event: FormEvent) {
     event.preventDefault();
+    if (savingRef.current) return;
     setError("");
     if (!title.trim() || !path.trim()) {
       setError("Choose an executable and enter a game title.");
       return;
     }
 
+    savingRef.current = true;
     setSaving(true);
     try {
       await api.addManualGame(title.trim(), path.trim());
@@ -280,6 +288,7 @@ function AddGameModal(props: {
     } catch (err) {
       setError(readableError(err));
     } finally {
+      savingRef.current = false;
       setSaving(false);
     }
   }
@@ -793,6 +802,7 @@ export default function App() {
   const refreshScreenshotsBusyRef = useRef(false);
   const refreshScreenshotsPendingRef = useRef(false);
   const toastTimerRef = useRef<number | null>(null);
+  const screenshotsLoadedRef = useRef(false);
   const [consoleMode, setConsoleMode] = useState(
     () => localStorage.getItem("dusk-console-mode") === "true",
   );
@@ -862,6 +872,7 @@ export default function App() {
       do {
         refreshScreenshotsPendingRef.current = false;
         setScreenshots(await api.listScreenshots());
+        screenshotsLoadedRef.current = true;
       } while (refreshScreenshotsPendingRef.current);
     } catch (error) {
       showToast(readableError(error), "error");
@@ -911,7 +922,9 @@ export default function App() {
   }, [refreshCore, refreshScreenshots, showToast]);
 
   useEffect(() => {
-    if (view === "screenshots") void refreshScreenshots();
+    if (view === "screenshots" && !screenshotsLoadedRef.current) {
+      void refreshScreenshots();
+    }
   }, [view, refreshScreenshots]);
 
   useEffect(() => {
