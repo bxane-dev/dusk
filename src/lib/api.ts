@@ -18,6 +18,8 @@ import type {
 } from "../types";
 
 export const api = {
+  exportAccountState: () => invoke<Record<string, unknown>>("export_account_state"),
+  importAccountState: (state: Record<string, unknown>) => invoke<void>("import_account_state", { state }),
   listProfiles: () => invoke<ProfileRecord[]>("list_profiles"),
   getActiveProfile: () => invoke<ProfileRecord>("get_active_profile"),
   createProfile: (name: string) =>
