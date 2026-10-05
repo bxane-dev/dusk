@@ -2270,7 +2270,7 @@ export default function App() {
                       </div>
                       <button
                         className="button secondary"
-                        onClick={() => void logoutDuskAccount().then(() => window.location.reload())}
+                        onClick={() => void api.setAccountScope(null).then(logoutDuskAccount).then(() => window.location.reload())}
                       >
                         Sign out
                       </button>
