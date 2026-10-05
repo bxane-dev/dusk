@@ -118,22 +118,21 @@ jobs:
           tagName: dusk-v__VERSION__
           releaseName: Dusk v__VERSION__
           releaseBody: |
-            # Dusk v1.5.0
+            # Dusk v1.6.0
 
-            Installer hub, bxane branding, owner profiles, and physical save-file vaults.
+            Dusk accounts, cross-device progress sync, and account-owned cloud saves.
 
             ## What's new
 
-            - Added a safe local game-installer flow for user-selected .exe and .msi files.
-            - Added one-click browser links for Steam, Epic Games, GOG, and itch.io.
-            - Added a persistent clickable bxane creator pill linking to https://guns.lol/bxane.
-            - Added local owner profiles with profile-specific game libraries.
-            - Added physical owner save-file vaults: each profile stores actual save files separately for every configured game.
-            - Added Save to profile / Load profile files controls with pre-load safety backups.
-            - Added profile-specific save backup metadata and vault storage.
-            - Added optional private Supabase save-file sync for owner profiles.
-            - Kept automatic game discovery, Downloads scanning, hidden scan helper processes, custom window controls, controller navigation, and rapid-click stability protections.
-            - Publisher / authorship branding: bxane.
+            - Added custom Dusk login and registration.
+            - Register with email, username, and password; sign in with username and password.
+            - Added unique Supabase-backed Dusk accounts and persistent sessions.
+            - Sync owner profiles, library membership, favorites, playtime, launch counts, collections, and active profile across devices.
+            - Replaced anonymous per-install cloud identities with authenticated account-owned save storage.
+            - Added safe cross-device merges while keeping executable and save-folder paths device-local.
+            - Added account sign-out in Settings.
+            - Added private Row Level Security policies for account state and save files.
+            - Kept installer hub, game discovery, profiles, physical save vaults, updater, custom window controls, and controller navigation.
 
             ## Notes
 
