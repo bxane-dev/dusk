@@ -2033,7 +2033,7 @@ export default function App() {
                       <Moon size={20} fill="currentColor" />
                     </div>
                     <div>
-                      <strong>Dusk 1.0.2</strong>
+                      <strong>Dusk 1.0.3</strong>
                       <span>Open code · github.com/bxane-dev/dusk</span>
                     </div>
                   </section>
