@@ -996,7 +996,7 @@ export default function App() {
     }
   }
 
-  async function handleTitlebarMouseDown(event: MouseEvent<HTMLDivElement>) {
+  async function handleTitlebarMouseDown(event: MouseEvent<HTMLElement>) {
     if (event.button !== 0) return;
     const target = event.target;
     if (target instanceof HTMLElement && target.closest("button, input, select, a")) return;
