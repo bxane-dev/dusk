@@ -35,6 +35,7 @@ import {
   useCallback,
   useEffect,
   useMemo,
+  useRef,
   useState,
 } from "react";
 import { getCurrentWindow } from "@tauri-apps/api/window";
@@ -345,6 +346,7 @@ function GameDetail(props: {
   onToast: (message: string, type?: "ok" | "error") => void;
 }) {
   const [busy, setBusy] = useState(false);
+  const detailBusyRef = useRef(false);
   const [saveConfig, setSaveConfig] = useState<SaveConfig | null>(null);
   const [saveBackups, setSaveBackups] = useState<SaveBackupRecord[]>([]);
   const [saveLoading, setSaveLoading] = useState(true);
@@ -377,42 +379,53 @@ function GameDetail(props: {
     void refreshSaveData();
   }, [props.game.id]);
 
-  async function configureSaveFolder() {
+  async function withDetailLock<T>(action: () => Promise<T>): Promise<T | undefined> {
+    if (detailBusyRef.current) return undefined;
+    detailBusyRef.current = true;
     setBusy(true);
     try {
-      const config = await api.chooseSaveFolder(props.game.id);
-      if (config) {
-        setSaveConfig(config);
-        props.onToast("Save folder configured.");
-        await refreshSaveData();
-      }
-    } catch (error) {
-      props.onToast(readableError(error), "error");
+      return await action();
     } finally {
+      detailBusyRef.current = false;
       setBusy(false);
     }
+  }
+
+  async function configureSaveFolder() {
+    await withDetailLock(async () => {
+      try {
+        const config = await api.chooseSaveFolder(props.game.id);
+        if (config) {
+          setSaveConfig(config);
+          props.onToast("Save folder configured.");
+          await refreshSaveData();
+        }
+      } catch (error) {
+        props.onToast(readableError(error), "error");
+      }
+    });
   }
 
   async function backupSaves() {
-    setBusy(true);
-    try {
-      const backup = await api.createSaveBackup(props.game.id);
-      props.onToast(
-        "Save backup created: " +
-          String(backup.fileCount) +
-          " files · " +
-          formatBytes(backup.totalBytes) +
-          ".",
-      );
-      await refreshSaveData();
-    } catch (error) {
-      props.onToast(readableError(error), "error");
-    } finally {
-      setBusy(false);
-    }
+    await withDetailLock(async () => {
+      try {
+        const backup = await api.createSaveBackup(props.game.id);
+        props.onToast(
+          "Save backup created: " +
+            String(backup.fileCount) +
+            " files · " +
+            formatBytes(backup.totalBytes) +
+            ".",
+        );
+        await refreshSaveData();
+      } catch (error) {
+        props.onToast(readableError(error), "error");
+      }
+    });
   }
 
   async function restoreBackup(backup: SaveBackupRecord) {
+    if (detailBusyRef.current) return;
     const okay = window.confirm(
       "Restore this save backup from " +
         formatDate(backup.createdAt) +
@@ -420,69 +433,67 @@ function GameDetail(props: {
     );
     if (!okay) return;
 
-    setBusy(true);
-    try {
-      const safety = await api.restoreSaveBackup(props.game.id, backup.id);
-      props.onToast(
-        "Save restored. Safety backup created with " +
-          String(safety.fileCount) +
-          " files.",
-      );
-      await refreshSaveData();
-    } catch (error) {
-      props.onToast(readableError(error), "error");
-    } finally {
-      setBusy(false);
-    }
+    await withDetailLock(async () => {
+      try {
+        const safety = await api.restoreSaveBackup(props.game.id, backup.id);
+        props.onToast(
+          "Save restored. Safety backup created with " +
+            String(safety.fileCount) +
+            " files.",
+        );
+        await refreshSaveData();
+      } catch (error) {
+        props.onToast(readableError(error), "error");
+      }
+    });
   }
 
   async function deleteBackup(backup: SaveBackupRecord) {
+    if (detailBusyRef.current) return;
     const okay = window.confirm(
       "Delete this Dusk backup? Your current live save files will not be changed.",
     );
     if (!okay) return;
 
-    setBusy(true);
-    try {
-      await api.deleteSaveBackup(props.game.id, backup.id);
-      props.onToast("Save backup deleted.");
-      await refreshSaveData();
-    } catch (error) {
-      props.onToast(readableError(error), "error");
-    } finally {
-      setBusy(false);
-    }
+    await withDetailLock(async () => {
+      try {
+        await api.deleteSaveBackup(props.game.id, backup.id);
+        props.onToast("Save backup deleted.");
+        await refreshSaveData();
+      } catch (error) {
+        props.onToast(readableError(error), "error");
+      }
+    });
   }
 
   async function clearSaveFolder() {
+    if (detailBusyRef.current) return;
     const okay = window.confirm(
       "Stop managing this save folder? Existing Dusk backups will be kept.",
     );
     if (!okay) return;
 
-    setBusy(true);
-    try {
-      await api.clearSaveConfig(props.game.id);
-      props.onToast("Save folder disconnected.");
-      await refreshSaveData();
-    } catch (error) {
-      props.onToast(readableError(error), "error");
-    } finally {
-      setBusy(false);
-    }
+    await withDetailLock(async () => {
+      try {
+        await api.clearSaveConfig(props.game.id);
+        props.onToast("Save folder disconnected.");
+        await refreshSaveData();
+      } catch (error) {
+        props.onToast(readableError(error), "error");
+      }
+    });
   }
 
   async function run(action: () => Promise<unknown>, success?: string) {
-    setBusy(true);
-    try {
-      await action();
-      if (success) props.onToast(success);
-      await props.onRefresh();
-    } catch (error) {
-      props.onToast(readableError(error), "error");
-    } finally {
-      setBusy(false);
-    }
+    await withDetailLock(async () => {
+      try {
+        await action();
+        if (success) props.onToast(success);
+        await props.onRefresh();
+      } catch (error) {
+        props.onToast(readableError(error), "error");
+      }
+    });
   }
 
   async function rename() {
@@ -769,6 +780,19 @@ export default function App() {
   const [toast, setToast] = useState<{ message: string; type: "ok" | "error" } | null>(null);
   const [updateBusy, setUpdateBusy] = useState(false);
   const [availableUpdate, setAvailableUpdate] = useState<string | null>(null);
+  const scanLockRef = useRef(false);
+  const screenshotScanLockRef = useRef(false);
+  const playingIdsRef = useRef(new Set<string>());
+  const favoriteLocksRef = useRef(new Set<string>());
+  const collectionMutationRef = useRef(false);
+  const screenshotDeleteLocksRef = useRef(new Set<number>());
+  const updateLockRef = useRef(false);
+  const consoleModeLockRef = useRef(false);
+  const refreshCoreBusyRef = useRef(false);
+  const refreshCorePendingRef = useRef(false);
+  const refreshScreenshotsBusyRef = useRef(false);
+  const refreshScreenshotsPendingRef = useRef(false);
+  const toastTimerRef = useRef<number | null>(null);
   const [consoleMode, setConsoleMode] = useState(
     () => localStorage.getItem("dusk-console-mode") === "true",
   );
@@ -781,29 +805,46 @@ export default function App() {
   );
 
   const showToast = useCallback((message: string, type: "ok" | "error" = "ok") => {
+    if (toastTimerRef.current !== null) {
+      window.clearTimeout(toastTimerRef.current);
+    }
     setToast({ message, type });
-    window.setTimeout(() => setToast(null), 3600);
+    toastTimerRef.current = window.setTimeout(() => {
+      setToast(null);
+      toastTimerRef.current = null;
+    }, 3600);
   }, []);
 
   const refreshCore = useCallback(
     async (initial = false) => {
+      if (refreshCoreBusyRef.current) {
+        refreshCorePendingRef.current = true;
+        return;
+      }
+
+      refreshCoreBusyRef.current = true;
       if (initial) setLoading(true);
+
       try {
-        const values = await Promise.all([
-          api.listGames(),
-          api.getStats(),
-          api.listAchievements(),
-          api.listCollections(),
-          api.collectionMemberships(),
-        ]);
-        setGames(values[0]);
-        setStats(values[1]);
-        setAchievements(values[2]);
-        setCollections(values[3]);
-        setMemberships(values[4]);
+        do {
+          refreshCorePendingRef.current = false;
+          const values = await Promise.all([
+            api.listGames(),
+            api.getStats(),
+            api.listAchievements(),
+            api.listCollections(),
+            api.collectionMemberships(),
+          ]);
+          setGames(values[0]);
+          setStats(values[1]);
+          setAchievements(values[2]);
+          setCollections(values[3]);
+          setMemberships(values[4]);
+        } while (refreshCorePendingRef.current);
       } catch (error) {
         showToast(readableError(error), "error");
       } finally {
+        refreshCoreBusyRef.current = false;
         if (initial) setLoading(false);
       }
     },
@@ -811,38 +852,61 @@ export default function App() {
   );
 
   const refreshScreenshots = useCallback(async () => {
+    if (refreshScreenshotsBusyRef.current) {
+      refreshScreenshotsPendingRef.current = true;
+      return;
+    }
+
+    refreshScreenshotsBusyRef.current = true;
     try {
-      setScreenshots(await api.listScreenshots());
+      do {
+        refreshScreenshotsPendingRef.current = false;
+        setScreenshots(await api.listScreenshots());
+      } while (refreshScreenshotsPendingRef.current);
     } catch (error) {
       showToast(readableError(error), "error");
+    } finally {
+      refreshScreenshotsBusyRef.current = false;
     }
   }, [showToast]);
 
   useEffect(() => {
     let cancelled = false;
+    let scanTimer: number | null = null;
 
     void (async () => {
       await refreshCore(true);
-      try {
-        const result = await api.scanScreenshots();
-        if (!cancelled && result.imported > 0) {
-          await Promise.all([refreshScreenshots(), refreshCore(false)]);
-          showToast(
-            "Dusk automatically found " +
-              String(result.imported) +
-              " new screenshot" +
-              (result.imported === 1 ? "." : "s."),
-          );
-        }
-      } catch {
-        // Screenshot discovery is best-effort and must not block Dusk startup.
-      }
+      if (cancelled) return;
+
+      scanTimer = window.setTimeout(() => {
+        if (cancelled || screenshotScanLockRef.current) return;
+        screenshotScanLockRef.current = true;
+
+        void api
+          .scanScreenshots()
+          .then(async (result) => {
+            if (!cancelled && result.imported > 0) {
+              await Promise.all([refreshScreenshots(), refreshCore(false)]);
+              showToast(
+                "Dusk automatically found " +
+                  String(result.imported) +
+                  " new screenshot" +
+                  (result.imported === 1 ? "." : "s."),
+              );
+            }
+          })
+          .catch(() => undefined)
+          .finally(() => {
+            screenshotScanLockRef.current = false;
+          });
+      }, 1400);
     })();
 
     void api.dataDirectory().then(setDataDirectory).catch(() => undefined);
 
     return () => {
       cancelled = true;
+      if (scanTimer !== null) window.clearTimeout(scanTimer);
     };
   }, [refreshCore, refreshScreenshots, showToast]);
 
@@ -865,6 +929,8 @@ export default function App() {
   }, [theme, accent]);
 
   async function setConsoleModeEnabled(enabled: boolean) {
+    if (consoleModeLockRef.current) return;
+    consoleModeLockRef.current = true;
     try {
       await getCurrentWindow().setFullscreen(enabled);
       setConsoleMode(enabled);
@@ -880,6 +946,8 @@ export default function App() {
       }
     } catch (error) {
       showToast("Could not change fullscreen mode: " + readableError(error), "error");
+    } finally {
+      consoleModeLockRef.current = false;
     }
   }
 
@@ -987,10 +1055,23 @@ export default function App() {
   const favoriteGames = useMemo(() => games.filter((game) => game.favorite).slice(0, 6), [games]);
 
   async function scan() {
+    if (scanLockRef.current) return;
+    scanLockRef.current = true;
     setScanning(true);
+
     try {
       const result = await api.scanGames();
-      const screenshotResult = await api.scanScreenshots();
+
+      let screenshotResult = null;
+      if (!screenshotScanLockRef.current) {
+        screenshotScanLockRef.current = true;
+        try {
+          screenshotResult = await api.scanScreenshots();
+        } finally {
+          screenshotScanLockRef.current = false;
+        }
+      }
+
       await Promise.all([refreshCore(false), refreshScreenshots()]);
       const detail =
         String(result.added) +
@@ -1005,7 +1086,7 @@ export default function App() {
         " GOG · " +
         String(result.emulatorFound) +
         " emulators" +
-        (screenshotResult.imported > 0
+        (screenshotResult && screenshotResult.imported > 0
           ? " · " + String(screenshotResult.imported) + " screenshots"
           : "");
       showToast("Scan complete: " + String(result.found) + " found (" + detail + ").");
@@ -1016,11 +1097,15 @@ export default function App() {
       showToast(readableError(error), "error");
     } finally {
       setScanning(false);
+      scanLockRef.current = false;
     }
   }
 
   async function scanScreenshotsNow() {
+    if (screenshotScanLockRef.current) return;
+    screenshotScanLockRef.current = true;
     setScreenshotScanning(true);
+
     try {
       const result = await api.scanScreenshots();
       await Promise.all([refreshScreenshots(), refreshCore(false)]);
@@ -1045,33 +1130,62 @@ export default function App() {
       showToast(readableError(error), "error");
     } finally {
       setScreenshotScanning(false);
+      screenshotScanLockRef.current = false;
     }
   }
 
   async function play(game: GameRecord) {
+    if (playingIdsRef.current.has(game.id)) return;
+    playingIdsRef.current.add(game.id);
     setPlayingId(game.id);
+
     try {
       const result = await api.launchGame(game.id);
       showToast(result.message, result.started ? "ok" : "error");
     } catch (error) {
       showToast(readableError(error), "error");
     } finally {
-      setPlayingId(null);
+      playingIdsRef.current.delete(game.id);
+      setPlayingId((current) => (current === game.id ? null : current));
     }
   }
 
   async function toggleFavorite(game: GameRecord) {
+    if (favoriteLocksRef.current.has(game.id)) return;
+    favoriteLocksRef.current.add(game.id);
+
+    const nextFavorite = !game.favorite;
+    setGames((current) =>
+      current.map((item) =>
+        item.id === game.id ? { ...item, favorite: nextFavorite } : item,
+      ),
+    );
+    setStats((current) => ({
+      ...current,
+      favoriteCount: Math.max(0, current.favoriteCount + (nextFavorite ? 1 : -1)),
+    }));
+
     try {
-      await api.setFavorite(game.id, !game.favorite);
-      await refreshCore(false);
+      await api.setFavorite(game.id, nextFavorite);
     } catch (error) {
+      setGames((current) =>
+        current.map((item) =>
+          item.id === game.id ? { ...item, favorite: game.favorite } : item,
+        ),
+      );
+      void refreshCore(false);
       showToast(readableError(error), "error");
+    } finally {
+      favoriteLocksRef.current.delete(game.id);
     }
   }
 
   async function createCollection() {
+    if (collectionMutationRef.current) return;
     const name = window.prompt("Collection name");
     if (!name || !name.trim()) return;
+
+    collectionMutationRef.current = true;
     try {
       const collection = await api.createCollection(name.trim());
       await refreshCore(false);
@@ -1080,14 +1194,19 @@ export default function App() {
       showToast("Created " + collection.name + ".");
     } catch (error) {
       showToast(readableError(error), "error");
+    } finally {
+      collectionMutationRef.current = false;
     }
   }
 
   async function deleteCollection(collection: CollectionRecord) {
+    if (collectionMutationRef.current) return;
     const okay = window.confirm(
       'Delete the "' + collection.name + '" collection? Games stay in your library.',
     );
     if (!okay) return;
+
+    collectionMutationRef.current = true;
     try {
       await api.deleteCollection(collection.id);
       if (collectionFilter === collection.id) setCollectionFilter("all");
@@ -1095,11 +1214,16 @@ export default function App() {
       showToast("Collection deleted.");
     } catch (error) {
       showToast(readableError(error), "error");
+    } finally {
+      collectionMutationRef.current = false;
     }
   }
 
   async function checkUpdates() {
+    if (updateLockRef.current) return;
+    updateLockRef.current = true;
     setUpdateBusy(true);
+
     try {
       const result = await checkForDuskUpdate();
       if (result.available && result.version) {
@@ -1115,28 +1239,44 @@ export default function App() {
         "error",
       );
     } finally {
+      updateLockRef.current = false;
       setUpdateBusy(false);
     }
   }
 
   async function installUpdate() {
+    if (updateLockRef.current) return;
+    updateLockRef.current = true;
     setUpdateBusy(true);
+
     try {
       await installDuskUpdate();
     } catch (error) {
       showToast(readableError(error), "error");
+    } finally {
+      updateLockRef.current = false;
       setUpdateBusy(false);
     }
   }
 
   async function deleteScreenshot(screenshot: ScreenshotRecord) {
+    if (screenshotDeleteLocksRef.current.has(screenshot.id)) return;
     if (!window.confirm("Delete this imported screenshot from Dusk?")) return;
+
+    screenshotDeleteLocksRef.current.add(screenshot.id);
     try {
       await api.deleteScreenshot(screenshot.id);
-      await Promise.all([refreshScreenshots(), refreshCore(false)]);
+      setScreenshots((current) => current.filter((item) => item.id !== screenshot.id));
+      setStats((current) => ({
+        ...current,
+        screenshotCount: Math.max(0, current.screenshotCount - 1),
+      }));
       showToast("Screenshot deleted.");
     } catch (error) {
+      void refreshScreenshots();
       showToast(readableError(error), "error");
+    } finally {
+      screenshotDeleteLocksRef.current.delete(screenshot.id);
     }
   }
 
