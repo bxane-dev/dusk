@@ -124,6 +124,26 @@ struct CollectionMembership {
     game_id: String,
 }
 
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct SaveConfig {
+    game_id: String,
+    save_path: String,
+    configured_at: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct SaveBackupRecord {
+    id: String,
+    game_id: String,
+    backup_path: String,
+    created_at: String,
+    file_count: i64,
+    total_bytes: i64,
+    kind: String,
+}
+
 fn app_data_dir(app: &AppHandle) -> Result<PathBuf, String> {
     let dir = app
         .path()
@@ -199,6 +219,27 @@ fn initialize_schema(connection: &Connection) -> Result<(), String> {
                 FOREIGN KEY(collection_id) REFERENCES collections(id) ON DELETE CASCADE,
                 FOREIGN KEY(game_id) REFERENCES games(id) ON DELETE CASCADE
             );
+
+            CREATE TABLE IF NOT EXISTS save_configs (
+                game_id TEXT PRIMARY KEY,
+                save_path TEXT NOT NULL,
+                configured_at TEXT NOT NULL,
+                FOREIGN KEY(game_id) REFERENCES games(id) ON DELETE CASCADE
+            );
+
+            CREATE TABLE IF NOT EXISTS save_backups (
+                id TEXT PRIMARY KEY,
+                game_id TEXT NOT NULL,
+                backup_path TEXT NOT NULL UNIQUE,
+                created_at TEXT NOT NULL,
+                file_count INTEGER NOT NULL,
+                total_bytes INTEGER NOT NULL,
+                kind TEXT NOT NULL DEFAULT 'manual',
+                FOREIGN KEY(game_id) REFERENCES games(id) ON DELETE CASCADE
+            );
+
+            CREATE INDEX IF NOT EXISTS idx_save_backups_game_created
+            ON save_backups(game_id, created_at DESC);
 
             CREATE INDEX IF NOT EXISTS idx_games_last_played ON games(last_played);
             CREATE INDEX IF NOT EXISTS idx_sessions_game_id ON sessions(game_id);
@@ -1906,6 +1947,355 @@ fn list_achievements(app: AppHandle) -> Result<Vec<Achievement>, String> {
     Ok(achievements)
 }
 
+
+fn validate_save_directory(path: &Path) -> Result<PathBuf, String> {
+    if !path.exists() {
+        return Err("The selected save folder does not exist.".into());
+    }
+    if !path.is_dir() {
+        return Err("The selected save path is not a folder.".into());
+    }
+
+    let canonical = path
+        .canonicalize()
+        .map_err(|error| format!("Could not resolve save folder: {error}"))?;
+
+    if canonical.file_name().is_none() {
+        return Err("A drive root cannot be used as a save folder.".into());
+    }
+
+    Ok(canonical)
+}
+
+fn directory_stats(path: &Path) -> (i64, i64) {
+    let mut files = 0_i64;
+    let mut bytes = 0_i64;
+
+    for entry in WalkDir::new(path)
+        .follow_links(false)
+        .into_iter()
+        .filter_map(Result::ok)
+    {
+        if !entry.file_type().is_file() {
+            continue;
+        }
+        files += 1;
+        bytes += entry
+            .metadata()
+            .map(|metadata| metadata.len() as i64)
+            .unwrap_or(0);
+    }
+
+    (files, bytes)
+}
+
+fn copy_directory_tree(source: &Path, destination: &Path) -> Result<(i64, i64), String> {
+    fs::create_dir_all(destination)
+        .map_err(|error| format!("Could not create backup directory: {error}"))?;
+
+    let mut file_count = 0_i64;
+    let mut total_bytes = 0_i64;
+
+    for entry in WalkDir::new(source)
+        .follow_links(false)
+        .into_iter()
+        .filter_map(Result::ok)
+    {
+        let source_path = entry.path();
+        let relative = source_path
+            .strip_prefix(source)
+            .map_err(|error| format!("Could not map save path: {error}"))?;
+
+        if relative.as_os_str().is_empty() {
+            continue;
+        }
+
+        let target = destination.join(relative);
+
+        if entry.file_type().is_dir() {
+            fs::create_dir_all(&target)
+                .map_err(|error| format!("Could not create backup folder: {error}"))?;
+            continue;
+        }
+
+        if entry.file_type().is_file() {
+            if let Some(parent) = target.parent() {
+                fs::create_dir_all(parent)
+                    .map_err(|error| format!("Could not create backup folder: {error}"))?;
+            }
+
+            let copied = fs::copy(source_path, &target)
+                .map_err(|error| format!("Could not copy save file: {error}"))?;
+
+            file_count += 1;
+            total_bytes += copied as i64;
+        }
+    }
+
+    Ok((file_count, total_bytes))
+}
+
+fn clear_directory_contents(path: &Path) -> Result<(), String> {
+    let entries = fs::read_dir(path)
+        .map_err(|error| format!("Could not read configured save folder: {error}"))?;
+
+    for entry in entries {
+        let entry = entry.map_err(|error| format!("Could not inspect save folder: {error}"))?;
+        let target = entry.path();
+
+        if target.is_dir() {
+            fs::remove_dir_all(&target)
+                .map_err(|error| format!("Could not clear save folder: {error}"))?;
+        } else {
+            fs::remove_file(&target)
+                .map_err(|error| format!("Could not clear save file: {error}"))?;
+        }
+    }
+
+    Ok(())
+}
+
+fn save_config_for_game(connection: &Connection, game_id: &str) -> Result<SaveConfig, String> {
+    connection
+        .query_row(
+            "SELECT game_id, save_path, configured_at FROM save_configs WHERE game_id = ?1",
+            params![game_id],
+            |row| {
+                Ok(SaveConfig {
+                    game_id: row.get(0)?,
+                    save_path: row.get(1)?,
+                    configured_at: row.get(2)?,
+                })
+            },
+        )
+        .optional()
+        .map_err(|error| format!("Could not read save configuration: {error}"))?
+        .ok_or_else(|| "No save folder is configured for this game.".to_string())
+}
+
+fn create_save_backup_internal(
+    app: &AppHandle,
+    connection: &Connection,
+    game_id: &str,
+    kind: &str,
+) -> Result<SaveBackupRecord, String> {
+    let config = save_config_for_game(connection, game_id)?;
+    let source = validate_save_directory(Path::new(&config.save_path))?;
+
+    let id = Uuid::new_v4().to_string();
+    let backup_root = app_data_dir(app)?
+        .join("save-backups")
+        .join(game_id.replace(':', "_"))
+        .join(&id);
+
+    let (file_count, total_bytes) = copy_directory_tree(&source, &backup_root)?;
+    let created_at = now();
+
+    connection
+        .execute(
+            r#"
+            INSERT INTO save_backups
+                (id, game_id, backup_path, created_at, file_count, total_bytes, kind)
+            VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)
+            "#,
+            params![
+                id,
+                game_id,
+                backup_root.to_string_lossy().into_owned(),
+                created_at,
+                file_count,
+                total_bytes,
+                kind
+            ],
+        )
+        .map_err(|error| format!("Could not record save backup: {error}"))?;
+
+    Ok(SaveBackupRecord {
+        id,
+        game_id: game_id.to_string(),
+        backup_path: backup_root.to_string_lossy().into_owned(),
+        created_at,
+        file_count,
+        total_bytes,
+        kind: kind.to_string(),
+    })
+}
+
+#[tauri::command]
+fn choose_save_folder(app: AppHandle, game_id: String) -> Result<Option<SaveConfig>, String> {
+    // Ensure the game exists before associating a filesystem location with it.
+    let connection = open_database(&app)?;
+    let _ = get_game(&connection, &game_id)?;
+
+    let Some(selected) = rfd::FileDialog::new().pick_folder() else {
+        return Ok(None);
+    };
+
+    let save_path = validate_save_directory(&selected)?;
+    let configured_at = now();
+
+    connection
+        .execute(
+            r#"
+            INSERT INTO save_configs (game_id, save_path, configured_at)
+            VALUES (?1, ?2, ?3)
+            ON CONFLICT(game_id) DO UPDATE SET
+                save_path = excluded.save_path,
+                configured_at = excluded.configured_at
+            "#,
+            params![
+                game_id,
+                save_path.to_string_lossy().into_owned(),
+                configured_at
+            ],
+        )
+        .map_err(|error| format!("Could not save backup configuration: {error}"))?;
+
+    Ok(Some(SaveConfig {
+        game_id,
+        save_path: save_path.to_string_lossy().into_owned(),
+        configured_at,
+    }))
+}
+
+#[tauri::command]
+fn get_save_config(app: AppHandle, game_id: String) -> Result<Option<SaveConfig>, String> {
+    let connection = open_database(&app)?;
+    connection
+        .query_row(
+            "SELECT game_id, save_path, configured_at FROM save_configs WHERE game_id = ?1",
+            params![game_id],
+            |row| {
+                Ok(SaveConfig {
+                    game_id: row.get(0)?,
+                    save_path: row.get(1)?,
+                    configured_at: row.get(2)?,
+                })
+            },
+        )
+        .optional()
+        .map_err(|error| format!("Could not load save configuration: {error}"))
+}
+
+#[tauri::command]
+fn clear_save_config(app: AppHandle, game_id: String) -> Result<(), String> {
+    let connection = open_database(&app)?;
+    connection
+        .execute("DELETE FROM save_configs WHERE game_id = ?1", params![game_id])
+        .map_err(|error| format!("Could not clear save configuration: {error}"))?;
+    Ok(())
+}
+
+#[tauri::command]
+fn create_save_backup(app: AppHandle, game_id: String) -> Result<SaveBackupRecord, String> {
+    let connection = open_database(&app)?;
+    create_save_backup_internal(&app, &connection, &game_id, "manual")
+}
+
+#[tauri::command]
+fn list_save_backups(app: AppHandle, game_id: String) -> Result<Vec<SaveBackupRecord>, String> {
+    let connection = open_database(&app)?;
+    let mut statement = connection
+        .prepare(
+            r#"
+            SELECT id, game_id, backup_path, created_at, file_count, total_bytes, kind
+            FROM save_backups
+            WHERE game_id = ?1
+            ORDER BY created_at DESC
+            "#,
+        )
+        .map_err(|error| format!("Could not prepare backup list: {error}"))?;
+
+    let rows = statement
+        .query_map(params![game_id], |row| {
+            Ok(SaveBackupRecord {
+                id: row.get(0)?,
+                game_id: row.get(1)?,
+                backup_path: row.get(2)?,
+                created_at: row.get(3)?,
+                file_count: row.get(4)?,
+                total_bytes: row.get(5)?,
+                kind: row.get(6)?,
+            })
+        })
+        .map_err(|error| format!("Could not load save backups: {error}"))?;
+
+    let mut backups = Vec::new();
+    for row in rows {
+        backups.push(row.map_err(|error| format!("Could not decode save backup: {error}"))?);
+    }
+    Ok(backups)
+}
+
+#[tauri::command]
+fn restore_save_backup(
+    app: AppHandle,
+    game_id: String,
+    backup_id: String,
+) -> Result<SaveBackupRecord, String> {
+    let connection = open_database(&app)?;
+    let config = save_config_for_game(&connection, &game_id)?;
+    let destination = validate_save_directory(Path::new(&config.save_path))?;
+
+    let backup_path: String = connection
+        .query_row(
+            "SELECT backup_path FROM save_backups WHERE id = ?1 AND game_id = ?2",
+            params![backup_id, game_id],
+            |row| row.get(0),
+        )
+        .optional()
+        .map_err(|error| format!("Could not load save backup: {error}"))?
+        .ok_or_else(|| "Backup not found.".to_string())?;
+
+    let source = PathBuf::from(backup_path);
+    if !source.is_dir() {
+        return Err("The backup files are missing from disk.".into());
+    }
+
+    // Always preserve the current saves before a destructive restore.
+    let safety_backup = create_save_backup_internal(&app, &connection, &game_id, "pre-restore")?;
+
+    clear_directory_contents(&destination)?;
+    if let Err(error) = copy_directory_tree(&source, &destination) {
+        return Err(format!(
+            "Restore failed after creating safety backup {}: {}",
+            safety_backup.id, error
+        ));
+    }
+
+    Ok(safety_backup)
+}
+
+#[tauri::command]
+fn delete_save_backup(app: AppHandle, game_id: String, backup_id: String) -> Result<(), String> {
+    let connection = open_database(&app)?;
+    let backup_path: Option<String> = connection
+        .query_row(
+            "SELECT backup_path FROM save_backups WHERE id = ?1 AND game_id = ?2",
+            params![backup_id, game_id],
+            |row| row.get(0),
+        )
+        .optional()
+        .map_err(|error| format!("Could not locate save backup: {error}"))?;
+
+    if let Some(backup_path) = backup_path {
+        let path = PathBuf::from(backup_path);
+        if path.is_dir() {
+            fs::remove_dir_all(&path)
+                .map_err(|error| format!("Could not delete backup files: {error}"))?;
+        }
+    }
+
+    connection
+        .execute(
+            "DELETE FROM save_backups WHERE id = ?1 AND game_id = ?2",
+            params![backup_id, game_id],
+        )
+        .map_err(|error| format!("Could not delete backup record: {error}"))?;
+
+    Ok(())
+}
+
 #[tauri::command]
 fn data_directory(app: AppHandle) -> Result<String, String> {
     Ok(app_data_dir(&app)?.to_string_lossy().into_owned())
@@ -1940,6 +2330,13 @@ pub fn run() {
             collection_memberships,
             get_stats,
             list_achievements,
+            choose_save_folder,
+            get_save_config,
+            clear_save_config,
+            create_save_backup,
+            list_save_backups,
+            restore_save_backup,
+            delete_save_backup,
             data_directory,
         ])
         .run(tauri::generate_context!())
