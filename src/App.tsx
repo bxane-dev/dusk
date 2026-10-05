@@ -37,8 +37,10 @@ import {
   useMemo,
   useState,
 } from "react";
+import { getCurrentWindow } from "@tauri-apps/api/window";
 import { api } from "./lib/api";
 import { checkForDuskUpdate, installDuskUpdate } from "./lib/updater";
+import { useControllerNavigation } from "./lib/useControllerNavigation";
 import type {
   Achievement,
   CollectionMembership,
@@ -187,6 +189,7 @@ function GameCard(props: {
   return (
     <article
       className="game-card"
+      data-controller-game-id={props.game.id}
       role="button"
       tabIndex={0}
       onClick={props.onOpen}
@@ -766,6 +769,9 @@ export default function App() {
   const [toast, setToast] = useState<{ message: string; type: "ok" | "error" } | null>(null);
   const [updateBusy, setUpdateBusy] = useState(false);
   const [availableUpdate, setAvailableUpdate] = useState<string | null>(null);
+  const [consoleMode, setConsoleMode] = useState(
+    () => localStorage.getItem("dusk-console-mode") === "true",
+  );
 
   const [theme, setTheme] = useState<ThemeName>(
     () => (localStorage.getItem("dusk-theme") as ThemeName) || "night",
@@ -857,6 +863,72 @@ export default function App() {
     localStorage.setItem("dusk-theme", theme);
     localStorage.setItem("dusk-accent", accent);
   }, [theme, accent]);
+
+  async function setConsoleModeEnabled(enabled: boolean) {
+    try {
+      await getCurrentWindow().setFullscreen(enabled);
+      setConsoleMode(enabled);
+      localStorage.setItem("dusk-console-mode", String(enabled));
+
+      if (enabled) {
+        window.setTimeout(() => {
+          const first = document.querySelector<HTMLElement>(
+            '.game-card, .nav-item, button:not(:disabled)',
+          );
+          first?.focus();
+        }, 180);
+      }
+    } catch (error) {
+      showToast("Could not change fullscreen mode: " + readableError(error), "error");
+    }
+  }
+
+  function controllerBack() {
+    if (selectedGameId) {
+      setSelectedGameId(null);
+      return;
+    }
+    if (addOpen) {
+      setAddOpen(false);
+      return;
+    }
+    if (view !== "home") {
+      setView("home");
+      setCollectionFilter("all");
+    }
+  }
+
+  function controllerPlay(gameId: string) {
+    const game = games.find((item) => item.id === gameId);
+    if (game) void play(game);
+  }
+
+  const { connected: controllerConnected } = useControllerNavigation({
+    onBack: controllerBack,
+    onToggleConsole: () => void setConsoleModeEnabled(!consoleMode),
+    onPlayGame: controllerPlay,
+  });
+
+  useEffect(() => {
+    if (!consoleMode) return;
+    void getCurrentWindow().setFullscreen(true).catch(() => undefined);
+  }, []);
+
+  useEffect(() => {
+    function onKeyDown(event: KeyboardEvent) {
+      if (event.key === "F11") {
+        event.preventDefault();
+        void setConsoleModeEnabled(!consoleMode);
+      } else if (event.key === "Escape" && consoleMode) {
+        event.preventDefault();
+        controllerBack();
+      }
+    }
+
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [consoleMode, selectedGameId, addOpen, view, games]);
+
 
   const selectedGame = games.find((game) => game.id === selectedGameId) || null;
 
@@ -1077,7 +1149,7 @@ export default function App() {
         : "Library";
 
   return (
-    <div className="app-shell">
+    <div className={cx("app-shell", consoleMode && "console-mode", controllerConnected && "controller-connected")}>
       <aside className="sidebar">
         <div className="brand">
           <div className="brand-mark">
@@ -1556,6 +1628,33 @@ export default function App() {
 
                   <section className="settings-card">
                     <div className="settings-card-head">
+                      <Gamepad2 size={20} />
+                      <div>
+                        <h3>Console mode</h3>
+                        <p>Fullscreen layout designed for controller navigation.</p>
+                      </div>
+                    </div>
+
+                    <div className="setting-row">
+                      <div>
+                        <strong>{controllerConnected ? "Controller connected" : "Controller navigation"}</strong>
+                        <span>
+                          D-pad or left stick moves focus · A selects · X launches the focused game ·
+                          B goes back · Menu toggles fullscreen.
+                        </span>
+                      </div>
+                      <button
+                        className={cx("button", consoleMode ? "primary" : "secondary")}
+                        onClick={() => void setConsoleModeEnabled(!consoleMode)}
+                      >
+                        <Gamepad2 size={16} />
+                        {consoleMode ? "Exit console mode" : "Enter console mode"}
+                      </button>
+                    </div>
+                  </section>
+
+                  <section className="settings-card">
+                    <div className="settings-card-head">
                       <Moon size={20} />
                       <div>
                         <h3>Appearance</h3>
@@ -1732,6 +1831,15 @@ export default function App() {
           onRefresh={() => refreshCore(false)}
           onToast={showToast}
         />
+      )}
+
+      {controllerConnected && (
+        <div className="controller-bar" aria-live="polite">
+          <span><kbd>A</kbd> Select</span>
+          <span><kbd>X</kbd> Play</span>
+          <span><kbd>B</kbd> Back</span>
+          <span><kbd>Menu</kbd> {consoleMode ? "Exit fullscreen" : "Fullscreen"}</span>
+        </div>
       )}
 
       {toast && <div className={cx("toast", toast.type)}>{toast.message}</div>}
