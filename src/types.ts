@@ -80,6 +80,7 @@ export interface AutoScreenshotScanResult {
 }
 
 export interface SaveConfig {
+  profileId: string;
   gameId: string;
   savePath: string;
   configuredAt: string;
@@ -87,10 +88,27 @@ export interface SaveConfig {
 
 export interface SaveBackupRecord {
   id: string;
+  profileId: string;
   gameId: string;
   backupPath: string;
   createdAt: string;
   fileCount: number;
   totalBytes: number;
   kind: "manual" | "pre-restore" | string;
+}
+
+export interface ProfileRecord {
+  id: string;
+  name: string;
+  createdAt: string;
+  lastUsedAt: string;
+  gameCount: number;
+  backupCount: number;
+}
+
+export interface CloudSaveStatus {
+  configured: boolean;
+  authenticated: boolean;
+  userId: string | null;
+  message: string;
 }
