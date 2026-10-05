@@ -46,6 +46,17 @@ jobs:
             if ($null -eq $config.plugins) {
               $config | Add-Member -NotePropertyName plugins -NotePropertyValue ([pscustomobject]@{})
             }
+
+            $libPath = 'src-tauri/src/lib.rs'
+            $lib = Get-Content $libPath -Raw
+            if ($lib -notmatch 'tauri_plugin_updater::Builder') {
+              $lib = $lib.Replace(
+                '    tauri::Builder::default()',
+                "    tauri::Builder::default()`n        .plugin(tauri_plugin_updater::Builder::new().build())"
+              )
+              Set-Content $libPath $lib
+            }
+
             $updater = [pscustomobject]@{
               pubkey = $env:TAURI_SIGNING_PUBLIC_KEY
               endpoints = @('https://github.com/bxane-dev/dusk/releases/latest/download/latest.json')
