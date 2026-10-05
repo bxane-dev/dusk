@@ -1075,7 +1075,7 @@ export default function App() {
   const favoriteGames = useMemo(() => games.filter((game) => game.favorite).slice(0, 6), [games]);
 
   async function autoScanGames(force: boolean) {
-    if (!autoScanEnabled || scanLockRef.current) return;
+    if ((!autoScanEnabled && !force) || scanLockRef.current) return;
 
     const last = Number(localStorage.getItem("dusk-last-auto-scan") || "0");
     if (!force && last > 0 && Date.now() - last < 10 * 60 * 1000) return;
