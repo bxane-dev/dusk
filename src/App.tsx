@@ -47,7 +47,7 @@ import {
 import { convertFileSrc } from "@tauri-apps/api/core";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { api } from "./lib/api";
-import { cloudSaveStatus, syncBackupToSupabase, syncCloudManifest } from "./lib/cloudSaves";
+import { cloudSaveStatus, syncAllBackupsToSupabase, syncBackupToSupabase, syncCloudManifest } from "./lib/cloudSaves";
 import { checkForDuskUpdate, installDuskUpdate } from "./lib/updater";
 import { useControllerNavigation } from "./lib/useControllerNavigation";
 import type {
@@ -926,6 +926,7 @@ export default function App() {
   const [toast, setToast] = useState<{ message: string; type: "ok" | "error" } | null>(null);
   const [updateBusy, setUpdateBusy] = useState(false);
   const [installerBusy, setInstallerBusy] = useState(false);
+  const [cloudSyncBusy, setCloudSyncBusy] = useState(false);
   const [availableUpdate, setAvailableUpdate] = useState<string | null>(null);
   const [autoScanEnabled, setAutoScanEnabled] = useState(
     () => localStorage.getItem("dusk-auto-scan") !== "false",
@@ -1434,6 +1435,36 @@ export default function App() {
       showToast(readableError(error), "error");
     } finally {
       favoriteLocksRef.current.delete(game.id);
+    }
+  }
+
+  async function syncEveryOwnerToCloud() {
+    if (cloudSyncBusy) return;
+    setCloudSyncBusy(true);
+    try {
+      const status = await cloudSaveStatus();
+      setCloudStatus(status);
+      if (!status.configured || !status.authenticated) {
+        showToast(status.message, "error");
+        return;
+      }
+
+      const result = await syncAllBackupsToSupabase();
+      await syncCloudManifest();
+      showToast(
+        "Supabase sync complete: " +
+          String(result.backups) +
+          " backups · " +
+          String(result.uploadedFiles) +
+          " files · " +
+          formatBytes(result.uploadedBytes) +
+          ".",
+      );
+      setCloudStatus(await cloudSaveStatus());
+    } catch (error) {
+      showToast(readableError(error), "error");
+    } finally {
+      setCloudSyncBusy(false);
     }
   }
 
@@ -2234,6 +2265,22 @@ export default function App() {
                         <Cloud size={14} />
                         {cloudStatus.authenticated ? "Connected" : cloudStatus.configured ? "Needs auth" : "Not configured"}
                       </div>
+                    </div>
+                    <div className="setting-row">
+                      <div>
+                        <strong>Sync every owner</strong>
+                        <span>
+                          Upload all existing save backup files for every profile/game to the private Supabase bucket.
+                        </span>
+                      </div>
+                      <button
+                        className="button primary"
+                        disabled={cloudSyncBusy || !cloudStatus.configured}
+                        onClick={() => void syncEveryOwnerToCloud()}
+                      >
+                        <Cloud size={15} />
+                        {cloudSyncBusy ? "Syncing…" : "Sync all saves"}
+                      </button>
                     </div>
                   </section>
 
