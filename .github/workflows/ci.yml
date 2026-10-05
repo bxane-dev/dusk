@@ -28,3 +28,15 @@ jobs:
         run: npm run build
       - name: Check Tauri integration
         run: npm run tauri build -- --no-bundle
+
+      - name: Smoke test packaged app startup
+        shell: pwsh
+        run: |
+          $exe = 'src-tauri/target/release/dusk.exe'
+          if (-not (Test-Path $exe)) { throw "Dusk executable was not produced." }
+          $process = Start-Process -FilePath $exe -PassThru
+          Start-Sleep -Seconds 8
+          if ($process.HasExited) {
+            throw "Dusk exited during startup with code $($process.ExitCode)."
+          }
+          Stop-Process -Id $process.Id -Force
