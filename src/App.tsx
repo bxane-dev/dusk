@@ -1413,9 +1413,13 @@ export default function App() {
 
   return (
     <div className={cx("window-frame", consoleMode && "console-active")}>
-      <header className="window-titlebar" onMouseDown={(event) => void handleTitlebarMouseDown(event)}>
-        <div className="window-titlebar-spacer" aria-hidden="true" />
-        <div className="window-title">
+      <header
+        className="window-titlebar"
+        data-tauri-drag-region
+        onMouseDown={(event) => void handleTitlebarMouseDown(event)}
+      >
+        <div className="window-titlebar-spacer" data-tauri-drag-region aria-hidden="true" />
+        <div className="window-title" data-tauri-drag-region>
           <Moon size={13} fill="currentColor" />
           <span>Dusk</span>
         </div>
