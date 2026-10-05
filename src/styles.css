@@ -56,7 +56,7 @@ html, body, #root {
 }
 
 body {
-  min-width: 980px;
+  min-width: 1100px;
   overflow: hidden;
   background: var(--bg);
   color: var(--text);
@@ -75,10 +75,101 @@ select:focus-visible,
 
 button:disabled { cursor: not-allowed; opacity: 0.55; }
 
+.window-frame {
+  display: grid;
+  width: 100%;
+  height: 100vh;
+  min-width: 0;
+  min-height: 0;
+  grid-template-rows: 38px minmax(0, 1fr);
+  overflow: hidden;
+  background: var(--bg);
+}
+
+.window-frame.console-active {
+  grid-template-rows: minmax(0, 1fr);
+}
+
+.window-frame.console-active .window-titlebar {
+  display: none;
+}
+
+.window-titlebar {
+  position: relative;
+  z-index: 120;
+  display: grid;
+  min-width: 0;
+  grid-template-columns: 138px minmax(0, 1fr) 138px;
+  align-items: center;
+  height: 38px;
+  border-bottom: 1px solid var(--border);
+  background: color-mix(in srgb, var(--sidebar) 96%, var(--bg));
+  user-select: none;
+}
+
+.window-titlebar-spacer {
+  width: 100%;
+  height: 100%;
+}
+
+.window-title {
+  display: flex;
+  min-width: 0;
+  height: 100%;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 750;
+  letter-spacing: 0.03em;
+  pointer-events: none;
+}
+
+.window-title svg {
+  color: var(--accent);
+}
+
+.window-controls {
+  display: grid;
+  width: 138px;
+  height: 100%;
+  grid-template-columns: repeat(3, 46px);
+  justify-self: end;
+}
+
+.window-control {
+  display: grid;
+  width: 46px;
+  height: 38px;
+  padding: 0;
+  border: 0;
+  place-items: center;
+  color: var(--muted);
+  background: transparent;
+  cursor: default;
+}
+
+.window-control:hover {
+  color: var(--text);
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.window-control.close:hover {
+  color: #fff;
+  background: #c42b1c;
+}
+
+.window-control:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+
 .app-shell {
   display: grid;
+  min-height: 0;
   grid-template-columns: 232px minmax(0, 1fr);
-  height: 100vh;
+  height: 100%;
   background: radial-gradient(circle at 85% -10%, rgba(var(--accent-rgb), 0.07), transparent 34%), var(--bg);
 }
 
@@ -297,7 +388,7 @@ button:disabled { cursor: not-allowed; opacity: 0.55; }
 
 .loading-screen {
   display: flex;
-  height: calc(100vh - 68px);
+  height: 100%;
   flex-direction: column;
   align-items: center;
   justify-content: center;
