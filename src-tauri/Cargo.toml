@@ -1,8 +1,8 @@
 [package]
 name = "dusk"
-version = "1.0.4"
-description = "Dusk local-first game launcher"
-authors = ["bxane-dev"]
+version = "1.5.0"
+description = "Dusk local-first game launcher by bxane"
+authors = ["bxane"]
 edition = "2021"
 
 [lib]
