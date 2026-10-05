@@ -16,6 +16,7 @@ Stability and responsiveness hotfix.
 - File picker and add-game actions now have hard re-entry locks.
 - Controller polling no longer recreates its animation loop when connection state changes.
 - Toast timers no longer let older notifications clear newer ones.
+- Media previews now load directly from Dusk's scoped local asset storage instead of sending full image files as base64 through IPC, sharply reducing memory and UI pressure.
 
 ## 1.0.1 - 2026-10-05
 
