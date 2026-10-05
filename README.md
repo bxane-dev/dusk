@@ -18,7 +18,8 @@ It scans real local game installations, launches games, tracks sessions it can o
 - Search, source filtering, and sorting
 - Custom collections
 - Custom cover images
-- Imported local screenshot gallery
+- Automatic screenshot discovery from Steam, game folders, Windows Screenshots, and Xbox Game Bar Captures
+- Imported local screenshot gallery with duplicate protection
 - Dusk achievements calculated from real local Dusk data
 - Local stats dashboard
 - Night, OLED, and Slate themes
@@ -71,6 +72,17 @@ Current scanners:
 - Common emulator installations
 
 Detected emulators are added as launchable library entries. ROM-specific launching will be handled separately; any other Windows game can still be added manually by selecting its executable.
+
+## Screenshot detection
+
+Dusk automatically checks:
+
+- Steam userdata screenshot folders and matches them by Steam App ID
+- Common `Screenshots` / `Captures` folders inside known game install directories
+- `Pictures\Screenshots`
+- `Videos\Captures` used by Xbox Game Bar
+
+For shared Windows folders, Dusk only imports an image when the filename contains a sufficiently specific known game title. Imported source paths are tracked so repeated scans do not create duplicates. If an automatically found screenshot is removed from Dusk, its original source file is left untouched and Dusk remembers not to re-import it automatically.
 
 ## CI and releases
 
