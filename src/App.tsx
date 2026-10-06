@@ -45,6 +45,7 @@ import {
   useState,
 } from "react";
 import { convertFileSrc } from "@tauri-apps/api/core";
+import duskLogo from "./assets/dusk-logo.png";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { api } from "./lib/api";
 import { syncAccountState } from "./lib/accountSync";
@@ -1685,7 +1686,7 @@ export default function App() {
       >
         <div className="window-titlebar-spacer" data-tauri-drag-region aria-hidden="true" />
         <div className="window-title" data-tauri-drag-region>
-          <Moon size={13} fill="currentColor" />
+          <img className="window-title-logo" src={duskLogo} alt="" draggable={false} />
           <span>Dusk</span>
         </div>
         <div className="window-controls">
@@ -1720,7 +1721,7 @@ export default function App() {
       <aside className="sidebar">
         <div className="brand">
           <div className="brand-mark">
-            <Moon size={19} fill="currentColor" />
+            <img className="brand-logo-image" src={duskLogo} alt="" draggable={false} />
           </div>
           <div>
             <strong>Dusk</strong>
@@ -1891,7 +1892,7 @@ export default function App() {
           {loading ? (
             <div className="loading-screen">
               <div className="brand-mark">
-                <Moon size={23} fill="currentColor" />
+                <img className="brand-logo-image" src={duskLogo} alt="" draggable={false} />
               </div>
               <RefreshCw className="spin" size={20} />
               <span>Loading your local library…</span>
@@ -2563,11 +2564,11 @@ export default function App() {
 
                   <section className="about-card">
                     <div className="brand-mark">
-                      <Moon size={20} fill="currentColor" />
+                      <img className="brand-logo-image" src={duskLogo} alt="" draggable={false} />
                     </div>
                     <div>
-                      <strong>Dusk 1.5.0 · bxane</strong>
-                      <span>Open code · github.com/bxane-dev/dusk</span>
+                      <strong>Dusk 1.6.0 · bxane</strong>
+                      <span>Open code · github.com/bxanedot/dusk</span>
                       <button className="about-creator-pill" onClick={() => void openExternal("creator")}>
                         bxane · guns.lol/bxane <ExternalLink size={11} />
                       </button>
