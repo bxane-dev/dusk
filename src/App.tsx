@@ -1677,6 +1677,8 @@ export default function App() {
         ? activeCollection?.name || "Collection"
         : "Library";
 
+  const guestMode = localStorage.getItem("dusk-account-mode") === "guest";
+
   return (
     <div className={cx("window-frame", consoleMode && "console-active")}>
       <header
@@ -2266,14 +2268,24 @@ export default function App() {
 
                     <div className="setting-row">
                       <div>
-                        <strong>Dusk account</strong>
-                        <span>Your account owns this synced library, progress, profiles, collections, and cloud-save namespace.</span>
+                        <strong>{guestMode ? "Guest mode" : "Dusk account"}</strong>
+                        <span>
+                          {guestMode
+                            ? "Your library and saves stay local to this PC. Sign in anytime to enable cross-device sync."
+                            : "Your account owns this synced library, progress, profiles, collections, and cloud-save namespace."}
+                        </span>
                       </div>
                       <button
                         className="button secondary"
-                        onClick={() => void api.setAccountScope(null).then(logoutDuskAccount).then(() => window.location.reload())}
+                        onClick={() => {
+                          localStorage.removeItem("dusk-account-mode");
+                          void api
+                            .setAccountScope(null)
+                            .then(() => (guestMode ? undefined : logoutDuskAccount()))
+                            .then(() => window.location.reload());
+                        }}
                       >
-                        Sign out
+                        {guestMode ? "Sign in" : "Sign out"}
                       </button>
                     </div>
                     <div className="setting-row cloud-save-row">
@@ -2295,7 +2307,7 @@ export default function App() {
                       </div>
                       <button
                         className="button primary"
-                        disabled={cloudSyncBusy || !cloudStatus.configured}
+                        disabled={cloudSyncBusy || !cloudStatus.authenticated}
                         onClick={() => void syncEveryOwnerToCloud()}
                       >
                         <Cloud size={15} />
