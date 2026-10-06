@@ -36,6 +36,9 @@ jobs:
       - name: Install frontend dependencies
         run: npm install
 
+      - name: Prepare Dusk branding
+        run: npm run brand:prepare
+
       - name: Configure optional release signing
         shell: pwsh
         run: |
@@ -61,7 +64,7 @@ jobs:
 
             $updater = [pscustomobject]@{
               pubkey = $env:TAURI_SIGNING_PUBLIC_KEY
-              endpoints = @('https://github.com/bxane-dev/dusk/releases/latest/download/latest.json')
+              endpoints = @('https://github.com/bxanedot/dusk/releases/latest/download/latest.json')
               windows = [pscustomobject]@{ installMode = 'passive' }
             }
             $config.plugins | Add-Member -NotePropertyName updater -NotePropertyValue $updater -Force
@@ -124,6 +127,8 @@ jobs:
 
             ## What's new
 
+            - Added the official violet Dusk crescent/gamepad desktop logo across the title bar, sidebar, account screen, loading state, executable, shortcuts, and About panel.
+            - Added a custom dark-violet NSIS installer with branded header/sidebar artwork plus matching installer and uninstaller icons.
             - Added custom Dusk login and registration.
             - Register with email, username, and password; sign in with username and password.
             - Added unique Supabase-backed Dusk accounts and persistent sessions.
