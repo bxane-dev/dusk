@@ -1,9 +1,13 @@
 import { createClient, type Session, type SupabaseClient, type User } from "@supabase/supabase-js";
 
+const DUSK_SUPABASE_URL = "https://cwfmizfkysdrsesuhkym.supabase.co";
+const DUSK_SUPABASE_PUBLISHABLE_KEY = "sb_publishable_yB9lh3iBKpH-tBHFA9neNA_bcNnxbK4";
+
 export const SUPABASE_URL =
-  (import.meta.env.VITE_SUPABASE_URL as string | undefined)?.trim() || "";
+  (import.meta.env.VITE_SUPABASE_URL as string | undefined)?.trim() || DUSK_SUPABASE_URL;
 export const SUPABASE_KEY =
-  (import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY as string | undefined)?.trim() || "";
+  (import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY as string | undefined)?.trim() ||
+  DUSK_SUPABASE_PUBLISHABLE_KEY;
 
 let client: SupabaseClient | null = null;
 
