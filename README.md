@@ -15,6 +15,8 @@ It scans real local game installations, launches games, tracks sessions it can o
 - Automatic background game scanning on startup and at safe intervals
 - Bounded common game-folder discovery across available Windows drives and Downloads
 - Custom draggable Windows title bar with minimize, maximize/restore, and close controls
+- Official violet Dusk desktop logo across the app, executable, shortcuts, and installer
+- Custom dark-violet NSIS installer artwork with branded header/sidebar and matching install/uninstall icons
 - Hidden background Windows scan helpers with no flashing terminal windows
 - Safe local installer hub for user-selected EXE/MSI installers
 - Official store shortcuts for Steam, Epic Games, GOG, and itch.io
@@ -68,7 +70,7 @@ Commands:
     npm install
     npm run tauri build
 
-The Tauri config currently targets an NSIS Windows installer.
+The Tauri config targets an NSIS Windows installer. The official logo source is stored in `branding/dusk-logo.base64`; `scripts/prepare-brand.ps1` deterministically generates the app PNG, multi-resolution Windows ICO, and installer artwork before development and release builds.
 
 ## Data
 
@@ -182,8 +184,8 @@ The Windows release workflow can be started manually from GitHub Actions or from
 
 Stable installers are published on GitHub Releases:
 
-- Repository: https://github.com/bxane-dev/dusk
-- Releases: https://github.com/bxane-dev/dusk/releases
+- Repository: https://github.com/bxanedot/dusk
+- Releases: https://github.com/bxanedot/dusk/releases
 - Changelog: `CHANGELOG.md`
 - Signing setup: `RELEASE_SIGNING.md`
 
@@ -199,8 +201,8 @@ Dusk uses the Dusk Open Code License (DOCL) v1.0.
 
 You may use, modify, fork, redistribute, and build on the code, including commercially. Public projects using a substantial portion of Dusk must credit bxane-dev and link back to the original source.
 
-- Author: https://github.com/bxane-dev
-- Source: https://github.com/bxane-dev/dusk
+- Author: https://github.com/bxanedot
+- Source: https://github.com/bxanedot/dusk
 
 See LICENSE for the full terms.
 
