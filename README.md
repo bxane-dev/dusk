@@ -70,7 +70,7 @@ Commands:
     npm install
     npm run tauri build
 
-The Tauri config targets an NSIS Windows installer. The official logo source is stored in `branding/dusk-logo.base64`; `scripts/prepare-brand.ps1` deterministically generates the app PNG, multi-resolution Windows ICO, and installer artwork before development and release builds.
+The Tauri config targets an NSIS Windows installer. The official logo source is the coded `src/assets/dusk-logo.svg`. `scripts/prepare-brand.ps1` renders matching vector geometry into the multi-resolution Windows ICO and NSIS installer artwork before development and release builds.
 
 ## Data
 
