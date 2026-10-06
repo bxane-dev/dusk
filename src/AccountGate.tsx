@@ -1,5 +1,6 @@
 import { type FormEvent, type ReactNode, useEffect, useState } from "react";
-import { LockKeyhole, LogIn, Moon, UserPlus } from "lucide-react";
+import { LockKeyhole, LogIn, UserPlus } from "lucide-react";
+import duskLogo from "./assets/dusk-logo.png";
 import {
   currentDuskAccount,
   loginDuskAccount,
@@ -73,7 +74,7 @@ export default function AccountGate(props: { children: ReactNode }) {
     return (
       <main className="account-shell">
         <div className="account-card compact">
-          <div className="account-logo"><Moon size={28} /></div>
+          <div className="account-logo"><img className="account-logo-image" src={duskLogo} alt="" draggable={false} /></div>
           <strong>Opening Dusk…</strong>
         </div>
       </main>
@@ -86,7 +87,7 @@ export default function AccountGate(props: { children: ReactNode }) {
     <main className="account-shell">
       <section className="account-card">
         <div className="account-brand">
-          <div className="account-logo"><Moon size={30} /></div>
+          <div className="account-logo"><img className="account-logo-image" src={duskLogo} alt="" draggable={false} /></div>
           <div>
             <span>DUSK ACCOUNT</span>
             <h1>{mode === "login" ? "Welcome back" : "Create your account"}</h1>
