@@ -121,23 +121,19 @@ jobs:
           tagName: dusk-v__VERSION__
           releaseName: Dusk v__VERSION__
           releaseBody: |
-            # Dusk v1.6.0
+            # Dusk v1.6.1
 
-            Dusk accounts, cross-device progress sync, and account-owned cloud saves.
+            Desktop account hotfix, guest mode, restored window controls, and corrected Dusk branding.
 
             ## What's new
 
-            - Added the official violet Dusk crescent/gamepad desktop logo across the title bar, sidebar, account screen, loading state, executable, shortcuts, and About panel.
-            - Added a custom dark-violet NSIS installer with branded header/sidebar artwork plus matching installer and uninstaller icons.
-            - Added custom Dusk login and registration.
-            - Register with email, username, and password; sign in with username and password.
-            - Added unique Supabase-backed Dusk accounts and persistent sessions.
-            - Sync owner profiles, library membership, favorites, playtime, launch counts, collections, and active profile across devices.
-            - Replaced anonymous per-install cloud identities with authenticated account-owned save storage.
-            - Added safe cross-device merges while keeping executable and save-folder paths device-local.
-            - Added account sign-out in Settings.
-            - Added private Row Level Security policies for account state and save files.
-            - Kept installer hub, game discovery, profiles, physical save vaults, updater, custom window controls, and controller navigation.
+            - Restored minimize, maximize/restore, close, and draggable title-bar controls on the login/register screen.
+            - Added Continue as guest for a fully local Dusk experience without an account.
+            - Added a guest-mode Settings path back to sign-in.
+            - Fixed the desktop Supabase public configuration fallback so login works when release variables are missing.
+            - Cropped the approved Dusk emblem so it is visible across the UI, Windows executable, shortcuts, installer, and uninstaller.
+            - Disabled cloud-sync actions while running as a guest.
+            - Preserved Dusk accounts, cross-device sync, game discovery, profiles, save vaults, updater, and controller navigation.
 
             ## Notes
 

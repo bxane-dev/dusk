@@ -2,6 +2,18 @@
 
 All notable Dusk changes are documented here.
 
+## 1.6.1 - 2026-10-06
+
+Account-screen and desktop hotfix.
+
+- Restored minimize, maximize/restore, close, and drag controls while the login/register screen is open.
+- Added a persistent Continue as guest path for users who want a local-only Dusk library without an account.
+- Added a Settings path from guest mode back to sign-in.
+- Fixed desktop Supabase configuration fallback so account login works even when release environment variables are missing.
+- Kept only the public Supabase publishable key in the desktop client; privileged server credentials remain server-side.
+- Cropped the approved Dusk emblem for UI, Windows icons, shortcuts, installer, and uninstaller so the logo is clearly visible.
+- Disabled cloud-sync actions while running as a guest.
+
 ## 1.6.0 - 2026-10-05
 
 Dusk accounts and cross-device account state.
