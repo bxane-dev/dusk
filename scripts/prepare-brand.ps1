@@ -12,22 +12,22 @@ New-Item -ItemType Directory -Force -Path $assetsDir, $iconsDir, $installerDir |
 
 $logoBase64 = (Get-Content $sourcePath -Raw).Trim()
 $logoBytes = [Convert]::FromBase64String($logoBase64)
-[IO.File]::WriteAllBytes((Join-Path $assetsDir "dusk-logo.png"), $logoBytes)
+[System.IO.File]::WriteAllBytes((Join-Path $assetsDir "dusk-logo.png"), $logoBytes)
 
-$sourceStream = [IO.MemoryStream]::new($logoBytes, $false)
-$source = [Drawing.Image]::FromStream($sourceStream)
+$sourceStream = [System.IO.MemoryStream]::new($logoBytes, $false)
+$source = [System.Drawing.Image]::FromStream($sourceStream)
 
 function New-ResizedBitmap([int]$size) {
-  $bitmap = [Drawing.Bitmap]::new($size, $size, [Drawing.Imaging.PixelFormat]::Format32bppArgb)
-  $graphics = [Drawing.Graphics]::FromImage($bitmap)
+  $bitmap = [System.Drawing.Bitmap]::new($size, $size, [System.Drawing.Imaging.PixelFormat]::Format32bppArgb)
+  $graphics = [System.Drawing.Graphics]::FromImage($bitmap)
   try {
-    $graphics.Clear([Drawing.Color]::Transparent)
-    $graphics.CompositingMode = [Drawing.Drawing2D.CompositingMode]::SourceCopy
-    $graphics.CompositingQuality = [Drawing.Drawing2D.CompositingQuality]::HighQuality
-    $graphics.InterpolationMode = [Drawing.Drawing2D.InterpolationMode]::HighQualityBicubic
-    $graphics.SmoothingMode = [Drawing.Drawing2D.SmoothingMode]::HighQuality
-    $graphics.PixelOffsetMode = [Drawing.Drawing2D.PixelOffsetMode]::HighQuality
-    $graphics.DrawImage($source, [Drawing.Rectangle]::new(0, 0, $size, $size))
+    $graphics.Clear([System.Drawing.Color]::Transparent)
+    $graphics.CompositingMode = [System.Drawing.Drawing2D.CompositingMode]::SourceCopy
+    $graphics.CompositingQuality = [System.Drawing.Drawing2D.CompositingQuality]::HighQuality
+    $graphics.InterpolationMode = [System.Drawing.Drawing2D.InterpolationMode]::HighQualityBicubic
+    $graphics.SmoothingMode = [System.Drawing.Drawing2D.SmoothingMode]::HighQuality
+    $graphics.PixelOffsetMode = [System.Drawing.Drawing2D.PixelOffsetMode]::HighQuality
+    $graphics.DrawImage($source, [System.Drawing.Rectangle]::new(0, 0, $size, $size))
   } finally {
     $graphics.Dispose()
   }
@@ -37,7 +37,7 @@ function New-ResizedBitmap([int]$size) {
 function Save-Png([string]$path, [int]$size) {
   $bitmap = New-ResizedBitmap $size
   try {
-    $bitmap.Save($path, [Drawing.Imaging.ImageFormat]::Png)
+    $bitmap.Save($path, [System.Drawing.Imaging.ImageFormat]::Png)
   } finally {
     $bitmap.Dispose()
   }
@@ -45,9 +45,9 @@ function Save-Png([string]$path, [int]$size) {
 
 function Get-PngBytes([int]$size) {
   $bitmap = New-ResizedBitmap $size
-  $stream = [IO.MemoryStream]::new()
+  $stream = [System.IO.MemoryStream]::new()
   try {
-    $bitmap.Save($stream, [Drawing.Imaging.ImageFormat]::Png)
+    $bitmap.Save($stream, [System.Drawing.Imaging.ImageFormat]::Png)
     return $stream.ToArray()
   } finally {
     $stream.Dispose()
@@ -64,8 +64,8 @@ function Write-Ico([string]$path, [int[]]$sizes) {
     }
   }
 
-  $file = [IO.File]::Create($path)
-  $writer = [IO.BinaryWriter]::new($file)
+  $file = [System.IO.File]::Create($path)
+  $writer = [System.IO.BinaryWriter]::new($file)
   try {
     $writer.Write([UInt16]0)
     $writer.Write([UInt16]1)
@@ -94,32 +94,32 @@ function Write-Ico([string]$path, [int[]]$sizes) {
   }
 }
 
-function Draw-Logo([Drawing.Graphics]$graphics, [int]$x, [int]$y, [int]$size) {
-  $graphics.CompositingQuality = [Drawing.Drawing2D.CompositingQuality]::HighQuality
-  $graphics.InterpolationMode = [Drawing.Drawing2D.InterpolationMode]::HighQualityBicubic
-  $graphics.SmoothingMode = [Drawing.Drawing2D.SmoothingMode]::HighQuality
-  $graphics.PixelOffsetMode = [Drawing.Drawing2D.PixelOffsetMode]::HighQuality
-  $graphics.DrawImage($source, [Drawing.Rectangle]::new($x, $y, $size, $size))
+function Draw-Logo([System.Drawing.Graphics]$graphics, [int]$x, [int]$y, [int]$size) {
+  $graphics.CompositingQuality = [System.Drawing.Drawing2D.CompositingQuality]::HighQuality
+  $graphics.InterpolationMode = [System.Drawing.Drawing2D.InterpolationMode]::HighQualityBicubic
+  $graphics.SmoothingMode = [System.Drawing.Drawing2D.SmoothingMode]::HighQuality
+  $graphics.PixelOffsetMode = [System.Drawing.Drawing2D.PixelOffsetMode]::HighQuality
+  $graphics.DrawImage($source, [System.Drawing.Rectangle]::new($x, $y, $size, $size))
 }
 
 function Save-Header([string]$path) {
   $width = 150
   $height = 57
-  $bitmap = [Drawing.Bitmap]::new($width, $height, [Drawing.Imaging.PixelFormat]::Format24bppRgb)
-  $graphics = [Drawing.Graphics]::FromImage($bitmap)
-  $rect = [Drawing.Rectangle]::new(0, 0, $width, $height)
-  $brush = [Drawing.Drawing2D.LinearGradientBrush]::new(
+  $bitmap = [System.Drawing.Bitmap]::new($width, $height, [System.Drawing.Imaging.PixelFormat]::Format24bppRgb)
+  $graphics = [System.Drawing.Graphics]::FromImage($bitmap)
+  $rect = [System.Drawing.Rectangle]::new(0, 0, $width, $height)
+  $brush = [System.Drawing.Drawing2D.LinearGradientBrush]::new(
     $rect,
-    [Drawing.Color]::FromArgb(5, 5, 12),
-    [Drawing.Color]::FromArgb(18, 8, 46),
+    [System.Drawing.Color]::FromArgb(5, 5, 12),
+    [System.Drawing.Color]::FromArgb(18, 8, 46),
     0.0
   )
-  $accent = [Drawing.Pen]::new([Drawing.Color]::FromArgb(122, 64, 255), 2)
+  $accent = [System.Drawing.Pen]::new([System.Drawing.Color]::FromArgb(122, 64, 255), 2)
   try {
     $graphics.FillRectangle($brush, $rect)
     Draw-Logo $graphics 94 2 53
     $graphics.DrawLine($accent, 0, 55, 150, 55)
-    $bitmap.Save($path, [Drawing.Imaging.ImageFormat]::Bmp)
+    $bitmap.Save($path, [System.Drawing.Imaging.ImageFormat]::Bmp)
   } finally {
     $accent.Dispose()
     $brush.Dispose()
@@ -131,17 +131,17 @@ function Save-Header([string]$path) {
 function Save-Sidebar([string]$path) {
   $width = 164
   $height = 314
-  $bitmap = [Drawing.Bitmap]::new($width, $height, [Drawing.Imaging.PixelFormat]::Format24bppRgb)
-  $graphics = [Drawing.Graphics]::FromImage($bitmap)
-  $rect = [Drawing.Rectangle]::new(0, 0, $width, $height)
-  $brush = [Drawing.Drawing2D.LinearGradientBrush]::new(
+  $bitmap = [System.Drawing.Bitmap]::new($width, $height, [System.Drawing.Imaging.PixelFormat]::Format24bppRgb)
+  $graphics = [System.Drawing.Graphics]::FromImage($bitmap)
+  $rect = [System.Drawing.Rectangle]::new(0, 0, $width, $height)
+  $brush = [System.Drawing.Drawing2D.LinearGradientBrush]::new(
     $rect,
-    [Drawing.Color]::FromArgb(5, 5, 12),
-    [Drawing.Color]::FromArgb(14, 8, 40),
+    [System.Drawing.Color]::FromArgb(5, 5, 12),
+    [System.Drawing.Color]::FromArgb(14, 8, 40),
     90.0
   )
-  $accent = [Drawing.Pen]::new([Drawing.Color]::FromArgb(122, 64, 255), 4)
-  $accentSoft = [Drawing.Pen]::new([Drawing.Color]::FromArgb(66, 32, 145), 2)
+  $accent = [System.Drawing.Pen]::new([System.Drawing.Color]::FromArgb(122, 64, 255), 4)
+  $accentSoft = [System.Drawing.Pen]::new([System.Drawing.Color]::FromArgb(66, 32, 145), 2)
   try {
     $graphics.FillRectangle($brush, $rect)
     $graphics.DrawLine($accent, 2, 0, 2, 314)
@@ -150,7 +150,7 @@ function Save-Sidebar([string]$path) {
 
     for ($index = 0; $index -lt 36; $index++) {
       $strength = [Math]::Max(25, 90 - ($index * 2))
-      $pen = [Drawing.Pen]::new([Drawing.Color]::FromArgb($strength, 52, 32, 150), 1)
+      $pen = [System.Drawing.Pen]::new([System.Drawing.Color]::FromArgb($strength, 52, 32, 150), 1)
       try {
         $graphics.DrawLine($pen, 14, 266 + $index, 150, 266 + $index)
       } finally {
@@ -158,7 +158,7 @@ function Save-Sidebar([string]$path) {
       }
     }
 
-    $bitmap.Save($path, [Drawing.Imaging.ImageFormat]::Bmp)
+    $bitmap.Save($path, [System.Drawing.Imaging.ImageFormat]::Bmp)
   } finally {
     $accentSoft.Dispose()
     $accent.Dispose()
