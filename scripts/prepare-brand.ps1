@@ -91,7 +91,7 @@ function Draw-DuskLogo(
     $crescent = [System.Drawing.Drawing2D.GraphicsPath]::new()
     $crescent.AddBezier(126, 48, 184, 48, 215, 80, 215, 128)
     $crescent.AddBezier(215, 128, 215, 178, 184, 208, 126, 208)
-    $crescent.AddBezier(160, 190, 184, 160, 184, 128)
+    $crescent.AddBezier(126, 208, 160, 190, 184, 160, 184, 128)
     $crescent.AddBezier(184, 128, 184, 95, 160, 65, 126, 48)
     $crescent.CloseFigure()
     $violet = [System.Drawing.Drawing2D.LinearGradientBrush]::new(
