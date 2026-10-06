@@ -12,8 +12,6 @@ New-Item -ItemType Directory -Force -Path $assetsDir, $iconsDir, $installerDir |
 
 $logoBase64 = (Get-Content $sourcePath -Raw).Trim()
 $logoBytes = [Convert]::FromBase64String($logoBase64)
-[System.IO.File]::WriteAllBytes((Join-Path $assetsDir "dusk-logo.png"), $logoBytes)
-
 $sourceStream = [System.IO.MemoryStream]::new($logoBytes, $false)
 $source = [System.Drawing.Image]::FromStream($sourceStream)
 
@@ -169,6 +167,7 @@ function Save-Sidebar([string]$path) {
 }
 
 try {
+  Save-Png (Join-Path $assetsDir "dusk-logo.png") 256
   Save-Png (Join-Path $iconsDir "32x32.png") 32
   Save-Png (Join-Path $iconsDir "128x128.png") 128
   Save-Png (Join-Path $iconsDir "128x128@2x.png") 256
