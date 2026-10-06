@@ -1,5 +1,6 @@
-import { type FormEvent, type ReactNode, useEffect, useState } from "react";
-import { LockKeyhole, LogIn, UserPlus } from "lucide-react";
+import { type FormEvent, type MouseEvent, type ReactNode, useEffect, useState } from "react";
+import { LockKeyhole, LogIn, Minus, Square, UserRound, UserPlus, X } from "lucide-react";
+import { getCurrentWindow } from "@tauri-apps/api/window";
 import duskLogo from "./assets/dusk-logo.png";
 import {
   currentDuskAccount,
@@ -13,8 +14,66 @@ import { api } from "./lib/api";
 
 type Mode = "login" | "register";
 
+function AccountWindowBar() {
+  async function handleMouseDown(event: MouseEvent<HTMLElement>) {
+    if (event.button !== 0) return;
+    const target = event.target;
+    if (target instanceof HTMLElement && target.closest("button")) return;
+
+    const appWindow = getCurrentWindow();
+    if (event.detail === 2) {
+      await appWindow.toggleMaximize().catch(() => undefined);
+      return;
+    }
+    await appWindow.startDragging().catch(() => undefined);
+  }
+
+  return (
+    <header
+      className="account-window-titlebar"
+      data-tauri-drag-region
+      onMouseDown={(event) => void handleMouseDown(event)}
+    >
+      <div className="account-window-brand" data-tauri-drag-region>
+        <img src={duskLogo} alt="" draggable={false} />
+        <span>Dusk</span>
+      </div>
+      <div className="account-window-controls">
+        <button
+          type="button"
+          className="account-window-control"
+          aria-label="Minimize Dusk"
+          title="Minimize"
+          onClick={() => void getCurrentWindow().minimize()}
+        >
+          <Minus size={15} />
+        </button>
+        <button
+          type="button"
+          className="account-window-control"
+          aria-label="Maximize or restore Dusk"
+          title="Maximize / restore"
+          onClick={() => void getCurrentWindow().toggleMaximize()}
+        >
+          <Square size={12} />
+        </button>
+        <button
+          type="button"
+          className="account-window-control close"
+          aria-label="Close Dusk"
+          title="Close"
+          onClick={() => void getCurrentWindow().close()}
+        >
+          <X size={15} />
+        </button>
+      </div>
+    </header>
+  );
+}
+
 export default function AccountGate(props: { children: ReactNode }) {
   const [account, setAccount] = useState<DuskAccount | null>(null);
+  const [guest, setGuest] = useState(false);
   const [checking, setChecking] = useState(true);
   const [mode, setMode] = useState<Mode>("login");
   const [email, setEmail] = useState("");
@@ -26,6 +85,12 @@ export default function AccountGate(props: { children: ReactNode }) {
   useEffect(() => {
     void (async () => {
       try {
+        if (localStorage.getItem("dusk-account-mode") === "guest") {
+          await api.setAccountScope(null);
+          setGuest(true);
+          return;
+        }
+
         const existing = await currentDuskAccount();
         if (existing) {
           await api.setAccountScope(existing.user.id);
@@ -53,12 +118,14 @@ export default function AccountGate(props: { children: ReactNode }) {
         const result = await registerDuskAccount({ email, username, password });
         setMessage(result.message);
         if (result.account) {
+          localStorage.removeItem("dusk-account-mode");
           await api.setAccountScope(result.account.user.id);
           await hydrateAccountState();
           setAccount(result.account);
         }
       } else {
         const signedIn = await loginDuskAccount(username, password);
+        localStorage.removeItem("dusk-account-mode");
         await api.setAccountScope(signedIn.user.id);
         await hydrateAccountState();
         setAccount(signedIn);
@@ -70,24 +137,44 @@ export default function AccountGate(props: { children: ReactNode }) {
     }
   }
 
+  async function continueAsGuest() {
+    setBusy(true);
+    setMessage("");
+    try {
+      localStorage.setItem("dusk-account-mode", "guest");
+      await api.setAccountScope(null);
+      setGuest(true);
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : String(error));
+    } finally {
+      setBusy(false);
+    }
+  }
+
   if (checking) {
     return (
       <main className="account-shell">
+        <AccountWindowBar />
         <div className="account-card compact">
-          <div className="account-logo"><img className="account-logo-image" src={duskLogo} alt="" draggable={false} /></div>
+          <div className="account-logo">
+            <img className="account-logo-image" src={duskLogo} alt="" draggable={false} />
+          </div>
           <strong>Opening Dusk…</strong>
         </div>
       </main>
     );
   }
 
-  if (account) return <>{props.children}</>;
+  if (account || guest) return <>{props.children}</>;
 
   return (
     <main className="account-shell">
+      <AccountWindowBar />
       <section className="account-card">
         <div className="account-brand">
-          <div className="account-logo"><img className="account-logo-image" src={duskLogo} alt="" draggable={false} /></div>
+          <div className="account-logo">
+            <img className="account-logo-image" src={duskLogo} alt="Dusk" draggable={false} />
+          </div>
           <div>
             <span>DUSK ACCOUNT</span>
             <h1>{mode === "login" ? "Welcome back" : "Create your account"}</h1>
@@ -97,7 +184,7 @@ export default function AccountGate(props: { children: ReactNode }) {
 
         {!supabaseConfigured() && (
           <div className="account-message error">
-            This build is missing the Dusk Supabase URL or publishable key.
+            Dusk cloud accounts are temporarily unavailable. Guest mode still works.
           </div>
         )}
 
@@ -159,6 +246,21 @@ export default function AccountGate(props: { children: ReactNode }) {
           <LockKeyhole size={15} />
           {mode === "login" ? "Need an account? Register" : "Already have an account? Sign in"}
         </button>
+
+        <div className="account-divider"><span>or</span></div>
+
+        <button
+          className="account-guest"
+          type="button"
+          disabled={busy}
+          onClick={() => void continueAsGuest()}
+        >
+          <UserRound size={17} />
+          Continue as guest
+        </button>
+        <p className="account-guest-note">
+          Guest mode keeps your library and saves local to this PC. You can sign in later from Settings.
+        </p>
       </section>
     </main>
   );
