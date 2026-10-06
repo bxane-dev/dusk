@@ -6,6 +6,9 @@ All notable Dusk changes are documented here.
 
 Dusk accounts and cross-device account state.
 
+- Added the official violet Dusk desktop logo to the title bar, sidebar, account screen, loading screen, executable, shortcuts, and About panel.
+- Added a custom dark-violet NSIS installer with branded header/sidebar artwork and matching installer/uninstaller icons.
+- Added a deterministic Windows branding pipeline that generates icon and installer assets from one approved logo source.
 - Added a custom Dusk login and registration screen.
 - Registration now uses email, username, and password; login uses username and password.
 - Added Supabase-backed Dusk accounts with unique usernames and persistent sessions.
