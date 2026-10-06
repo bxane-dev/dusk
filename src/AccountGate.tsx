@@ -1,6 +1,6 @@
 import { type FormEvent, type ReactNode, useEffect, useState } from "react";
 import { LockKeyhole, LogIn, UserPlus } from "lucide-react";
-import duskLogo from "./assets/dusk-logo.svg";
+import duskLogo from "./assets/dusk-logo.png";
 import {
   currentDuskAccount,
   loginDuskAccount,
