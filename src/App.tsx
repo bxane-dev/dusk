@@ -45,7 +45,7 @@ import {
   useState,
 } from "react";
 import { convertFileSrc } from "@tauri-apps/api/core";
-import duskLogo from "./assets/dusk-logo.svg";
+import duskLogo from "./assets/dusk-logo.png";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { api } from "./lib/api";
 import { syncAccountState } from "./lib/accountSync";
