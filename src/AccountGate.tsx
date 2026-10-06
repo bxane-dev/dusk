@@ -159,7 +159,7 @@ export default function AccountGate(props: { children: ReactNode }) {
           <div className="account-logo">
             <img className="account-logo-image" src={duskLogo} alt="" draggable={false} />
           </div>
-          <strong>Opening Dusk…</strong>
+          <strong>Opening Dusk...</strong>
         </div>
       </main>
     );
@@ -221,7 +221,7 @@ export default function AccountGate(props: { children: ReactNode }) {
               autoComplete={mode === "login" ? "current-password" : "new-password"}
               value={password}
               onChange={(event) => setPassword(event.target.value)}
-              placeholder="••••••••"
+              placeholder="********"
               minLength={6}
               required
             />
@@ -231,7 +231,7 @@ export default function AccountGate(props: { children: ReactNode }) {
 
           <button className="account-submit" disabled={busy || !supabaseConfigured()} type="submit">
             {mode === "login" ? <LogIn size={17} /> : <UserPlus size={17} />}
-            {busy ? "Working…" : mode === "login" ? "Sign in" : "Create account"}
+            {busy ? "Working..." : mode === "login" ? "Sign in" : "Create account"}
           </button>
         </form>
 

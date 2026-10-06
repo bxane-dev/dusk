@@ -1679,6 +1679,8 @@ export default function App() {
 
   const guestMode = localStorage.getItem("dusk-account-mode") === "guest";
 
+  const guestMode = localStorage.getItem("dusk-account-mode") === "guest";
+
   return (
     <div className={cx("window-frame", consoleMode && "console-active")}>
       <header

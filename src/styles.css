@@ -1752,3 +1752,140 @@ button:disabled { cursor: not-allowed; opacity: 0.55; }
   user-select: none;
   filter: drop-shadow(0 0 10px rgba(139, 92, 246, 0.45));
 }
+
+
+/* Account gate native window chrome + guest mode */
+.account-shell {
+  padding-top: max(54px, clamp(54px, 7vh, 72px));
+}
+
+.account-window-titlebar {
+  position: fixed;
+  inset: 0 0 auto 0;
+  z-index: 1100;
+  display: grid;
+  height: 38px;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.07);
+  background: rgba(9, 9, 11, 0.94);
+  backdrop-filter: blur(18px);
+  user-select: none;
+}
+
+.account-window-brand {
+  display: flex;
+  min-width: 0;
+  height: 100%;
+  align-items: center;
+  gap: 8px;
+  padding-left: 12px;
+  color: #e4e4e7;
+  font-size: 11px;
+  font-weight: 750;
+  letter-spacing: 0.03em;
+}
+
+.account-window-brand img {
+  width: 22px;
+  height: 22px;
+  object-fit: cover;
+  border-radius: 5px;
+  filter: drop-shadow(0 0 6px rgba(139, 92, 246, 0.48));
+}
+
+.account-window-controls {
+  display: grid;
+  height: 38px;
+  grid-template-columns: repeat(3, 46px);
+}
+
+.account-window-control {
+  display: grid;
+  width: 46px;
+  height: 38px;
+  padding: 0;
+  border: 0;
+  place-items: center;
+  color: #a1a1aa;
+  background: transparent;
+  cursor: default;
+}
+
+.account-window-control:hover {
+  color: #fff;
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.account-window-control.close:hover {
+  color: #fff;
+  background: #c42b1c;
+}
+
+.account-logo {
+  background: #07070a;
+  border-color: rgba(139, 92, 246, 0.24);
+  padding: 2px;
+}
+
+.account-logo-image {
+  border-radius: 12px;
+  object-fit: cover;
+}
+
+.window-title-logo,
+.brand-logo-image {
+  background: #07070a;
+  border-radius: 6px;
+  object-fit: cover;
+}
+
+.account-divider {
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  align-items: center;
+  gap: 10px;
+  margin: 12px 0 10px;
+  color: #71717a;
+  font-size: 11px;
+}
+
+.account-divider::before,
+.account-divider::after {
+  content: "";
+  height: 1px;
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.account-guest {
+  width: 100%;
+  min-height: 44px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  border: 1px solid rgba(139, 92, 246, 0.24);
+  border-radius: 12px;
+  color: #e4e4e7;
+  background: rgba(139, 92, 246, 0.07);
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.account-guest:hover {
+  border-color: rgba(139, 92, 246, 0.42);
+  background: rgba(139, 92, 246, 0.12);
+}
+
+.account-guest:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.account-guest-note {
+  margin: 8px 6px 0;
+  color: #71717a;
+  font-size: 11px;
+  line-height: 1.45;
+  text-align: center;
+}
