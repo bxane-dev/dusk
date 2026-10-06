@@ -1710,3 +1710,45 @@ button:disabled { cursor: not-allowed; opacity: 0.55; }
     font-size: 23px;
   }
 }
+
+
+/* Official Dusk desktop branding */
+.window-title-logo {
+  width: 16px;
+  height: 16px;
+  flex: 0 0 auto;
+  object-fit: contain;
+  pointer-events: none;
+  user-select: none;
+  filter: drop-shadow(0 0 5px rgba(139, 92, 246, 0.45));
+}
+
+.brand-mark {
+  overflow: hidden;
+  padding: 3px;
+}
+
+.brand-logo-image {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  pointer-events: none;
+  user-select: none;
+  filter: drop-shadow(0 0 6px rgba(var(--accent-rgb), 0.32));
+}
+
+.account-logo {
+  overflow: hidden;
+  padding: 4px;
+}
+
+.account-logo-image {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  pointer-events: none;
+  user-select: none;
+  filter: drop-shadow(0 0 10px rgba(139, 92, 246, 0.45));
+}
