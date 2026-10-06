@@ -48,10 +48,26 @@
     "publisher": "bxane",
     "category": "Utility",
     "copyright": "Copyright © 2026 bxane",
-    "homepage": "https://github.com/bxane-dev/dusk",
+    "homepage": "https://github.com/bxanedot/dusk",
     "license": "DOCL-1.0",
     "windows": {
-      "allowDowngrades": false
-    }
+      "allowDowngrades": false,
+      "nsis": {
+        "compression": "lzma",
+        "installMode": "currentUser",
+        "installerIcon": "icons/icon.ico",
+        "uninstallerIcon": "icons/icon.ico",
+        "headerImage": "installer/header.bmp",
+        "uninstallerHeaderImage": "installer/header.bmp",
+        "sidebarImage": "installer/sidebar.bmp",
+        "startMenuFolder": "Dusk"
+      }
+    },
+    "icon": [
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/128x128@2x.png",
+      "icons/icon.ico"
+    ]
   }
 }
