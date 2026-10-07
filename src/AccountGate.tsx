@@ -1,18 +1,19 @@
 import { type FormEvent, type MouseEvent, type ReactNode, useEffect, useState } from "react";
-import { LockKeyhole, LogIn, Minus, Square, UserRound, UserPlus, X } from "lucide-react";
+import { ArrowLeft, KeyRound, LockKeyhole, LogIn, Mail, Minus, Square, UserRound, UserPlus, X } from "lucide-react";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import duskLogo from "./assets/dusk-logo.png";
 import {
   currentDuskAccount,
   loginDuskAccount,
   registerDuskAccount,
+  requestDuskPasswordReset,
   supabaseConfigured,
   type DuskAccount,
 } from "./lib/auth";
 import { hydrateAccountState } from "./lib/accountSync";
 import { api } from "./lib/api";
 
-type Mode = "login" | "register";
+type Mode = "login" | "register" | "forgot";
 
 function AccountWindowBar() {
   async function handleMouseDown(event: MouseEvent<HTMLElement>) {
@@ -115,7 +116,10 @@ export default function AccountGate(props: { children: ReactNode }) {
     setMessage("");
 
     try {
-      if (mode === "register") {
+      if (mode === "forgot") {
+        const result = await requestDuskPasswordReset(email);
+        setMessage(result);
+      } else if (mode === "register") {
         const result = await registerDuskAccount({ email, username, displayName, password });
         setMessage(result.message);
         if (result.account) {
@@ -178,8 +182,18 @@ export default function AccountGate(props: { children: ReactNode }) {
           </div>
           <div>
             <span>DUSK ACCOUNT</span>
-            <h1>{mode === "login" ? "Welcome back" : "Create your account"}</h1>
-            <p>Sync your Dusk library, profiles, progress, collections, and private cloud saves across devices.</p>
+            <h1>
+              {mode === "login"
+                ? "Welcome back"
+                : mode === "register"
+                  ? "Create your account"
+                  : "Reset your password"}
+            </h1>
+            <p>
+              {mode === "forgot"
+                ? "Enter the email on your Dusk account. We’ll send a secure password reset link."
+                : "Sync your Dusk library, profiles, progress, collections, and private cloud saves across devices."}
+            </p>
           </div>
         </div>
 
@@ -190,6 +204,29 @@ export default function AccountGate(props: { children: ReactNode }) {
         )}
 
         <form className="account-form" onSubmit={submit}>
+          {mode === "forgot" ? (
+            <>
+              <label>
+                <span>Email</span>
+                <div className="account-field-icon">
+                  <Mail size={15} />
+                  <input
+                    type="email"
+                    autoComplete="email"
+                    value={email}
+                    onChange={(event) => setEmail(event.target.value)}
+                    placeholder="you@example.com"
+                    required
+                  />
+                </div>
+              </label>
+              <div className="account-recovery-note">
+                <KeyRound size={15} />
+                <span>The email link opens Dusk’s hosted reset page where you can choose a new password.</span>
+              </div>
+            </>
+          ) : (
+            <>
           {mode === "register" && (
             <>
               <label>
@@ -241,13 +278,45 @@ export default function AccountGate(props: { children: ReactNode }) {
             />
           </label>
 
+            </>
+          )}
+
           {message && <div className="account-message">{message}</div>}
 
           <button className="account-submit" disabled={busy || !supabaseConfigured()} type="submit">
-            {mode === "login" ? <LogIn size={17} /> : <UserPlus size={17} />}
-            {busy ? "Working..." : mode === "login" ? "Sign in" : "Create account"}
+            {mode === "forgot" ? (
+              <Mail size={17} />
+            ) : mode === "login" ? (
+              <LogIn size={17} />
+            ) : (
+              <UserPlus size={17} />
+            )}
+            {busy
+              ? "Working..."
+              : mode === "forgot"
+                ? "Send reset link"
+                : mode === "login"
+                  ? "Sign in"
+                  : "Create account"}
           </button>
         </form>
+
+        {mode === "login" && (
+          <button
+            className="account-forgot"
+            type="button"
+            disabled={busy}
+            onClick={() => {
+              setMode("forgot");
+              setEmail("");
+              setPassword("");
+              setMessage("");
+            }}
+          >
+            <KeyRound size={15} />
+            Forgot password?
+          </button>
+        )}
 
         <button
           className="account-switch"
@@ -255,10 +324,15 @@ export default function AccountGate(props: { children: ReactNode }) {
           onClick={() => {
             setMode(mode === "login" ? "register" : "login");
             setMessage("");
+            setPassword("");
           }}
         >
-          <LockKeyhole size={15} />
-          {mode === "login" ? "Need an account? Register" : "Already have an account? Sign in"}
+          {mode === "forgot" ? <ArrowLeft size={15} /> : <LockKeyhole size={15} />}
+          {mode === "login"
+            ? "Need an account? Register"
+            : mode === "register"
+              ? "Already have an account? Sign in"
+              : "Back to sign in"}
         </button>
 
         <div className="account-divider"><span>or</span></div>
