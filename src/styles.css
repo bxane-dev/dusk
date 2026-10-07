@@ -1889,3 +1889,232 @@ button:disabled { cursor: not-allowed; opacity: 0.55; }
   line-height: 1.45;
   text-align: center;
 }
+
+
+/* First-class Profiles page */
+.profiles-page {
+  max-width: 1180px;
+}
+
+.profiles-summary {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+  margin-bottom: 18px;
+}
+
+.profiles-summary > div {
+  display: grid;
+  gap: 5px;
+  padding: 14px 16px;
+  border: 1px solid var(--border);
+  border-radius: 13px;
+  background: var(--surface);
+}
+
+.profiles-summary span {
+  color: var(--subtle);
+  font-size: 9px;
+  font-weight: 750;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.profiles-summary strong {
+  overflow: hidden;
+  color: var(--text);
+  font-size: 16px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.profile-card-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(220px, 1fr));
+  gap: 12px;
+}
+
+.profile-card,
+.profile-create-card {
+  min-width: 0;
+  min-height: 228px;
+  box-sizing: border-box;
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  background: var(--surface);
+}
+
+.profile-card {
+  display: flex;
+  flex-direction: column;
+  padding: 16px;
+}
+
+.profile-card.active {
+  border-color: rgba(var(--accent-rgb), 0.42);
+  background:
+    linear-gradient(145deg, rgba(var(--accent-rgb), 0.10), transparent 65%),
+    var(--surface);
+  box-shadow: inset 0 0 0 1px rgba(var(--accent-rgb), 0.08);
+}
+
+.profile-card-top {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.profile-avatar,
+.profile-create-icon {
+  display: grid;
+  place-items: center;
+  color: var(--text);
+  background: rgba(var(--accent-rgb), 0.16);
+  border: 1px solid rgba(var(--accent-rgb), 0.28);
+}
+
+.profile-avatar {
+  width: 46px;
+  height: 46px;
+  border-radius: 14px;
+  font-size: 18px;
+  font-weight: 850;
+}
+
+.profile-active-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 5px 8px;
+  border: 1px solid rgba(var(--accent-rgb), 0.3);
+  border-radius: 999px;
+  color: var(--accent);
+  background: rgba(var(--accent-rgb), 0.08);
+  font-size: 8px;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.profile-card-copy {
+  margin-top: 15px;
+}
+
+.profile-card-copy h3 {
+  margin: 0;
+  overflow: hidden;
+  font-size: 17px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.profile-card-copy p {
+  margin: 5px 0 0;
+  color: var(--subtle);
+  font-size: 9px;
+}
+
+.profile-card-stats {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 7px;
+  margin-top: 14px;
+}
+
+.profile-card-stats > div {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 7px;
+  padding: 8px 9px;
+  border-radius: 9px;
+  color: var(--muted);
+  background: var(--surface-2);
+  font-size: 9px;
+}
+
+.profile-card-stats svg {
+  flex: 0 0 auto;
+  color: var(--accent);
+}
+
+.profile-card-stats span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.profile-card-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: auto;
+  padding-top: 16px;
+}
+
+.profile-card-actions .button {
+  flex: 1;
+  justify-content: center;
+}
+
+.icon-button.danger:hover {
+  color: var(--danger);
+  border-color: rgba(239, 68, 68, 0.28);
+  background: rgba(239, 68, 68, 0.08);
+}
+
+.profile-create-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 22px;
+  color: var(--muted);
+  cursor: pointer;
+  text-align: center;
+  transition: transform 130ms ease, border-color 130ms ease, background 130ms ease;
+}
+
+.profile-create-card:hover {
+  transform: translateY(-2px);
+  border-color: rgba(var(--accent-rgb), 0.35);
+  background: rgba(var(--accent-rgb), 0.06);
+}
+
+.profile-create-icon {
+  width: 44px;
+  height: 44px;
+  border-radius: 14px;
+}
+
+.profile-create-card strong {
+  margin-top: 12px;
+  color: var(--text);
+  font-size: 13px;
+}
+
+.profile-create-card span {
+  max-width: 220px;
+  margin-top: 5px;
+  color: var(--subtle);
+  font-size: 9px;
+  line-height: 1.5;
+}
+
+@media (max-width: 1120px) {
+  .profile-card-grid {
+    grid-template-columns: repeat(2, minmax(220px, 1fr));
+  }
+}
+
+@media (max-width: 760px) {
+  .profiles-summary,
+  .profile-card-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .profiles-page .page-heading {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+}
