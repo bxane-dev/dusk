@@ -84,18 +84,18 @@ jobs:
           tagName: dusk-v__VERSION__
           releaseName: Dusk v__VERSION__
           releaseBody: |
-            # Dusk v1.6.2
+            # Dusk v1.6.3
 
-            Registration, updater, and official-logo hotfix.
+            First-class owner profiles and profile management.
 
             ## What's new
 
-            - Removed the broken localhost email-confirmation redirect from desktop registration.
-            - New Dusk accounts are verified server-side and signed in immediately.
-            - Replaced the optional Tauri updater plugin with a built-in GitHub Releases updater.
-            - Update downloads verify the GitHub-provided SHA-256 digest when available.
-            - Fixed the official Dusk logo pipeline to use the full approved D emblem.
-            - Preserved guest mode, Supabase account sync, custom window controls, game discovery, save vaults, and the branded installer.
+            - Added Profiles directly to the main Dusk navigation.
+            - Added a dedicated profile-management page with active-state cards.
+            - See per-profile game counts, backup counts, and last-used information.
+            - Switch, create, and delete profiles without digging through Settings.
+            - Added one-click access from the active profile to its library.
+            - Preserved separate libraries, save folders, backup vaults, collections, and cloud account state per owner.
 
             ## Notes
 

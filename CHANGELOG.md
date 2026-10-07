@@ -2,6 +2,20 @@
 
 All notable Dusk changes are documented here.
 
+## 1.6.3 - 2026-10-07
+
+Profiles are now directly available from the main Dusk navigation.
+
+- Added a dedicated Profiles page to the sidebar.
+- Added visible cards for every owner profile.
+- Shows the active profile, profile count, current library size, per-profile game count, backup count, and last-used date.
+- Switch profiles directly from the Profiles page.
+- Create new profiles from the page header or the dedicated new-profile card.
+- Delete non-required profiles directly from the page.
+- Open the active profile's library with one click.
+- Preserved the compact profile switcher in the sidebar and the advanced profile controls in Settings.
+- Profiles continue to keep owner libraries, collections, save folders, backup vaults, and synced account state separate.
+
 ## 1.6.2 - 2026-10-07
 
 Registration, updater, and logo hotfix.
