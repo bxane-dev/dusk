@@ -25,6 +25,8 @@ export const api = {
   getActiveProfile: () => invoke<ProfileRecord>("get_active_profile"),
   createProfile: (name: string) =>
     invoke<ProfileRecord>("create_profile", { name }),
+  renameProfile: (profileId: string, name: string) =>
+    invoke<ProfileRecord>("rename_profile", { profileId, name }),
   setActiveProfile: (profileId: string) =>
     invoke<ProfileRecord>("set_active_profile", { profileId }),
   deleteProfile: (profileId: string) =>
