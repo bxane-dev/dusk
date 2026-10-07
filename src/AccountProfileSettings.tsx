@@ -1,8 +1,10 @@
-import { type FormEvent, useEffect, useState } from "react";
-import { KeyRound, Mail, Save, ShieldCheck, UserRound } from "lucide-react";
+import { type ChangeEvent, type FormEvent, useEffect, useRef, useState } from "react";
+import { Camera, KeyRound, Mail, Save, ShieldCheck, Trash2, UserRound } from "lucide-react";
 import {
   currentDuskAccount,
+  removeDuskAvatar,
   updateDuskAccount,
+  uploadDuskAvatar,
   type DuskAccount,
 } from "./lib/auth";
 
@@ -13,6 +15,8 @@ export default function AccountProfileSettings(props: {
   const [loading, setLoading] = useState(true);
   const [profileBusy, setProfileBusy] = useState(false);
   const [securityBusy, setSecurityBusy] = useState(false);
+  const [avatarBusy, setAvatarBusy] = useState(false);
+  const avatarInputRef = useRef<HTMLInputElement | null>(null);
 
   const [displayName, setDisplayName] = useState("");
   const [username, setUsername] = useState("");
@@ -44,6 +48,41 @@ export default function AccountProfileSettings(props: {
       cancelled = true;
     };
   }, [props.onToast]);
+
+  async function changeAvatar(event: ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0];
+    event.target.value = "";
+    if (!file || avatarBusy || !account) return;
+
+    setAvatarBusy(true);
+    try {
+      const avatarUrl = await uploadDuskAvatar(file);
+      const next = { ...account, avatarUrl };
+      setAccount(next);
+      window.dispatchEvent(new CustomEvent("dusk-account-avatar-changed", { detail: next }));
+      props.onToast("Profile avatar updated.");
+    } catch (error) {
+      props.onToast(error instanceof Error ? error.message : String(error), "error");
+    } finally {
+      setAvatarBusy(false);
+    }
+  }
+
+  async function removeAvatar() {
+    if (avatarBusy || !account?.avatarUrl) return;
+    setAvatarBusy(true);
+    try {
+      await removeDuskAvatar();
+      const next = { ...account, avatarUrl: null };
+      setAccount(next);
+      window.dispatchEvent(new CustomEvent("dusk-account-avatar-changed", { detail: next }));
+      props.onToast("Profile avatar removed.");
+    } catch (error) {
+      props.onToast(error instanceof Error ? error.message : String(error), "error");
+    } finally {
+      setAvatarBusy(false);
+    }
+  }
 
   async function saveProfile(event: FormEvent) {
     event.preventDefault();
@@ -153,6 +192,50 @@ export default function AccountProfileSettings(props: {
           <div>
             <strong>Profile</strong>
             <span>Shown inside Dusk. Username is also used to sign in.</span>
+          </div>
+        </div>
+
+        <div className="account-avatar-editor">
+          <div className="account-avatar-preview" aria-label="Profile avatar preview">
+            {account.avatarUrl ? (
+              <img src={account.avatarUrl} alt={displayName + " avatar"} />
+            ) : (
+              <span>{(displayName || username || "D").trim().charAt(0).toUpperCase()}</span>
+            )}
+          </div>
+
+          <div className="account-avatar-copy">
+            <strong>Profile image</strong>
+            <span>Upload any image up to 150 MB. Dusk crops the square image into a round avatar.</span>
+            <div className="account-avatar-actions">
+              <input
+                ref={avatarInputRef}
+                className="account-avatar-file"
+                type="file"
+                accept="image/*"
+                onChange={(event) => void changeAvatar(event)}
+              />
+              <button
+                className="button secondary"
+                type="button"
+                disabled={avatarBusy}
+                onClick={() => avatarInputRef.current?.click()}
+              >
+                <Camera size={15} />
+                {avatarBusy ? "Uploading…" : account.avatarUrl ? "Change avatar" : "Upload avatar"}
+              </button>
+              {account.avatarUrl && (
+                <button
+                  className="button secondary danger"
+                  type="button"
+                  disabled={avatarBusy}
+                  onClick={() => void removeAvatar()}
+                >
+                  <Trash2 size={15} />
+                  Remove
+                </button>
+              )}
+            </div>
           </div>
         </div>
 
