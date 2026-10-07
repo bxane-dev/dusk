@@ -84,18 +84,18 @@ jobs:
           tagName: dusk-v__VERSION__
           releaseName: Dusk v__VERSION__
           releaseBody: |
-            # Dusk v1.6.3
+            # Dusk v1.6.4
 
-            First-class owner profiles and profile management.
+            Persistent profile achievements and cross-device achievement sync.
 
             ## What's new
 
-            - Added Profiles directly to the main Dusk navigation.
-            - Added a dedicated profile-management page with active-state cards.
-            - See per-profile game counts, backup counts, and last-used information.
-            - Switch, create, and delete profiles without digging through Settings.
-            - Added one-click access from the active profile to its library.
-            - Preserved separate libraries, save folders, backup vaults, collections, and cloud account state per owner.
+            - Achievements are now saved per owner profile.
+            - Earned progress uses a high-water mark and never moves backwards.
+            - Unlocked achievements stay unlocked.
+            - Achievement progress and unlock state sync with the Dusk account across devices.
+            - Cross-device merges keep the highest earned progress.
+            - Existing profiles migrate automatically from their current Dusk stats.
 
             ## Notes
 

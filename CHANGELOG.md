@@ -2,6 +2,19 @@
 
 All notable Dusk changes are documented here.
 
+## 1.6.4 - 2026-10-07
+
+Persistent, profile-owned achievements.
+
+- Achievements are now saved in Dusk instead of being display-only calculations.
+- Achievement progress is stored separately for each owner profile.
+- Saved progress uses a high-water mark, so earned progress never moves backwards if games, screenshots, or local history are removed later.
+- Once an achievement is unlocked, it stays unlocked.
+- Achievement progress and unlock state are included in Dusk account sync and merge across devices.
+- Cross-device merges keep the highest progress/unlocked state instead of overwriting it with lower progress.
+- Existing profiles automatically create saved achievement records from their current Dusk stats the next time achievements are loaded or account state is synced.
+- Deleting a profile also removes only that profile's saved achievement records.
+
 ## 1.6.3 - 2026-10-07
 
 Profiles are now directly available from the main Dusk navigation.
