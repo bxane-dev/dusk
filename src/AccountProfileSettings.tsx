@@ -7,7 +7,7 @@ import {
 } from "./lib/auth";
 
 export default function AccountProfileSettings(props: {
-  onToast: (message: string, type?: "success" | "error") => void;
+  onToast: (message: string, type?: "ok" | "error") => void;
 }) {
   const [account, setAccount] = useState<DuskAccount | null>(null);
   const [loading, setLoading] = useState(true);
@@ -43,7 +43,7 @@ export default function AccountProfileSettings(props: {
     return () => {
       cancelled = true;
     };
-  }, [props]);
+  }, [props.onToast]);
 
   async function saveProfile(event: FormEvent) {
     event.preventDefault();
