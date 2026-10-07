@@ -68,40 +68,52 @@ export async function registerDuskAccount(input: {
   username: string;
   password: string;
 }): Promise<{ account: DuskAccount | null; message: string }> {
-  const supabase = getSupabaseClient();
-  if (!supabase) throw new Error("Dusk cloud accounts are not configured in this build.");
+  if (!supabaseConfigured()) {
+    throw new Error("Dusk cloud accounts are not configured in this build.");
+  }
 
   const email = input.email.trim();
   const username = input.username.trim();
+
   if (!/^[A-Za-z0-9_.-]{3,24}$/.test(username)) {
-    throw new Error("Username must be 3–24 characters using letters, numbers, ., _, or -.");
+    throw new Error("Username must be 3-24 characters using letters, numbers, ., _, or -.");
   }
   if (input.password.length < 6) {
     throw new Error("Password must be at least 6 characters.");
   }
 
-  const { data, error } = await supabase.auth.signUp({
-    email,
-    password: input.password,
-    options: { data: { username } },
+  const response = await fetch(`${SUPABASE_URL}/functions/v1/dusk-register`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      apikey: SUPABASE_KEY,
+    },
+    body: JSON.stringify({ email, username, password: input.password }),
   });
-  if (error) throw error;
 
-  if (!data.session || !data.user) {
-    return {
-      account: null,
-      message: "Account created. Confirm your email, then sign in with your username.",
-    };
+  const payload = await response.json().catch(() => ({}));
+  if (!response.ok || !payload?.session?.access_token || !payload?.session?.refresh_token) {
+    throw new Error(payload?.error || "Could not create Dusk account.");
+  }
+
+  const supabase = getSupabaseClient()!;
+  const { data, error } = await supabase.auth.setSession({
+    access_token: payload.session.access_token,
+    refresh_token: payload.session.refresh_token,
+  });
+
+  if (error || !data.session || !data.user) {
+    throw error || new Error("Dusk could not store the new account session.");
   }
 
   return {
     account: {
       user: data.user,
       session: data.session,
-      username,
+      username: String(payload.username || username).trim(),
       email: data.user.email || email,
     },
-    message: "Account created.",
+    message: "Account created and signed in.",
   };
 }
 
