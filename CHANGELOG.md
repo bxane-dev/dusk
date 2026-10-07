@@ -2,6 +2,20 @@
 
 All notable Dusk changes are documented here.
 
+## 1.6.6 - 2026-10-07
+
+Password recovery for Dusk accounts.
+
+- Added a visible Forgot password? action to the Dusk sign-in screen.
+- Users can enter the email attached to their Dusk account and request a Supabase recovery email.
+- Recovery requests use generic messaging so Dusk does not reveal whether an email address has an account.
+- Added a hosted dark-violet Dusk password-reset page.
+- The recovery page validates the temporary recovery session before changing the password.
+- New passwords must be at least 8 characters and must be confirmed before submission.
+- After resetting, the user signs in normally with the same Dusk username and the new password.
+- The reset page does not expose the Supabase service-role key and does not store passwords.
+- The hosted recovery flow avoids using the old localhost page as the intended reset destination.
+
 ## 1.6.5 - 2026-10-07
 
 Editable Dusk accounts and owner profiles.

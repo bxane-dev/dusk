@@ -84,20 +84,19 @@ jobs:
           tagName: dusk-v__VERSION__
           releaseName: Dusk v__VERSION__
           releaseBody: |
-            # Dusk v1.6.5
+            # Dusk v1.6.6
 
-            Editable Dusk accounts, renameable owner profiles, and persistent achievements.
+            Email password recovery with a hosted Dusk reset page.
 
             ## What's new
 
-            - Edit your Dusk display name and username from Settings.
-            - Change account email securely with current-password verification.
-            - Change the Dusk account password securely without storing passwords in the app.
-            - Registration now includes a display name.
-            - Rename local owner profiles from Profiles or Settings.
-            - Owner-profile name changes sync with Dusk account state.
-            - Persistent per-profile achievements remain included and sync across devices.
-            - Account profile writes are validated server-side rather than exposed directly to the desktop client.
+            - Added Forgot password? directly to the Dusk sign-in screen.
+            - Send a recovery link to the email attached to a Dusk account.
+            - Added a hosted Dusk password-reset page instead of relying on localhost.
+            - Reset links use a temporary Supabase recovery session.
+            - New passwords are validated and confirmed before being saved.
+            - Password recovery does not reveal whether an email is registered.
+            - Existing editable profiles, synced achievements, and account security controls remain included.
 
             ## Notes
 
