@@ -38,7 +38,27 @@ export type DuskAccount = {
   username: string;
   displayName: string;
   email: string;
+  avatarUrl: string | null;
 };
+
+async function loadAvatarUrl(userId: string) {
+  const supabase = getSupabaseClient();
+  if (!supabase) return null;
+
+  const path = `${userId}/avatar`;
+  const { data: objects, error: listError } = await supabase.storage
+    .from("dusk-avatars")
+    .list(userId, { limit: 20, search: "avatar" });
+
+  if (listError || !objects?.some((item) => item.name === "avatar")) return null;
+
+  const { data, error } = await supabase.storage
+    .from("dusk-avatars")
+    .createSignedUrl(path, 60 * 60 * 24);
+
+  if (error) return null;
+  return data.signedUrl;
+}
 
 async function loadAccountProfile(user: User) {
   const supabase = getSupabaseClient();
@@ -81,6 +101,7 @@ export async function currentDuskAccount(): Promise<DuskAccount | null> {
     username: profile.username,
     displayName: profile.displayName,
     email: session.user.email || "",
+    avatarUrl: await loadAvatarUrl(session.user.id),
   };
 }
 
@@ -139,6 +160,7 @@ export async function registerDuskAccount(input: {
       username: String(payload.username || username).trim(),
       displayName: String(payload.displayName || displayName).trim(),
       email: data.user.email || email,
+      avatarUrl: null,
     },
     message: "Account created and signed in.",
   };
@@ -178,6 +200,7 @@ export async function loginDuskAccount(username: string, password: string): Prom
     username: profile.username || String(payload.username || username).trim(),
     displayName: profile.displayName,
     email: data.user.email || "",
+    avatarUrl: await loadAvatarUrl(data.user.id),
   };
 }
 
@@ -231,6 +254,7 @@ export async function updateDuskAccount(input: {
     username: profile.username,
     displayName: profile.displayName,
     email: user.email || String(payload.email || input.email || ""),
+    avatarUrl: await loadAvatarUrl(user.id),
   };
 }
 
@@ -256,4 +280,58 @@ export async function requestDuskPasswordReset(emailInput: string) {
   }
 
   return "If a Dusk account exists for that email, a password reset link has been sent.";
+}
+
+
+const MAX_DUSK_AVATAR_BYTES = 150 * 1024 * 1024;
+
+export async function uploadDuskAvatar(file: File): Promise<string> {
+  const supabase = getSupabaseClient();
+  if (!supabase) throw new Error("Supabase is not configured.");
+
+  if (!file.type.startsWith("image/")) {
+    throw new Error("Choose an image file for your avatar.");
+  }
+  if (file.size > MAX_DUSK_AVATAR_BYTES) {
+    throw new Error("Avatar images must be 150 MB or smaller.");
+  }
+
+  const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
+  if (sessionError) throw sessionError;
+  const session = sessionData.session;
+  if (!session?.user?.id) throw new Error("Sign in to upload an avatar.");
+
+  const path = `${session.user.id}/avatar`;
+  const { error: uploadError } = await supabase.storage
+    .from("dusk-avatars")
+    .upload(path, file, {
+      cacheControl: "3600",
+      contentType: file.type || "application/octet-stream",
+      upsert: true,
+    });
+
+  if (uploadError) throw uploadError;
+
+  const { data, error: signedError } = await supabase.storage
+    .from("dusk-avatars")
+    .createSignedUrl(path, 60 * 60 * 24);
+
+  if (signedError) throw signedError;
+  return data.signedUrl;
+}
+
+export async function removeDuskAvatar() {
+  const supabase = getSupabaseClient();
+  if (!supabase) throw new Error("Supabase is not configured.");
+
+  const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
+  if (sessionError) throw sessionError;
+  const session = sessionData.session;
+  if (!session?.user?.id) throw new Error("Sign in to remove your avatar.");
+
+  const { error } = await supabase.storage
+    .from("dusk-avatars")
+    .remove([`${session.user.id}/avatar`]);
+
+  if (error) throw error;
 }
