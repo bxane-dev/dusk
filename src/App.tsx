@@ -46,6 +46,7 @@ import {
 } from "react";
 import { convertFileSrc } from "@tauri-apps/api/core";
 import duskLogo from "./assets/dusk-logo.png";
+import AccountProfileSettings from "./AccountProfileSettings";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { api } from "./lib/api";
 import { syncAccountState } from "./lib/accountSync";
@@ -1516,6 +1517,26 @@ export default function App() {
     }
   }
 
+  async function renameOwnerProfile(profile: ProfileRecord) {
+    const name = window.prompt("Rename owner profile", profile.name);
+    if (!name || !name.trim() || name.trim() === profile.name) return;
+
+    try {
+      const renamed = await api.renameProfile(profile.id, name.trim());
+      if (activeProfile?.id === renamed.id) setActiveProfile(renamed);
+      await refreshCore(false);
+      try {
+        await syncAccountState();
+        await syncCloudManifest();
+      } catch {
+        // Renaming is local-first and will sync the next time cloud sync succeeds.
+      }
+      showToast("Renamed profile to " + renamed.name + ".");
+    } catch (error) {
+      showToast(readableError(error), "error");
+    }
+  }
+
   async function removeOwnerProfile(profile: ProfileRecord) {
     if (profiles.length <= 1) {
       showToast("Dusk must keep at least one owner profile.", "error");
@@ -2256,6 +2277,14 @@ export default function App() {
                                 Open library
                               </button>
                             )}
+                            <button
+                              className="icon-button"
+                              onClick={() => void renameOwnerProfile(profile)}
+                              title={"Rename " + profile.name}
+                              aria-label={"Rename " + profile.name}
+                            >
+                              <Pencil size={16} />
+                            </button>
                             {profiles.length > 1 && (
                               <button
                                 className="icon-button danger"
@@ -2335,9 +2364,11 @@ export default function App() {
                     <div>
                       <span className="eyebrow">Dusk</span>
                       <h1>Settings</h1>
-                      <p>Appearance and local data information.</p>
+                      <p>Account, profiles, appearance, updates, and local data.</p>
                     </div>
                   </div>
+
+                  {!guestMode && <AccountProfileSettings onToast={showToast} />}
 
                   <section className="settings-card">
                     <div className="settings-card-head">
@@ -2364,6 +2395,9 @@ export default function App() {
                                 Use
                               </button>
                             )}
+                            <button className="icon-button" onClick={() => void renameOwnerProfile(profile)} title="Rename profile">
+                              <Pencil size={15} />
+                            </button>
                             {profiles.length > 1 && (
                               <button className="icon-button" onClick={() => void removeOwnerProfile(profile)} title="Delete profile">
                                 <Trash2 size={15} />
