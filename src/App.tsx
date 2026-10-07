@@ -50,7 +50,7 @@ import AccountProfileSettings from "./AccountProfileSettings";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { api } from "./lib/api";
 import { syncAccountState } from "./lib/accountSync";
-import { logoutDuskAccount } from "./lib/auth";
+import { currentDuskAccount, logoutDuskAccount, type DuskAccount } from "./lib/auth";
 import { cloudSaveStatus, syncAllBackupsToSupabase, syncBackupToSupabase, syncCloudManifest } from "./lib/cloudSaves";
 import { checkForDuskUpdate, installDuskUpdate } from "./lib/updater";
 import { useControllerNavigation } from "./lib/useControllerNavigation";
@@ -911,6 +911,7 @@ export default function App() {
   const [dataDirectory, setDataDirectory] = useState("");
   const [profiles, setProfiles] = useState<ProfileRecord[]>([]);
   const [activeProfile, setActiveProfile] = useState<ProfileRecord | null>(null);
+  const [accountIdentity, setAccountIdentity] = useState<DuskAccount | null>(null);
   const [cloudStatus, setCloudStatus] = useState<CloudSaveStatus>({
     configured: false,
     authenticated: false,
@@ -1050,6 +1051,24 @@ export default function App() {
     }, 30000);
     return () => window.clearInterval(syncTimer);
   }, [refreshCore]);
+
+  useEffect(() => {
+    if (localStorage.getItem("dusk-account-mode") === "guest") {
+      setAccountIdentity(null);
+      return;
+    }
+
+    void currentDuskAccount()
+      .then(setAccountIdentity)
+      .catch(() => setAccountIdentity(null));
+
+    const onAvatarChanged = (event: Event) => {
+      const detail = (event as CustomEvent<DuskAccount>).detail;
+      if (detail) setAccountIdentity(detail);
+    };
+    window.addEventListener("dusk-account-avatar-changed", onAvatarChanged);
+    return () => window.removeEventListener("dusk-account-avatar-changed", onAvatarChanged);
+  }, []);
 
   useEffect(() => {
     void getCurrentWindow()
@@ -1847,6 +1866,26 @@ export default function App() {
         </div>
 
         <div className="sidebar-bottom">
+          {!guestMode && accountIdentity && (
+            <button
+              className="sidebar-account-chip"
+              type="button"
+              onClick={() => setView("settings")}
+              title="Edit Dusk account profile"
+            >
+              <div className="sidebar-account-avatar">
+                {accountIdentity.avatarUrl ? (
+                  <img src={accountIdentity.avatarUrl} alt="" />
+                ) : (
+                  <span>{(accountIdentity.displayName || accountIdentity.username || "D").charAt(0).toUpperCase()}</span>
+                )}
+              </div>
+              <div className="sidebar-account-copy">
+                <strong>{accountIdentity.displayName || accountIdentity.username}</strong>
+                <small>@{accountIdentity.username}</small>
+              </div>
+            </button>
+          )}
           <div className="profile-switcher">
             <div className="profile-switcher-icon">
               <UserRound size={15} />
