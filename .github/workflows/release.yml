@@ -84,20 +84,18 @@ jobs:
           tagName: dusk-v__VERSION__
           releaseName: Dusk v__VERSION__
           releaseBody: |
-            # Dusk v1.6.7
+            # Dusk v1.6.8
 
-            Custom private Dusk account avatars with round profile display.
+            Profile UI cleanup and removal of duplicate owner-profile controls.
 
             ## What's new
 
-            - Upload a custom Dusk account avatar from Settings.
-            - Avatar uploads support image files up to 150 MB.
-            - Profile pictures are shown as round avatars with a centered square crop.
-            - Avatars are stored privately in Supabase Storage under each user's account ID.
-            - Users can change or remove their avatar at any time.
-            - The sidebar now shows the signed-in account avatar, display name, and username.
-            - Avatar/name changes refresh in the sidebar immediately.
-            - Existing editable profiles, password recovery, synced achievements, and account security controls remain included.
+            - Removed the Profiles item from the main sidebar.
+            - Removed the standalone Profiles page.
+            - Removed the bottom owner-profile dropdown and add-profile button from the sidebar.
+            - Existing owner-profile data, libraries, saves, and backups remain intact.
+            - Profile management remains available in Settings.
+            - Custom account avatars, password recovery, synced achievements, and account editing remain included.
 
             ## Notes
 
