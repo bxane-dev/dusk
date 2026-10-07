@@ -34,18 +34,35 @@ export type DuskAccount = {
   user: User;
   session: Session;
   username: string;
+  displayName: string;
   email: string;
 };
 
-async function loadUsername(user: User) {
+async function loadAccountProfile(user: User) {
   const supabase = getSupabaseClient();
-  if (!supabase) return "";
-  const { data } = await supabase
+  if (!supabase) {
+    const fallbackUsername = String(user.user_metadata?.username || "");
+    return {
+      username: fallbackUsername,
+      displayName: String(user.user_metadata?.display_name || fallbackUsername),
+    };
+  }
+
+  const { data, error } = await supabase
     .from("dusk_accounts")
-    .select("username")
+    .select("username, display_name")
     .eq("user_id", user.id)
     .maybeSingle();
-  return data?.username || String(user.user_metadata?.username || "");
+
+  if (error) throw error;
+
+  const fallbackUsername = String(user.user_metadata?.username || "");
+  return {
+    username: data?.username || fallbackUsername,
+    displayName:
+      data?.display_name ||
+      String(user.user_metadata?.display_name || data?.username || fallbackUsername),
+  };
 }
 
 export async function currentDuskAccount(): Promise<DuskAccount | null> {
@@ -55,10 +72,12 @@ export async function currentDuskAccount(): Promise<DuskAccount | null> {
   if (error) throw error;
   const session = data.session;
   if (!session?.user) return null;
+  const profile = await loadAccountProfile(session.user);
   return {
     user: session.user,
     session,
-    username: await loadUsername(session.user),
+    username: profile.username,
+    displayName: profile.displayName,
     email: session.user.email || "",
   };
 }
@@ -66,6 +85,7 @@ export async function currentDuskAccount(): Promise<DuskAccount | null> {
 export async function registerDuskAccount(input: {
   email: string;
   username: string;
+  displayName: string;
   password: string;
 }): Promise<{ account: DuskAccount | null; message: string }> {
   if (!supabaseConfigured()) {
@@ -74,9 +94,13 @@ export async function registerDuskAccount(input: {
 
   const email = input.email.trim();
   const username = input.username.trim();
+  const displayName = input.displayName.trim() || username;
 
   if (!/^[A-Za-z0-9_.-]{3,24}$/.test(username)) {
     throw new Error("Username must be 3-24 characters using letters, numbers, ., _, or -.");
+  }
+  if (displayName.length < 1 || displayName.length > 48) {
+    throw new Error("Display name must be 1-48 characters.");
   }
   if (input.password.length < 6) {
     throw new Error("Password must be at least 6 characters.");
@@ -88,7 +112,7 @@ export async function registerDuskAccount(input: {
       "Content-Type": "application/json",
       apikey: SUPABASE_KEY,
     },
-    body: JSON.stringify({ email, username, password: input.password }),
+    body: JSON.stringify({ email, username, displayName, password: input.password }),
   });
 
   const payload = await response.json().catch(() => ({}));
@@ -111,6 +135,7 @@ export async function registerDuskAccount(input: {
       user: data.user,
       session: data.session,
       username: String(payload.username || username).trim(),
+      displayName: String(payload.displayName || displayName).trim(),
       email: data.user.email || email,
     },
     message: "Account created and signed in.",
@@ -144,10 +169,12 @@ export async function loginDuskAccount(username: string, password: string): Prom
     throw error || new Error("Dusk could not store the account session.");
   }
 
+  const profile = await loadAccountProfile(data.user);
   return {
     user: data.user,
     session: data.session,
-    username: String(payload.username || username).trim(),
+    username: profile.username || String(payload.username || username).trim(),
+    displayName: profile.displayName,
     email: data.user.email || "",
   };
 }
@@ -157,4 +184,50 @@ export async function logoutDuskAccount() {
   if (!supabase) return;
   const { error } = await supabase.auth.signOut();
   if (error) throw error;
+}
+
+
+export async function updateDuskAccount(input: {
+  username?: string;
+  displayName?: string;
+  email?: string;
+  currentPassword?: string;
+  newPassword?: string;
+}): Promise<DuskAccount> {
+  const supabase = getSupabaseClient();
+  if (!supabase) throw new Error("Supabase is not configured.");
+
+  const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
+  if (sessionError) throw sessionError;
+  const session = sessionData.session;
+  if (!session) throw new Error("Sign in to edit your Dusk account.");
+
+  const response = await fetch(`${SUPABASE_URL}/functions/v1/dusk-update-account`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      apikey: SUPABASE_KEY,
+      Authorization: `Bearer ${session.access_token}`,
+    },
+    body: JSON.stringify(input),
+  });
+
+  const payload = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    throw new Error(payload?.error || "Could not update Dusk account.");
+  }
+
+  const { data: refreshed } = await supabase.auth.refreshSession();
+  const nextSession = refreshed.session || session;
+  const fresh = await supabase.auth.getUser();
+  const user = fresh.data.user || nextSession.user;
+  const profile = await loadAccountProfile(user);
+
+  return {
+    user,
+    session: nextSession,
+    username: profile.username,
+    displayName: profile.displayName,
+    email: user.email || String(payload.email || input.email || ""),
+  };
 }
