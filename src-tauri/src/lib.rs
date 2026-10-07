@@ -334,6 +334,20 @@ fn initialize_schema(connection: &Connection) -> Result<(), String> {
                 value TEXT NOT NULL
             );
 
+            CREATE TABLE IF NOT EXISTS profile_achievements (
+                profile_id TEXT NOT NULL,
+                achievement_id TEXT NOT NULL,
+                current INTEGER NOT NULL DEFAULT 0,
+                unlocked INTEGER NOT NULL DEFAULT 0,
+                unlocked_at TEXT,
+                updated_at TEXT NOT NULL,
+                PRIMARY KEY(profile_id, achievement_id),
+                FOREIGN KEY(profile_id) REFERENCES profiles(id) ON DELETE CASCADE
+            );
+
+            CREATE INDEX IF NOT EXISTS idx_profile_achievements_profile
+            ON profile_achievements(profile_id, achievement_id);
+
             CREATE TABLE IF NOT EXISTS profile_games (
                 profile_id TEXT NOT NULL,
                 game_id TEXT NOT NULL,
@@ -2628,7 +2642,7 @@ fn list_achievements(app: AppHandle) -> Result<Vec<Achievement>, String> {
         )
         .unwrap_or(0);
 
-    let achievements = vec![
+    let mut achievements = vec![
         Achievement {
             id: "first-launch".into(),
             title: "First Light".into(),
@@ -2686,6 +2700,59 @@ fn list_achievements(app: AppHandle) -> Result<Vec<Achievement>, String> {
             target: 1,
         },
     ];
+
+    for achievement in &mut achievements {
+        let saved: Option<(i64, i64, Option<String>)> = connection
+            .query_row(
+                r#"
+                SELECT current, unlocked, unlocked_at
+                FROM profile_achievements
+                WHERE profile_id = ?1 AND achievement_id = ?2
+                "#,
+                params![profile_id, achievement.id],
+                |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+            )
+            .optional()
+            .map_err(|error| format!("Could not load saved achievement progress: {error}"))?;
+
+        let saved_current = saved.as_ref().map(|value| value.0).unwrap_or(0);
+        let saved_unlocked = saved.as_ref().map(|value| value.1 != 0).unwrap_or(false);
+        let saved_unlocked_at = saved.and_then(|value| value.2);
+
+        achievement.current = achievement.current.max(saved_current).min(achievement.target);
+        achievement.unlocked =
+            achievement.unlocked || saved_unlocked || achievement.current >= achievement.target;
+
+        let unlocked_at = if achievement.unlocked {
+            saved_unlocked_at.or_else(|| Some(now()))
+        } else {
+            None
+        };
+
+        connection
+            .execute(
+                r#"
+                INSERT INTO profile_achievements (
+                    profile_id, achievement_id, current, unlocked, unlocked_at, updated_at
+                )
+                VALUES (?1, ?2, ?3, ?4, ?5, ?6)
+                ON CONFLICT(profile_id, achievement_id) DO UPDATE SET
+                    current = MAX(profile_achievements.current, excluded.current),
+                    unlocked = MAX(profile_achievements.unlocked, excluded.unlocked),
+                    unlocked_at = COALESCE(profile_achievements.unlocked_at, excluded.unlocked_at),
+                    updated_at = excluded.updated_at
+                "#,
+                params![
+                    profile_id,
+                    achievement.id,
+                    achievement.current,
+                    if achievement.unlocked { 1_i64 } else { 0_i64 },
+                    unlocked_at,
+                    now()
+                ],
+            )
+            .map_err(|error| format!("Could not save achievement progress: {error}"))?;
+    }
 
     Ok(achievements)
 }
@@ -3671,6 +3738,7 @@ fn set_account_scope(app: AppHandle, account_user_id: Option<String>) -> Result<
 
 #[tauri::command]
 fn export_account_state(app: AppHandle) -> Result<serde_json::Value, String> {
+    let _ = list_achievements(app.clone())?;
     let connection = open_database(&app)?;
     let active_profile = active_profile_id(&connection)?;
 
@@ -3761,15 +3829,40 @@ fn export_account_state(app: AppHandle) -> Result<serde_json::Value, String> {
         .collect::<Result<Vec<_>, _>>()
         .map_err(|error| format!("Could not decode account collection memberships: {error}"))?;
 
+    let mut achievements_statement = connection
+        .prepare(
+            r#"
+            SELECT profile_id, achievement_id, current, unlocked, unlocked_at, updated_at
+            FROM profile_achievements
+            ORDER BY profile_id, achievement_id
+            "#,
+        )
+        .map_err(|error| format!("Could not prepare account achievements: {error}"))?;
+    let profile_achievements = achievements_statement
+        .query_map([], |row| {
+            Ok(serde_json::json!({
+                "profileId": row.get::<_, String>(0)?,
+                "achievementId": row.get::<_, String>(1)?,
+                "current": row.get::<_, i64>(2)?,
+                "unlocked": row.get::<_, i64>(3)? != 0,
+                "unlockedAt": row.get::<_, Option<String>>(4)?,
+                "updatedAt": row.get::<_, String>(5)?
+            }))
+        })
+        .map_err(|error| format!("Could not read account achievements: {error}"))?
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|error| format!("Could not decode account achievements: {error}"))?;
+
     Ok(serde_json::json!({
-        "schemaVersion": 1,
+        "schemaVersion": 2,
         "generatedAt": now(),
         "activeProfileId": active_profile,
         "profiles": profiles,
         "games": games,
         "profileGames": profile_games,
         "collections": collections,
-        "collectionGames": collection_games
+        "collectionGames": collection_games,
+        "profileAchievements": profile_achievements
     }))
 }
 
@@ -3887,6 +3980,64 @@ fn import_account_state(app: AppHandle, state: serde_json::Value) -> Result<(), 
                 "INSERT OR IGNORE INTO collection_games (collection_id, game_id) VALUES (?1, ?2)",
                 params![collection_id, game_id],
             );
+        }
+    }
+
+    if let Some(achievements) = state.get("profileAchievements").and_then(|value| value.as_array()) {
+        for achievement in achievements {
+            let Some(profile_id) = achievement.get("profileId").and_then(|value| value.as_str()) else { continue; };
+            let Some(achievement_id) = achievement.get("achievementId").and_then(|value| value.as_str()) else { continue; };
+            let current = achievement.get("current").and_then(|value| value.as_i64()).unwrap_or(0).max(0);
+            let unlocked = if achievement.get("unlocked").and_then(|value| value.as_bool()).unwrap_or(false) {
+                1_i64
+            } else {
+                0_i64
+            };
+            let unlocked_at = achievement.get("unlockedAt").and_then(|value| value.as_str());
+            let updated_at = achievement
+                .get("updatedAt")
+                .and_then(|value| value.as_str())
+                .unwrap_or_else(|| "");
+
+            let profile_exists: bool = transaction
+                .query_row(
+                    "SELECT EXISTS(SELECT 1 FROM profiles WHERE id = ?1)",
+                    params![profile_id],
+                    |row| row.get(0),
+                )
+                .unwrap_or(false);
+            if !profile_exists {
+                continue;
+            }
+
+            transaction
+                .execute(
+                    r#"
+                    INSERT INTO profile_achievements (
+                        profile_id, achievement_id, current, unlocked, unlocked_at, updated_at
+                    )
+                    VALUES (?1, ?2, ?3, ?4, ?5, ?6)
+                    ON CONFLICT(profile_id, achievement_id) DO UPDATE SET
+                        current = MAX(profile_achievements.current, excluded.current),
+                        unlocked = MAX(profile_achievements.unlocked, excluded.unlocked),
+                        unlocked_at = COALESCE(profile_achievements.unlocked_at, excluded.unlocked_at),
+                        updated_at = CASE
+                            WHEN excluded.current > profile_achievements.current
+                              OR excluded.unlocked > profile_achievements.unlocked
+                            THEN excluded.updated_at
+                            ELSE profile_achievements.updated_at
+                        END
+                    "#,
+                    params![
+                        profile_id,
+                        achievement_id,
+                        current,
+                        unlocked,
+                        unlocked_at,
+                        if updated_at.is_empty() { now() } else { updated_at.to_string() }
+                    ],
+                )
+                .map_err(|error| format!("Could not merge account achievement: {error}"))?;
         }
     }
 
