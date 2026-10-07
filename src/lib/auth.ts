@@ -2,6 +2,8 @@ import { createClient, type Session, type SupabaseClient, type User } from "@sup
 
 const DUSK_SUPABASE_URL = "https://cwfmizfkysdrsesuhkym.supabase.co";
 const DUSK_SUPABASE_PUBLISHABLE_KEY = "sb_publishable_yB9lh3iBKpH-tBHFA9neNA_bcNnxbK4";
+const DUSK_PASSWORD_RESET_URL =
+  "https://cwfmizfkysdrsesuhkym.supabase.co/functions/v1/dusk-password-reset";
 
 export const SUPABASE_URL =
   (import.meta.env.VITE_SUPABASE_URL as string | undefined)?.trim() || DUSK_SUPABASE_URL;
@@ -230,4 +232,28 @@ export async function updateDuskAccount(input: {
     displayName: profile.displayName,
     email: user.email || String(payload.email || input.email || ""),
   };
+}
+
+
+export async function requestDuskPasswordReset(emailInput: string) {
+  const supabase = getSupabaseClient();
+  if (!supabase) throw new Error("Dusk cloud accounts are not configured in this build.");
+
+  const email = emailInput.trim().toLowerCase();
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+    throw new Error("Enter a valid email address.");
+  }
+
+  const { error } = await supabase.auth.resetPasswordForEmail(email, {
+    redirectTo: DUSK_PASSWORD_RESET_URL,
+  });
+  if (error) {
+    const message = error.message || "Could not send password reset email.";
+    if (/redirect|url/i.test(message)) {
+      throw new Error("Dusk password recovery is not fully configured on the account server yet.");
+    }
+    throw error;
+  }
+
+  return "If a Dusk account exists for that email, a password reset link has been sent.";
 }
