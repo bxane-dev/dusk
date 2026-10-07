@@ -1529,6 +1529,53 @@ fn create_profile(app: AppHandle, name: String) -> Result<ProfileRecord, String>
 }
 
 #[tauri::command]
+fn rename_profile(app: AppHandle, profile_id: String, name: String) -> Result<ProfileRecord, String> {
+    let name = name.trim();
+    if name.is_empty() {
+        return Err("Profile name cannot be empty.".into());
+    }
+    if name.chars().count() > 48 {
+        return Err("Profile name must be 48 characters or fewer.".into());
+    }
+
+    let connection = open_database(&app)?;
+    let exists: bool = connection
+        .query_row(
+            "SELECT EXISTS(SELECT 1 FROM profiles WHERE id = ?1)",
+            params![profile_id],
+            |row| row.get(0),
+        )
+        .map_err(|error| format!("Could not check profile: {error}"))?;
+    if !exists {
+        return Err("Profile not found.".into());
+    }
+
+    let duplicate: bool = connection
+        .query_row(
+            "SELECT EXISTS(SELECT 1 FROM profiles WHERE id != ?1 AND LOWER(name) = LOWER(?2))",
+            params![profile_id, name],
+            |row| row.get(0),
+        )
+        .map_err(|error| format!("Could not check profile name: {error}"))?;
+    if duplicate {
+        return Err("A profile with that name already exists.".into());
+    }
+
+    connection
+        .execute(
+            "UPDATE profiles SET name = ?1, last_used_at = ?2 WHERE id = ?3",
+            params![name, now(), profile_id],
+        )
+        .map_err(|error| format!("Could not rename profile: {error}"))?;
+
+    drop(connection);
+    list_profiles(app)?
+        .into_iter()
+        .find(|profile| profile.id == profile_id)
+        .ok_or_else(|| "Renamed profile could not be reloaded.".to_string())
+}
+
+#[tauri::command]
 fn set_active_profile(app: AppHandle, profile_id: String) -> Result<ProfileRecord, String> {
     let connection = open_database(&app)?;
     let exists: bool = connection
@@ -4408,6 +4455,7 @@ pub fn run() {
             list_profiles,
             get_active_profile,
             create_profile,
+            rename_profile,
             set_active_profile,
             delete_profile,
             choose_game_installer,
