@@ -2257,3 +2257,69 @@ button:disabled { cursor: not-allowed; opacity: 0.55; }
     justify-content: center;
   }
 }
+
+
+/* Password recovery */
+.account-forgot {
+  width: 100%;
+  min-height: 36px;
+  margin-top: 8px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  border: 0;
+  border-radius: 10px;
+  color: #a78bfa;
+  background: transparent;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.account-forgot:hover {
+  color: #c4b5fd;
+  background: rgba(139, 92, 246, 0.07);
+}
+
+.account-forgot:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.account-field-icon {
+  position: relative;
+}
+
+.account-field-icon > svg {
+  position: absolute;
+  top: 50%;
+  left: 13px;
+  z-index: 1;
+  color: #71717a;
+  transform: translateY(-50%);
+  pointer-events: none;
+}
+
+.account-field-icon input {
+  padding-left: 38px;
+}
+
+.account-recovery-note {
+  display: flex;
+  align-items: flex-start;
+  gap: 9px;
+  padding: 10px 11px;
+  border: 1px solid rgba(139, 92, 246, 0.15);
+  border-radius: 10px;
+  color: #a1a1aa;
+  background: rgba(139, 92, 246, 0.05);
+  font-size: 11px;
+  line-height: 1.45;
+}
+
+.account-recovery-note svg {
+  flex: 0 0 auto;
+  margin-top: 1px;
+  color: #8b5cf6;
+}
