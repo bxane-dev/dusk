@@ -73,7 +73,6 @@ type View =
   | "library"
   | "favorites"
   | "screenshots"
-  | "profiles"
   | "achievements"
   | "settings";
 
@@ -1810,13 +1809,6 @@ export default function App() {
             onClick={() => setView("screenshots")}
           />
           <NavItem
-            active={view === "profiles"}
-            icon={<UserRound size={18} />}
-            label="Profiles"
-            count={profiles.length}
-            onClick={() => setView("profiles")}
-          />
-          <NavItem
             active={view === "achievements"}
             icon={<Trophy size={18} />}
             label="Achievements"
@@ -1886,25 +1878,6 @@ export default function App() {
               </div>
             </button>
           )}
-          <div className="profile-switcher">
-            <div className="profile-switcher-icon">
-              <UserRound size={15} />
-            </div>
-            <select
-              value={activeProfile?.id || ""}
-              onChange={(event) => void switchOwnerProfile(event.target.value)}
-              aria-label="Active owner profile"
-            >
-              {profiles.map((profile) => (
-                <option key={profile.id} value={profile.id}>
-                  {profile.name}
-                </option>
-              ))}
-            </select>
-            <button className="mini-icon" onClick={() => void createOwnerProfile()} title="New profile">
-              <Plus size={14} />
-            </button>
-          </div>
           <button
             className="creator-pill"
             onClick={() => void openExternal("creator")}
@@ -2238,117 +2211,6 @@ export default function App() {
                 </div>
               )}
 
-
-              {view === "profiles" && (
-                <div className="page profiles-page">
-                  <div className="page-heading">
-                    <div>
-                      <span className="eyebrow">Owners</span>
-                      <h1>Profiles</h1>
-                      <p>
-                        Keep separate libraries, play history, collections, save folders, and backup vaults for each owner.
-                      </p>
-                    </div>
-                    <button className="button primary" onClick={() => void createOwnerProfile()}>
-                      <Plus size={16} />
-                      New profile
-                    </button>
-                  </div>
-
-                  <div className="profiles-summary">
-                    <div>
-                      <span>Active profile</span>
-                      <strong>{activeProfile?.name || "None"}</strong>
-                    </div>
-                    <div>
-                      <span>Profiles</span>
-                      <strong>{profiles.length}</strong>
-                    </div>
-                    <div>
-                      <span>Current library</span>
-                      <strong>{stats.gameCount} {stats.gameCount === 1 ? "game" : "games"}</strong>
-                    </div>
-                  </div>
-
-                  <div className="profile-card-grid">
-                    {profiles.map((profile) => {
-                      const active = activeProfile?.id === profile.id;
-                      const initial = profile.name.trim().charAt(0).toUpperCase() || "D";
-                      return (
-                        <article className={cx("profile-card", active && "active")} key={profile.id}>
-                          <div className="profile-card-top">
-                            <div className="profile-avatar" aria-hidden="true">{initial}</div>
-                            {active && (
-                              <span className="profile-active-pill">
-                                <Check size={12} />
-                                Active
-                              </span>
-                            )}
-                          </div>
-
-                          <div className="profile-card-copy">
-                            <h3>{profile.name}</h3>
-                            <p>
-                              Last used {formatDate(profile.lastUsedAt)}
-                            </p>
-                          </div>
-
-                          <div className="profile-card-stats">
-                            <div>
-                              <Library size={15} />
-                              <span>{profile.gameCount} {profile.gameCount === 1 ? "game" : "games"}</span>
-                            </div>
-                            <div>
-                              <Archive size={15} />
-                              <span>{profile.backupCount} {profile.backupCount === 1 ? "backup" : "backups"}</span>
-                            </div>
-                          </div>
-
-                          <div className="profile-card-actions">
-                            {!active ? (
-                              <button className="button primary" onClick={() => void switchOwnerProfile(profile.id)}>
-                                <UserRound size={15} />
-                                Use profile
-                              </button>
-                            ) : (
-                              <button className="button secondary" onClick={() => setView("library")}>
-                                <Library size={15} />
-                                Open library
-                              </button>
-                            )}
-                            <button
-                              className="icon-button"
-                              onClick={() => void renameOwnerProfile(profile)}
-                              title={"Rename " + profile.name}
-                              aria-label={"Rename " + profile.name}
-                            >
-                              <Pencil size={16} />
-                            </button>
-                            {profiles.length > 1 && (
-                              <button
-                                className="icon-button danger"
-                                onClick={() => void removeOwnerProfile(profile)}
-                                title={"Delete " + profile.name}
-                                aria-label={"Delete " + profile.name}
-                              >
-                                <Trash2 size={16} />
-                              </button>
-                            )}
-                          </div>
-                        </article>
-                      );
-                    })}
-
-                    <button className="profile-create-card" onClick={() => void createOwnerProfile()}>
-                      <div className="profile-create-icon">
-                        <Plus size={22} />
-                      </div>
-                      <strong>Create profile</strong>
-                      <span>Add another separate Dusk library and save vault.</span>
-                    </button>
-                  </div>
-                </div>
-              )}
 
               {view === "achievements" && (
                 <div className="page">
