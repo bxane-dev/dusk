@@ -78,6 +78,7 @@ export default function AccountGate(props: { children: ReactNode }) {
   const [mode, setMode] = useState<Mode>("login");
   const [email, setEmail] = useState("");
   const [username, setUsername] = useState("");
+  const [displayName, setDisplayName] = useState("");
   const [password, setPassword] = useState("");
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState("");
@@ -115,7 +116,7 @@ export default function AccountGate(props: { children: ReactNode }) {
 
     try {
       if (mode === "register") {
-        const result = await registerDuskAccount({ email, username, password });
+        const result = await registerDuskAccount({ email, username, displayName, password });
         setMessage(result.message);
         if (result.account) {
           localStorage.removeItem("dusk-account-mode");
@@ -190,17 +191,30 @@ export default function AccountGate(props: { children: ReactNode }) {
 
         <form className="account-form" onSubmit={submit}>
           {mode === "register" && (
-            <label>
-              <span>Email</span>
-              <input
-                type="email"
-                autoComplete="email"
-                value={email}
-                onChange={(event) => setEmail(event.target.value)}
-                placeholder="you@example.com"
-                required
-              />
-            </label>
+            <>
+              <label>
+                <span>Display name</span>
+                <input
+                  autoComplete="name"
+                  value={displayName}
+                  onChange={(event) => setDisplayName(event.target.value)}
+                  placeholder="Your name"
+                  maxLength={48}
+                  required
+                />
+              </label>
+              <label>
+                <span>Email</span>
+                <input
+                  type="email"
+                  autoComplete="email"
+                  value={email}
+                  onChange={(event) => setEmail(event.target.value)}
+                  placeholder="you@example.com"
+                  required
+                />
+              </label>
+            </>
           )}
           <label>
             <span>Username</span>
