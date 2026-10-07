@@ -2,6 +2,16 @@
 
 All notable Dusk changes are documented here.
 
+## 1.6.8 - 2026-10-07
+
+Profile UI cleanup.
+
+- Removed the Profiles item from the main sidebar navigation.
+- Removed the standalone Profiles page.
+- Removed the bottom owner-profile dropdown and add-profile button from the sidebar.
+- Existing owner-profile data, libraries, saves, backups, and switching logic are preserved.
+- Profile management remains available in Settings, so no existing data is deleted.
+
 ## 1.6.7 - 2026-10-07
 
 Custom Dusk account avatars.
