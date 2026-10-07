@@ -5,9 +5,11 @@ Add-Type -AssemblyName System.Drawing
 $root = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
 $iconsDir = Join-Path $root "src-tauri\icons"
 $installerDir = Join-Path $root "src-tauri\installer"
+$uiAssetsDir = Join-Path $root "src\assets"
+$uiLogoPath = Join-Path $uiAssetsDir "dusk-logo.png"
 $sourcePath = Join-Path $iconsDir "dusk-logo.png"
 
-New-Item -ItemType Directory -Force -Path $iconsDir, $installerDir | Out-Null
+New-Item -ItemType Directory -Force -Path $iconsDir, $installerDir, $uiAssetsDir | Out-Null
 
 if (-not (Test-Path $sourcePath)) {
   throw "Official Dusk logo source is missing: $sourcePath"
