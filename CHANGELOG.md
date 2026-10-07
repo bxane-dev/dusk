@@ -2,6 +2,19 @@
 
 All notable Dusk changes are documented here.
 
+## 1.6.2 - 2026-10-07
+
+Registration, updater, and logo hotfix.
+
+- Removed the broken browser-based email confirmation redirect that pointed to localhost.
+- New Dusk accounts are verified server-side and signed into the desktop app immediately.
+- Added a Dusk-branded Supabase confirmation email template to the repository for future confirmation flows.
+- Replaced the optional Tauri updater-plugin runtime path with a built-in GitHub Releases updater.
+- Dusk now checks the latest release, compares versions, downloads the official Windows x64 installer, verifies the GitHub SHA-256 digest when available, launches the installer, and closes the current app.
+- Removed the misleading "plugin updater not found" failure path.
+- Fixed the official Dusk logo pipeline to use the full approved emblem instead of cropping away the left side of the D.
+- Kept guest mode, account sync, custom window controls, and the branded installer.
+
 ## 1.6.1 - 2026-10-06
 
 Account-screen and desktop hotfix.

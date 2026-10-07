@@ -84,19 +84,18 @@ jobs:
           tagName: dusk-v__VERSION__
           releaseName: Dusk v__VERSION__
           releaseBody: |
-            # Dusk v1.6.1
+            # Dusk v1.6.2
 
-            Desktop account hotfix, guest mode, restored window controls, and corrected Dusk branding.
+            Registration, updater, and official-logo hotfix.
 
             ## What's new
 
-            - Restored minimize, maximize/restore, close, and draggable title-bar controls on the login/register screen.
-            - Added Continue as guest for a fully local Dusk experience without an account.
-            - Added a guest-mode Settings path back to sign-in.
-            - Fixed the desktop Supabase public configuration fallback so login works when release variables are missing.
-            - Cropped the approved Dusk emblem so it is visible across the UI, Windows executable, shortcuts, installer, and uninstaller.
-            - Disabled cloud-sync actions while running as a guest.
-            - Preserved Dusk accounts, cross-device sync, game discovery, profiles, save vaults, updater, and controller navigation.
+            - Removed the broken localhost email-confirmation redirect from desktop registration.
+            - New Dusk accounts are verified server-side and signed in immediately.
+            - Replaced the optional Tauri updater plugin with a built-in GitHub Releases updater.
+            - Update downloads verify the GitHub-provided SHA-256 digest when available.
+            - Fixed the official Dusk logo pipeline to use the full approved D emblem.
+            - Preserved guest mode, Supabase account sync, custom window controls, game discovery, save vaults, and the branded installer.
 
             ## Notes
 
