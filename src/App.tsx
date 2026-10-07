@@ -1597,7 +1597,7 @@ export default function App() {
       }
     } catch (error) {
       showToast(
-        "Updater is not configured for this build yet: " + readableError(error),
+        "Could not check for Dusk updates: " + readableError(error),
         "error",
       );
     } finally {

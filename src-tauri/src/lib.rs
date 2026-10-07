@@ -2,6 +2,7 @@ use chrono::{DateTime, Utc};
 use regex::Regex;
 use rusqlite::{params, Connection, OptionalExtension};
 use serde::Serialize;
+use sha2::{Digest, Sha256};
 use std::{
     collections::{hash_map::DefaultHasher, HashMap, HashSet},
     env,
@@ -4051,6 +4052,179 @@ async fn upload_cloud_manifest(
     .map_err(|error| format!("Cloud manifest worker failed: {error}"))?
 }
 
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct DuskUpdateInfo {
+    available: bool,
+    version: Option<String>,
+    body: Option<String>,
+    date: Option<String>,
+}
+
+fn normalized_version_parts(value: &str) -> Vec<u64> {
+    let clean = value
+        .trim()
+        .trim_start_matches("dusk-v")
+        .trim_start_matches('v');
+
+    let mut parts = clean
+        .split('.')
+        .take(3)
+        .map(|part| {
+            let digits: String = part.chars().take_while(|ch| ch.is_ascii_digit()).collect();
+            digits.parse::<u64>().unwrap_or(0)
+        })
+        .collect::<Vec<_>>();
+
+    while parts.len() < 3 {
+        parts.push(0);
+    }
+    parts
+}
+
+fn version_is_newer(remote: &str, local: &str) -> bool {
+    normalized_version_parts(remote) > normalized_version_parts(local)
+}
+
+fn github_release_client() -> Result<reqwest::blocking::Client, String> {
+    reqwest::blocking::Client::builder()
+        .connect_timeout(Duration::from_secs(10))
+        .timeout(Duration::from_secs(120))
+        .build()
+        .map_err(|error| format!("Could not initialize Dusk updater: {error}"))
+}
+
+fn fetch_latest_dusk_release(
+    client: &reqwest::blocking::Client,
+) -> Result<serde_json::Value, String> {
+    client
+        .get("https://api.github.com/repos/bxanedot/dusk/releases/latest")
+        .header(reqwest::header::USER_AGENT, "Dusk-Desktop-Updater")
+        .header(reqwest::header::ACCEPT, "application/vnd.github+json")
+        .send()
+        .and_then(|response| response.error_for_status())
+        .map_err(|error| format!("Could not check GitHub Releases: {error}"))?
+        .json::<serde_json::Value>()
+        .map_err(|error| format!("Could not decode the latest Dusk release: {error}"))
+}
+
+fn release_version(release: &serde_json::Value) -> Result<String, String> {
+    release
+        .get("tag_name")
+        .and_then(|value| value.as_str())
+        .map(|tag| tag.trim_start_matches("dusk-v").trim_start_matches('v').to_string())
+        .filter(|value| !value.is_empty())
+        .ok_or_else(|| "Latest Dusk release is missing a version tag.".to_string())
+}
+
+fn check_github_update_blocking() -> Result<DuskUpdateInfo, String> {
+    let client = github_release_client()?;
+    let release = fetch_latest_dusk_release(&client)?;
+    let version = release_version(&release)?;
+    let current = env!("CARGO_PKG_VERSION");
+
+    Ok(DuskUpdateInfo {
+        available: version_is_newer(&version, current),
+        version: Some(version),
+        body: release.get("body").and_then(|value| value.as_str()).map(str::to_string),
+        date: release
+            .get("published_at")
+            .and_then(|value| value.as_str())
+            .map(str::to_string),
+    })
+}
+
+#[tauri::command]
+async fn check_github_update() -> Result<DuskUpdateInfo, String> {
+    tauri::async_runtime::spawn_blocking(check_github_update_blocking)
+        .await
+        .map_err(|error| format!("Dusk updater worker failed: {error}"))?
+}
+
+fn download_latest_dusk_installer() -> Result<PathBuf, String> {
+    let client = github_release_client()?;
+    let release = fetch_latest_dusk_release(&client)?;
+    let version = release_version(&release)?;
+
+    if !version_is_newer(&version, env!("CARGO_PKG_VERSION")) {
+        return Err("Dusk is already up to date.".to_string());
+    }
+
+    let assets = release
+        .get("assets")
+        .and_then(|value| value.as_array())
+        .ok_or_else(|| "Latest Dusk release has no downloadable assets.".to_string())?;
+
+    let asset = assets
+        .iter()
+        .find(|asset| {
+            asset
+                .get("name")
+                .and_then(|value| value.as_str())
+                .map(|name| {
+                    let lower = name.to_ascii_lowercase();
+                    lower.ends_with(".exe") && lower.contains("x64") && lower.contains("setup")
+                })
+                .unwrap_or(false)
+        })
+        .ok_or_else(|| "Latest Dusk release has no Windows x64 installer.".to_string())?;
+
+    let download_url = asset
+        .get("browser_download_url")
+        .and_then(|value| value.as_str())
+        .ok_or_else(|| "Dusk release installer is missing its download URL.".to_string())?;
+
+    let expected_digest = asset
+        .get("digest")
+        .and_then(|value| value.as_str())
+        .and_then(|value| value.strip_prefix("sha256:"))
+        .map(str::to_ascii_lowercase);
+
+    let bytes = client
+        .get(download_url)
+        .header(reqwest::header::USER_AGENT, "Dusk-Desktop-Updater")
+        .send()
+        .and_then(|response| response.error_for_status())
+        .map_err(|error| format!("Could not download Dusk {version}: {error}"))?
+        .bytes()
+        .map_err(|error| format!("Could not read the Dusk installer download: {error}"))?;
+
+    if let Some(expected) = expected_digest {
+        let mut hasher = Sha256::new();
+        hasher.update(&bytes);
+        let actual = hasher
+            .finalize()
+            .iter()
+            .map(|byte| format!("{byte:02x}"))
+            .collect::<String>();
+
+        if actual != expected {
+            return Err("Downloaded Dusk installer failed SHA-256 verification.".to_string());
+        }
+    }
+
+    let installer_path = env::temp_dir().join(format!("Dusk_{version}_x64-setup.exe"));
+    fs::write(&installer_path, &bytes)
+        .map_err(|error| format!("Could not save the Dusk installer: {error}"))?;
+
+    Ok(installer_path)
+}
+
+#[tauri::command]
+async fn install_github_update(app: AppHandle) -> Result<(), String> {
+    let installer_path = tauri::async_runtime::spawn_blocking(download_latest_dusk_installer)
+        .await
+        .map_err(|error| format!("Dusk updater worker failed: {error}"))??;
+
+    Command::new(&installer_path)
+        .spawn()
+        .map_err(|error| format!("Could not launch the Dusk installer: {error}"))?;
+
+    app.exit(0);
+    Ok(())
+}
+
 #[tauri::command]
 fn data_directory(app: AppHandle) -> Result<String, String> {
     Ok(app_data_dir(&app)?.to_string_lossy().into_owned())
@@ -4123,6 +4297,8 @@ pub fn run() {
             set_account_scope,
             export_account_state,
             import_account_state,
+            check_github_update,
+            install_github_update,
             data_directory,
         ])
         .run(tauri::generate_context!())

@@ -224,24 +224,7 @@ function Save-Sidebar(
   }
 }
 
-$rawSource = [System.Drawing.Image]::FromFile($sourcePath)
-$cropSize = [int][Math]::Round($rawSource.Width * 0.56)
-$cropX = [int][Math]::Round($rawSource.Width * 0.225)
-$cropY = [int][Math]::Round($rawSource.Height * 0.215)
-$source = New-Canvas $cropSize $cropSize $true
-$cropGraphics = [System.Drawing.Graphics]::FromImage($source)
-
-try {
-  Configure-Graphics $cropGraphics
-  $cropGraphics.Clear([System.Drawing.Color]::FromArgb(5, 5, 10))
-  $destination = [System.Drawing.Rectangle]::new(0, 0, $cropSize, $cropSize)
-  $sourceRect = [System.Drawing.Rectangle]::new($cropX, $cropY, $cropSize, $cropSize)
-  $cropGraphics.DrawImage($rawSource, $destination, $sourceRect, [System.Drawing.GraphicsUnit]::Pixel)
-} finally {
-  $cropGraphics.Dispose()
-  $rawSource.Dispose()
-}
-
+$source = [System.Drawing.Image]::FromFile($sourcePath)
 try {
   Save-IconPng $source $uiLogoPath 512
   Save-IconPng $source (Join-Path $iconsDir "32x32.png") 32
@@ -257,4 +240,5 @@ try {
   $source.Dispose()
 }
 
-Write-Host "Dusk branding generated from the cropped official logo source."
+Write-Host "Dusk branding generated from the full official logo source."
+
