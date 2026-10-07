@@ -84,18 +84,20 @@ jobs:
           tagName: dusk-v__VERSION__
           releaseName: Dusk v__VERSION__
           releaseBody: |
-            # Dusk v1.6.4
+            # Dusk v1.6.5
 
-            Persistent profile achievements and cross-device achievement sync.
+            Editable Dusk accounts, renameable owner profiles, and persistent achievements.
 
             ## What's new
 
-            - Achievements are now saved per owner profile.
-            - Earned progress uses a high-water mark and never moves backwards.
-            - Unlocked achievements stay unlocked.
-            - Achievement progress and unlock state sync with the Dusk account across devices.
-            - Cross-device merges keep the highest earned progress.
-            - Existing profiles migrate automatically from their current Dusk stats.
+            - Edit your Dusk display name and username from Settings.
+            - Change account email securely with current-password verification.
+            - Change the Dusk account password securely without storing passwords in the app.
+            - Registration now includes a display name.
+            - Rename local owner profiles from Profiles or Settings.
+            - Owner-profile name changes sync with Dusk account state.
+            - Persistent per-profile achievements remain included and sync across devices.
+            - Account profile writes are validated server-side rather than exposed directly to the desktop client.
 
             ## Notes
 
@@ -104,3 +106,5 @@ jobs:
             The Windows installer is built from this public repository on GitHub Actions.
           releaseDraft: false
           prerelease: false
+          uploadUpdaterJson: false
+          uploadUpdaterSignatures: false

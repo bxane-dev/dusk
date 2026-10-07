@@ -2,6 +2,23 @@
 
 All notable Dusk changes are documented here.
 
+## 1.6.5 - 2026-10-07
+
+Editable Dusk accounts and owner profiles.
+
+- Added editable Dusk account display names and usernames.
+- Added editable account email addresses.
+- Added secure password changes that require the current password.
+- Passwords remain managed by Supabase Auth and are never stored by Dusk.
+- Username changes keep username login working with the new username.
+- Email changes update the authenticated Dusk account immediately without the old localhost confirmation redirect.
+- Registration now asks for a display name as well as email, username, and password.
+- Added a dedicated account-profile editor in Settings with separate Profile and Security sections.
+- Added rename controls for local owner profiles on both the Profiles page and Settings.
+- Owner-profile renames sync through Dusk account state.
+- Account-table writes are restricted to the validated server-side account-update endpoint; the desktop client only receives read access.
+- Includes the persistent per-profile achievements introduced in the 1.6.4 code line.
+
 ## 1.6.4 - 2026-10-07
 
 Persistent, profile-owned achievements.

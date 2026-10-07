@@ -2725,7 +2725,7 @@ export default function App() {
                       <img className="brand-logo-image" src={duskLogo} alt="" draggable={false} />
                     </div>
                     <div>
-                      <strong>Dusk 1.6.0 · bxane</strong>
+                      <strong>Dusk 1.6.5 · bxane</strong>
                       <span>Open code · github.com/bxanedot/dusk</span>
                       <button className="about-creator-pill" onClick={() => void openExternal("creator")}>
                         bxane · guns.lol/bxane <ExternalLink size={11} />
