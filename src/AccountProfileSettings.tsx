@@ -105,6 +105,7 @@ export default function AccountProfileSettings(props: {
       setDisplayName(updated.displayName);
       setUsername(updated.username);
       setEmail(updated.email);
+      window.dispatchEvent(new CustomEvent("dusk-account-avatar-changed", { detail: updated }));
       props.onToast("Dusk account profile updated.");
     } catch (error) {
       props.onToast(error instanceof Error ? error.message : String(error), "error");
