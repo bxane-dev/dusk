@@ -2,6 +2,22 @@
 
 All notable Dusk changes are documented here.
 
+## 1.6.7 - 2026-10-07
+
+Custom Dusk account avatars.
+
+- Added user-uploaded profile avatars for signed-in Dusk accounts.
+- Avatar uploads accept image files up to 150 MB.
+- Added a private Supabase Storage bucket dedicated to Dusk avatars.
+- Bucket-level file-size and image MIME-type restrictions enforce the avatar upload rules server-side.
+- Each user can only read, upload, replace, and delete the avatar stored under their own authenticated user ID.
+- Avatar images are displayed as round profile pictures using a centered square crop with object-fit cover.
+- Added upload, change, and remove avatar controls to Dusk account Settings.
+- Added the signed-in account avatar, display name, and username to the Dusk sidebar.
+- If no avatar exists, Dusk falls back to the account's initial.
+- Avatar/name changes update the sidebar immediately without restarting Dusk.
+- Avatar files remain private and are displayed through short-lived signed URLs.
+
 ## 1.6.6 - 2026-10-07
 
 Password recovery for Dusk accounts.
