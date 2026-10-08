@@ -259,7 +259,7 @@ export default function AccountGate(props: { children: ReactNode }) {
               autoComplete="username"
               value={username}
               onChange={(event) => setUsername(event.target.value)}
-              placeholder="bxane"
+              placeholder="username"
               minLength={3}
               maxLength={24}
               required
