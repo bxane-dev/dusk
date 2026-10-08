@@ -5194,7 +5194,7 @@ fn launch_silent_update_helper(installer_path: &Path) -> Result<(), String> {
         .map_err(|error| format!("Could not locate the running Dusk executable: {error}"))?;
     let current_pid = std::process::id();
 
-    let escape_ps = |value: &str| value.replace(''', "''");
+    let escape_ps = |value: &str| value.replace('\'', "''");
     let installer = escape_ps(&installer_path.to_string_lossy());
     let executable = escape_ps(&current_exe.to_string_lossy());
 
@@ -5236,6 +5236,7 @@ try {{
     fs::write(&script_path, script)
         .map_err(|error| format!("Could not prepare the Dusk update helper: {error}"))?;
 
+    let script_arg = script_path.to_string_lossy().into_owned();
     hidden_windows_command("powershell")
         .args([
             "-NoProfile",
@@ -5243,7 +5244,7 @@ try {{
             "-ExecutionPolicy",
             "Bypass",
             "-File",
-            &script_path.to_string_lossy(),
+            script_arg.as_str(),
         ])
         .spawn()
         .map_err(|error| format!("Could not start the Dusk update helper: {error}"))?;
