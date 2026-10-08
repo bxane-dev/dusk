@@ -2,6 +2,18 @@
 
 All notable Dusk changes are documented here.
 
+## 1.7.6 - 2026-10-09
+
+Expanded fallback artwork lookup for missing game covers.
+
+- Non-Steam games now search Steam by detected game title even when the game was installed from another launcher or manually.
+- Strong Steam title matches use the official Steam 600x900 library artwork.
+- Epic games try Epic Store tall artwork first, then Steam-by-name, then Wikidata/Commons.
+- Other non-Steam games try Steam-by-name first, then Epic Store, then Wikidata/Commons.
+- Web artwork remains fallback-only after manual, launcher-native, and local portrait artwork fail.
+- Accepted covers are cached locally.
+- Includes persistent profile pictures, stronger game detection, scanner deduplication, Discord detection mitigation, and optional Discord Rich Presence.
+
 ## 1.7.5 - 2026-10-09
 
 Structured web fallback for missing non-Steam game covers.
