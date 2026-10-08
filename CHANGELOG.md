@@ -2,6 +2,17 @@
 
 All notable Dusk changes are documented here.
 
+## 1.7.0 - 2026-10-08
+
+Stronger installed-game detection and automatic per-game artwork.
+
+- Expanded automatic Windows game-folder discovery to include common Xbox, EA, Ubisoft, portable, and custom game-library locations.
+- Tightened executable selection so Dusk is less likely to pick uninstallers, anti-cheat helpers, redistributables, updaters, launch helpers, or service executables as the game binary.
+- Added automatic local artwork discovery using installed cover, poster, key art, capsule, header, hero, banner, and library images when available.
+- Steam games now automatically use the game's own official Steam header artwork when no user-selected cover already exists.
+- Existing manually selected covers are preserved and never overwritten by automatic artwork.
+- Detection remains local-first; artwork falls back gracefully when a launcher or game does not expose usable assets.
+
 ## 1.6.11 - 2026-10-08
 
 Optional Dusk Discord Rich Presence.
