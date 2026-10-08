@@ -609,7 +609,8 @@ fn quoted_vdf_value(contents: &str, key: &str) -> Option<String> {
 
 fn find_local_artwork(root: &Path) -> Option<PathBuf> {
     if !root.exists() { return None; }
-    let preferred = ["cover", "poster", "keyart", "capsule", "header", "hero", "banner", "library"];
+    // Portrait-first artwork only. Wide headers/heroes/banners crop badly in Dusk's cards.
+    let preferred = ["library_600x900", "cover", "poster", "keyart", "capsule", "boxart", "vertical"];
     let mut best: Option<(i64, PathBuf)> = None;
     for entry in WalkDir::new(root).max_depth(4).follow_links(false).into_iter().filter_map(Result::ok).take(3000) {
         if !entry.file_type().is_file() { continue; }
@@ -621,7 +622,8 @@ fn find_local_artwork(root: &Path) -> Option<PathBuf> {
         for (index, word) in preferred.iter().enumerate() {
             if name.contains(word) { score += 120 - index as i64 * 8; }
         }
-        if name.contains("icon") || name.contains("logo") { score -= 35; }
+        if name.contains("header") || name.contains("hero") || name.contains("banner") { score -= 160; }
+        if name.contains("icon") || name.contains("logo") { score -= 80; }
         if best.as_ref().map(|(current, _)| score > *current).unwrap_or(true) {
             best = Some((score, path.to_path_buf()));
         }
@@ -635,7 +637,15 @@ fn auto_apply_game_artwork(app: &AppHandle, connection: &Connection, game: &Disc
         params![game.id],
         |row| row.get(0),
     ).optional().ok().flatten().flatten();
-    if existing.as_ref().map(|p| Path::new(p).exists()).unwrap_or(false) { return; }
+    if let Some(existing_path) = existing.as_deref() {
+        let generated_name = game.id.replace(':', "_");
+        let is_generated = Path::new(existing_path)
+            .file_stem()
+            .and_then(|v| v.to_str())
+            .map(|stem| stem.eq_ignore_ascii_case(&generated_name))
+            .unwrap_or(false);
+        if Path::new(existing_path).exists() && !is_generated { return; }
+    }
 
     let covers_dir = match app_data_dir(app) { Ok(dir) => dir.join("covers"), Err(_) => return };
     if fs::create_dir_all(&covers_dir).is_err() { return; }
@@ -643,14 +653,37 @@ fn auto_apply_game_artwork(app: &AppHandle, connection: &Connection, game: &Disc
 
     if game.source == "steam" {
         if let Some(app_id) = game.source_id.as_deref() {
-            let url = format!("https://cdn.cloudflare.steamstatic.com/steam/apps/{app_id}/header.jpg");
+            // Prefer Steam's portrait library art from the local cache.
+            for steam_root in steam_roots() {
+                let cache = steam_root.join("appcache").join("librarycache");
+                for filename in [
+                    format!("{app_id}_library_600x900.jpg"),
+                    format!("{app_id}_library_600x900.png"),
+                    format!("{app_id}_library_capsule.jpg"),
+                    format!("{app_id}_library_capsule.png"),
+                ] {
+                    let source = cache.join(filename);
+                    if source.is_file() {
+                        let ext = source.extension().and_then(|v| v.to_str()).unwrap_or("jpg");
+                        let destination = covers_dir.join(format!("{base}.{ext}"));
+                        if fs::copy(&source, &destination).is_ok() {
+                            let _ = connection.execute("UPDATE games SET cover_path = ?1 WHERE id = ?2",
+                                params![destination.to_string_lossy().into_owned(), game.id]);
+                            return;
+                        }
+                    }
+                }
+            }
+
+            // Official Steam portrait artwork fallback. Do not use header.jpg because it is landscape.
+            let url = format!("https://cdn.cloudflare.steamstatic.com/steam/apps/{app_id}/library_600x900.jpg");
             let destination = covers_dir.join(format!("{base}.jpg"));
             let downloaded = reqwest::blocking::Client::builder()
                 .timeout(Duration::from_secs(5)).build().ok()
                 .and_then(|client| client.get(url).send().ok())
                 .filter(|response| response.status().is_success())
                 .and_then(|response| response.bytes().ok())
-                .filter(|bytes| bytes.len() > 1024)
+                .filter(|bytes| bytes.len() > 4096)
                 .and_then(|bytes| fs::write(&destination, &bytes).ok().map(|_| ()));
             if downloaded.is_some() {
                 let _ = connection.execute("UPDATE games SET cover_path = ?1 WHERE id = ?2",
@@ -1463,6 +1496,67 @@ fn list_games(app: AppHandle) -> Result<Vec<GameRecord>, String> {
     Ok(games)
 }
 
+
+fn normalized_discovery_path(value: &str) -> String {
+    value.replace('/', "\\").trim_end_matches('\\').to_ascii_lowercase()
+}
+
+fn source_priority(source: &str) -> i32 {
+    match source {
+        "steam" => 100,
+        "epic" => 95,
+        "gog" => 90,
+        "emulator" => 70,
+        "device" => 20,
+        _ => 10,
+    }
+}
+
+fn dedupe_discovered_games(games: Vec<DiscoveredGame>) -> Vec<DiscoveredGame> {
+    let mut by_key: HashMap<String, DiscoveredGame> = HashMap::new();
+    for game in games {
+        let exe_key = game.exe_path.as_deref().map(normalized_discovery_path).unwrap_or_default();
+        let install_key = normalized_discovery_path(&game.install_path);
+        let key = if !exe_key.is_empty() { format!("exe:{exe_key}") } else { format!("dir:{install_key}") };
+
+        match by_key.get(&key) {
+            Some(existing) if source_priority(&existing.source) >= source_priority(&game.source) => {}
+            _ => { by_key.insert(key, game); }
+        }
+    }
+    by_key.into_values().collect()
+}
+
+fn hide_stale_auto_duplicates(connection: &Connection, discovered: &[DiscoveredGame]) {
+    let launcher_paths: HashSet<String> = discovered.iter()
+        .filter(|g| matches!(g.source.as_str(), "steam" | "epic" | "gog"))
+        .flat_map(|g| {
+            let mut keys = vec![normalized_discovery_path(&g.install_path)];
+            if let Some(exe) = g.exe_path.as_deref() { keys.push(normalized_discovery_path(exe)); }
+            keys
+        })
+        .collect();
+
+    if launcher_paths.is_empty() { return; }
+
+    let mut statement = match connection.prepare(
+        "SELECT id, exe_path, install_path FROM games WHERE hidden = 0 AND source = 'device'"
+    ) { Ok(value) => value, Err(_) => return };
+
+    let rows = match statement.query_map([], |row| {
+        Ok((row.get::<_, String>(0)?, row.get::<_, Option<String>>(1)?, row.get::<_, String>(2)?))
+    }) { Ok(value) => value, Err(_) => return };
+
+    for row in rows.flatten() {
+        let (id, exe, install) = row;
+        let duplicate = launcher_paths.contains(&normalized_discovery_path(&install))
+            || exe.as_deref().map(normalized_discovery_path).map(|p| launcher_paths.contains(&p)).unwrap_or(false);
+        if duplicate {
+            let _ = connection.execute("UPDATE games SET hidden = 1 WHERE id = ?1", params![id]);
+        }
+    }
+}
+
 fn scan_games_blocking(app: AppHandle) -> Result<ScanResult, String> {
     let (steam_games, mut warnings) = scan_steam();
     let (epic_games, epic_warnings) = scan_epic();
@@ -1481,15 +1575,18 @@ fn scan_games_blocking(app: AppHandle) -> Result<ScanResult, String> {
     let emulator_found = emulator_games.len();
     let device_found = device_games.len();
 
-    let all_games: Vec<DiscoveredGame> = steam_games
-        .into_iter()
-        .chain(epic_games)
-        .chain(gog_games)
-        .chain(emulator_games)
-        .chain(device_games)
-        .collect();
+    let all_games: Vec<DiscoveredGame> = dedupe_discovered_games(
+        steam_games
+            .into_iter()
+            .chain(epic_games)
+            .chain(gog_games)
+            .chain(emulator_games)
+            .chain(device_games)
+            .collect()
+    );
 
     let connection = open_database(&app)?;
+    hide_stale_auto_duplicates(&connection, &all_games);
     let mut added = 0_usize;
     let mut updated = 0_usize;
 
