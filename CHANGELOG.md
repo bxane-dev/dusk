@@ -2,6 +2,15 @@
 
 All notable Dusk changes are documented here.
 
+## 1.7.9 - 2026-10-09
+
+Account login placeholder cleanup.
+
+- Removed the hardcoded `bxane` placeholder from the Dusk username field.
+- The sign-in and registration username field now uses the generic `username` placeholder.
+- No account usernames, saved credentials, or profile data are changed by this update.
+- Includes the lightweight Cover AI, automatic missing-cover refresh, restart-to-update flow, profile-picture persistence, and other 1.7.x improvements.
+
 ## 1.7.8 - 2026-10-09
 
 Lightweight Cover AI for missing game artwork.
