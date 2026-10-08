@@ -33,6 +33,8 @@ export const api = {
     invoke<ProfileRecord>("delete_profile", { profileId }),
   listGames: () => invoke<GameRecord[]>("list_games"),
   scanGames: () => invoke<ScanResult>("scan_games"),
+  refreshMissingCovers: () =>
+    invoke<{ attempted: number; updated: number; remaining: number }>("refresh_missing_covers"),
   chooseExecutable: () => invoke<string | null>("choose_executable"),
   chooseGameInstaller: () => invoke<string | null>("choose_game_installer"),
   runGameInstaller: (installerPath: string) =>
