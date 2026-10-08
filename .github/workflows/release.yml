@@ -84,18 +84,17 @@ jobs:
           tagName: dusk-v__VERSION__
           releaseName: Dusk v__VERSION__
           releaseBody: |
-            # Dusk v1.7.3
+            # Dusk v1.7.4
 
-            Persistent Dusk profile pictures.
+            Build fix for profile persistence and artwork fallback.
 
             ## What's new
 
-            - Saves the private avatar object path in Dusk account metadata.
-            - Profile pictures now persist across restarts, sign-outs, and later sign-ins.
-            - Existing avatars are migrated automatically on the next account load.
-            - Regenerates signed private-avatar URLs from the saved path instead of rediscovering the file each launch.
-            - Removing an avatar deletes the storage object and clears the saved metadata path.
-            - Keeps v1.7.2 local-first artwork fallback, scanner deduplication, DuskLauncher.exe Discord mitigation, and optional Discord Rich Presence.
+            - Fixes the Rust compile collision in the artwork matching helpers.
+            - Enables reqwest query support required by the MediaWiki fallback lookup.
+            - Includes persistent profile pictures across restarts and sign-ins.
+            - Includes local-first portrait artwork with fallback-only web lookup.
+            - Keeps scanner deduplication, stronger executable detection, DuskLauncher.exe Discord mitigation, and optional Discord Rich Presence.
 
             ## Notes
 
