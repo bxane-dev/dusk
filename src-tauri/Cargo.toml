@@ -26,6 +26,6 @@ sha2 = "0.10"
 
 tauri-plugin-updater = "=2.12.0"
 
-reqwest = { version = "=0.13.5", features = ["blocking", "json"] }
+reqwest = { version = "=0.13.5", features = ["blocking", "json", "query"] }
 
 discord-rich-presence = "1.1.0"
