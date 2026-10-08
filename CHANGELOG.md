@@ -2,6 +2,21 @@
 
 All notable Dusk changes are documented here.
 
+## 1.7.8 - 2026-10-09
+
+Lightweight Cover AI for missing game artwork.
+
+- Added a small local cover-ranking engine instead of relying on a single brittle artwork lookup.
+- Generates useful title variants such as Fortnite OG -> Fortnite and Invokyr Demo -> Invokyr before searching.
+- Searches Steam Store, Steam Community app search, and Epic Games Store candidates.
+- Scores candidates locally using title similarity, cleaned-title similarity, detected executable company/publisher, original launcher source, and portrait-art confidence.
+- Rejects low-confidence soundtrack/DLC-style mismatches and only downloads high-scoring candidates.
+- Steam artwork can be selected by title even when the game was installed outside Steam.
+- Web search remains fallback-only after manual, launcher-native, and local artwork fail.
+- Added a dedicated startup refresh for games that still have no usable cover, independent of Dusk's 10-minute game-scan throttle.
+- Missing covers are cached locally after a successful match.
+- Includes the restart-to-update flow and other 1.7.x improvements.
+
 ## 1.7.7 - 2026-10-09
 
 Restart-to-update Windows flow.
