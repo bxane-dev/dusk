@@ -79,6 +79,14 @@ struct ScanResult {
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
+struct ArtworkRefreshResult {
+    attempted: usize,
+    updated: usize,
+    remaining: usize,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
 struct LaunchResult {
     started: bool,
     tracking: bool,
@@ -854,6 +862,327 @@ fn download_cover_url(
     Some(destination)
 }
 
+
+#[derive(Debug, Clone)]
+struct CoverAiCandidate {
+    title: String,
+    publisher: Option<String>,
+    source: &'static str,
+    image_url: String,
+    query_title: String,
+    portrait_hint: bool,
+}
+
+fn cover_ai_title_variants(title: &str) -> Vec<String> {
+    let original = title.trim();
+    if original.is_empty() {
+        return Vec::new();
+    }
+
+    let mut variants = vec![original.to_string()];
+    let mut words: Vec<&str> = original.split_whitespace().collect();
+    let removable_suffixes = [
+        "demo", "playtest", "beta", "alpha", "test", "trial", "prototype", "preview", "og",
+    ];
+
+    while words.len() > 1 {
+        let last = words
+            .last()
+            .map(|value| value.trim_matches(|c: char| !c.is_ascii_alphanumeric()).to_ascii_lowercase())
+            .unwrap_or_default();
+        if !removable_suffixes.contains(&last.as_str()) {
+            break;
+        }
+        words.pop();
+    }
+
+    if !words.is_empty() {
+        let stripped = words.join(" ");
+        if !stripped.eq_ignore_ascii_case(original) {
+            variants.push(stripped);
+        }
+    }
+
+    if let Some(index) = original.rfind(" (") {
+        if original.ends_with(')') && index > 0 {
+            variants.push(original[..index].trim().to_string());
+        }
+    }
+
+    variants.retain(|value| !value.trim().is_empty());
+    variants.sort_by_key(|value| std::cmp::Reverse(value.len()));
+    variants.dedup_by(|a, b| a.eq_ignore_ascii_case(b));
+    variants
+}
+
+fn cover_ai_company_match(expected: Option<&str>, actual: Option<&str>) -> bool {
+    let (Some(expected), Some(actual)) = (expected, actual) else {
+        return false;
+    };
+    let expected = normalized_artwork_match_text(expected);
+    let actual = normalized_artwork_match_text(actual);
+    !expected.is_empty()
+        && !actual.is_empty()
+        && (expected == actual || expected.contains(&actual) || actual.contains(&expected))
+}
+
+fn cover_ai_score(
+    game: &DiscoveredGame,
+    candidate: &CoverAiCandidate,
+    exe_company: Option<&str>,
+) -> f32 {
+    let direct = title_match_confidence(&game.title, &candidate.title);
+    let variant_best = cover_ai_title_variants(&game.title)
+        .iter()
+        .map(|variant| title_match_confidence(variant, &candidate.title))
+        .fold(0.0_f32, f32::max);
+    let query_fit = title_match_confidence(&candidate.query_title, &candidate.title);
+
+    let mut score = direct * 0.32 + variant_best * 0.46 + query_fit * 0.10;
+
+    if candidate.source == game.source {
+        score += 0.07;
+    }
+    if cover_ai_company_match(exe_company, candidate.publisher.as_deref()) {
+        score += 0.08;
+    }
+    if candidate.portrait_hint {
+        score += 0.05;
+    }
+
+    let candidate_normalized = normalized_artwork_match_text(&candidate.title);
+    let game_normalized = normalized_artwork_match_text(&game.title);
+    if candidate_normalized.contains("soundtrack") && !game_normalized.contains("soundtrack") {
+        score -= 0.35;
+    }
+    if candidate_normalized.contains("dlc") && !game_normalized.contains("dlc") {
+        score -= 0.30;
+    }
+
+    score.clamp(0.0, 1.0)
+}
+
+fn cover_ai_collect_steam_candidates(
+    client: &reqwest::blocking::Client,
+    query_title: &str,
+) -> Vec<CoverAiCandidate> {
+    let mut candidates = Vec::new();
+
+    if let Ok(response) = client
+        .get("https://store.steampowered.com/api/storesearch/")
+        .query(&[
+            ("term", query_title),
+            ("l", "english"),
+            ("cc", "US"),
+        ])
+        .send()
+    {
+        if response.status().is_success() {
+            if let Ok(json) = response.json::<serde_json::Value>() {
+                if let Some(items) = json.get("items").and_then(|value| value.as_array()) {
+                    for item in items.iter().take(8) {
+                        let Some(title) = item.get("name").and_then(|value| value.as_str()) else { continue };
+                        let app_id = item
+                            .get("id")
+                            .and_then(|value| value.as_u64())
+                            .or_else(|| item.get("id").and_then(|value| value.as_str()).and_then(|value| value.parse().ok()));
+                        let Some(app_id) = app_id else { continue };
+                        candidates.push(CoverAiCandidate {
+                            title: title.to_string(),
+                            publisher: None,
+                            source: "steam",
+                            image_url: format!(
+                                "https://cdn.cloudflare.steamstatic.com/steam/apps/{app_id}/library_600x900.jpg"
+                            ),
+                            query_title: query_title.to_string(),
+                            portrait_hint: true,
+                        });
+                    }
+                }
+            }
+        }
+    }
+
+    // Secondary Steam name search. This often finds apps the Store search API omits.
+    if let Ok(mut url) = reqwest::Url::parse("https://steamcommunity.com/actions/SearchApps/") {
+        if let Ok(mut segments) = url.path_segments_mut() {
+            segments.push(query_title);
+        }
+        if let Ok(response) = client.get(url).send() {
+            if response.status().is_success() {
+                if let Ok(items) = response.json::<Vec<serde_json::Value>>() {
+                    for item in items.into_iter().take(8) {
+                        let Some(title) = item.get("name").and_then(|value| value.as_str()) else { continue };
+                        let app_id = item
+                            .get("appid")
+                            .and_then(|value| value.as_u64())
+                            .or_else(|| item.get("appid").and_then(|value| value.as_str()).and_then(|value| value.parse().ok()));
+                        let Some(app_id) = app_id else { continue };
+                        candidates.push(CoverAiCandidate {
+                            title: title.to_string(),
+                            publisher: None,
+                            source: "steam",
+                            image_url: format!(
+                                "https://cdn.cloudflare.steamstatic.com/steam/apps/{app_id}/library_600x900.jpg"
+                            ),
+                            query_title: query_title.to_string(),
+                            portrait_hint: true,
+                        });
+                    }
+                }
+            }
+        }
+    }
+
+    candidates
+}
+
+fn cover_ai_collect_epic_candidates(
+    client: &reqwest::blocking::Client,
+    query_title: &str,
+) -> Vec<CoverAiCandidate> {
+    let variables = serde_json::json!({
+        "category": "games/edition/base|bundles/games|games/edition|games/demo|games/experience",
+        "count": 20,
+        "start": 0,
+        "sortBy": "relevancy",
+        "sortDir": "DESC",
+        "keywords": query_title,
+        "allowCountries": "US",
+        "comingSoon": false,
+        "withPrice": false,
+        "country": "US",
+        "locale": "en-US"
+    })
+    .to_string();
+
+    let extensions = serde_json::json!({
+        "persistedQuery": {
+            "version": 1,
+            "sha256Hash": "7d58e12d9dd8cb14c84a3ff18d360bf9f0caa96bf218f2c5fda68ba88d68a437"
+        }
+    })
+    .to_string();
+
+    let response = match client
+        .get("https://store.epicgames.com/graphql")
+        .query(&[
+            ("operationName", "searchStoreQuery"),
+            ("variables", variables.as_str()),
+            ("extensions", extensions.as_str()),
+        ])
+        .send()
+    {
+        Ok(response) if response.status().is_success() => response,
+        _ => return Vec::new(),
+    };
+
+    let json: serde_json::Value = match response.json() {
+        Ok(value) => value,
+        Err(_) => return Vec::new(),
+    };
+
+    let Some(elements) = json
+        .get("data")
+        .and_then(|value| value.get("Catalog"))
+        .and_then(|value| value.get("searchStore"))
+        .and_then(|value| value.get("elements"))
+        .and_then(|value| value.as_array())
+    else {
+        return Vec::new();
+    };
+
+    let priorities = [
+        "DieselGameBoxTall",
+        "OfferImageTall",
+        "DieselStoreFrontTall",
+        "VaultClosed",
+        "Thumbnail",
+    ];
+
+    let mut candidates = Vec::new();
+    for element in elements.iter().take(12) {
+        let Some(title) = element.get("title").and_then(|value| value.as_str()) else { continue };
+        let publisher = element
+            .get("seller")
+            .and_then(|value| value.get("name"))
+            .and_then(|value| value.as_str())
+            .map(ToOwned::to_owned);
+
+        let Some(images) = element.get("keyImages").and_then(|value| value.as_array()) else { continue };
+        let mut chosen = None;
+        for wanted in priorities {
+            if let Some(url) = images.iter().find_map(|image| {
+                let kind = image.get("type").and_then(|value| value.as_str())?;
+                let url = image.get("url").and_then(|value| value.as_str())?;
+                if kind.eq_ignore_ascii_case(wanted) && url.starts_with("https://") {
+                    Some(url.to_string())
+                } else {
+                    None
+                }
+            }) {
+                chosen = Some(url);
+                break;
+            }
+        }
+
+        let Some(image_url) = chosen else { continue };
+        candidates.push(CoverAiCandidate {
+            title: title.to_string(),
+            publisher,
+            source: "epic",
+            image_url,
+            query_title: query_title.to_string(),
+            portrait_hint: true,
+        });
+    }
+
+    candidates
+}
+
+fn cover_ai_web_fallback(
+    game: &DiscoveredGame,
+    covers_dir: &Path,
+    base: &str,
+) -> Option<PathBuf> {
+    let client = reqwest::blocking::Client::builder()
+        .timeout(Duration::from_secs(8))
+        .user_agent("Dusk-Cover-AI/1.7.8")
+        .build()
+        .ok()?;
+
+    let company = executable_company_name(game.exe_path.as_deref());
+    let mut candidates = Vec::new();
+
+    for query in cover_ai_title_variants(&game.title).into_iter().take(3) {
+        candidates.extend(cover_ai_collect_steam_candidates(&client, &query));
+        candidates.extend(cover_ai_collect_epic_candidates(&client, &query));
+    }
+
+    let mut scored: Vec<(f32, CoverAiCandidate)> = candidates
+        .into_iter()
+        .map(|candidate| {
+            let score = cover_ai_score(game, &candidate, company.as_deref());
+            (score, candidate)
+        })
+        .filter(|(score, _)| *score >= 0.70)
+        .collect();
+
+    scored.sort_by(|a, b| b.0.partial_cmp(&a.0).unwrap_or(std::cmp::Ordering::Equal));
+
+    let mut seen_urls = HashSet::new();
+    for (_score, candidate) in scored.into_iter().take(10) {
+        if !seen_urls.insert(candidate.image_url.clone()) {
+            continue;
+        }
+        if let Some(path) = download_cover_url(&client, &candidate.image_url, covers_dir, base) {
+            return Some(path);
+        }
+    }
+
+    None
+}
+
 fn epic_store_cover_fallback(
     game: &DiscoveredGame,
     covers_dir: &Path,
@@ -1261,46 +1590,23 @@ fn auto_apply_game_artwork(app: &AppHandle, connection: &Connection, game: &Disc
         }
     }
 
-    // 3) Web lookup is fallback-only.
-    if game.source == "steam" {
-        if let Some(app_id) = game.source_id.as_deref() {
-            let url = format!("https://cdn.cloudflare.steamstatic.com/steam/apps/{app_id}/library_600x900.jpg");
-            let destination = covers_dir.join(format!("{base}.jpg"));
-            let downloaded = reqwest::blocking::Client::builder()
-                .timeout(Duration::from_secs(5))
-                .user_agent("Dusk-Desktop-Artwork/1.7.6")
-                .build().ok()
-                .and_then(|client| client.get(url).send().ok())
-                .filter(|response| response.status().is_success())
-                .and_then(|response| response.bytes().ok())
-                .filter(|bytes| bytes.len() > 4096)
-                .and_then(|bytes| fs::write(&destination, &bytes).ok().map(|_| ()));
-            if downloaded.is_some() {
-                let _ = connection.execute(
-                    "UPDATE games SET cover_path = ?1, cover_origin = 'auto' WHERE id = ?2",
-                    params![destination.to_string_lossy().into_owned(), game.id],
-                );
-                return;
-            }
-        }
-    } else {
-        let web_cover = if game.source == "epic" {
-            epic_store_cover_fallback(game, &covers_dir, &base)
-                .or_else(|| steam_store_cover_fallback(game, &covers_dir, &base))
-                .or_else(|| wikidata_cover_fallback(game, &covers_dir, &base))
-        } else {
-            steam_store_cover_fallback(game, &covers_dir, &base)
-                .or_else(|| epic_store_cover_fallback(game, &covers_dir, &base))
-                .or_else(|| wikidata_cover_fallback(game, &covers_dir, &base))
-        };
-
-        if let Some(destination) = web_cover {
-            let _ = connection.execute(
-                "UPDATE games SET cover_path = ?1, cover_origin = 'web-fallback' WHERE id = ?2",
-                params![destination.to_string_lossy().into_owned(), game.id],
-            );
-        }
+    // 3) Small local Cover AI: search/rank official store candidates only as fallback.
+    if let Some(destination) = cover_ai_web_fallback(game, &covers_dir, &base) {
+        let _ = connection.execute(
+            "UPDATE games SET cover_path = ?1, cover_origin = 'ai-web' WHERE id = ?2",
+            params![destination.to_string_lossy().into_owned(), game.id],
+        );
+        return;
     }
+
+    // 4) Structured knowledge fallback if store candidate search finds nothing.
+    if let Some(destination) = wikidata_cover_fallback(game, &covers_dir, &base) {
+        let _ = connection.execute(
+            "UPDATE games SET cover_path = ?1, cover_origin = 'web-fallback' WHERE id = ?2",
+            params![destination.to_string_lossy().into_owned(), game.id],
+        );
+    }
+
 }
 
 fn find_best_executable(root: &Path, game_name: &str) -> Option<PathBuf> {
@@ -2218,6 +2524,89 @@ async fn scan_games(app: AppHandle) -> Result<ScanResult, String> {
         .await
         .map_err(|error| format!("Game scan worker failed: {error}"))?
 }
+
+fn refresh_missing_covers_blocking(app: AppHandle) -> Result<ArtworkRefreshResult, String> {
+    let connection = open_database(&app)?;
+    let mut statement = connection
+        .prepare(
+            "SELECT id, title, exe_path, install_path, source, source_id, cover_path, cover_origin
+             FROM games WHERE hidden = 0",
+        )
+        .map_err(|error| format!("Could not prepare missing-cover refresh: {error}"))?;
+
+    let rows = statement
+        .query_map([], |row| {
+            Ok((
+                DiscoveredGame {
+                    id: row.get(0)?,
+                    title: row.get(1)?,
+                    exe_path: row.get(2)?,
+                    install_path: row.get(3)?,
+                    source: row.get(4)?,
+                    source_id: row.get(5)?,
+                },
+                row.get::<_, Option<String>>(6)?,
+                row.get::<_, Option<String>>(7)?,
+            ))
+        })
+        .map_err(|error| format!("Could not load games for missing-cover refresh: {error}"))?;
+
+    let games = rows
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|error| format!("Could not decode missing-cover refresh rows: {error}"))?;
+    drop(statement);
+
+    let mut attempted = 0_usize;
+    let mut updated = 0_usize;
+
+    for (game, cover_path, cover_origin) in games {
+        if cover_origin.as_deref() == Some("manual")
+            && cover_path.as_deref().map(|path| Path::new(path).exists()).unwrap_or(false)
+        {
+            continue;
+        }
+
+        let missing = cover_path
+            .as_deref()
+            .map(|path| !Path::new(path).exists())
+            .unwrap_or(true);
+        if !missing {
+            continue;
+        }
+
+        attempted += 1;
+        auto_apply_game_artwork(&app, &connection, &game);
+
+        let refreshed: Option<String> = connection
+            .query_row(
+                "SELECT cover_path FROM games WHERE id = ?1",
+                params![game.id],
+                |row| row.get(0),
+            )
+            .optional()
+            .ok()
+            .flatten()
+            .flatten();
+
+        if refreshed.as_deref().map(|path| Path::new(path).exists()).unwrap_or(false) {
+            updated += 1;
+        }
+    }
+
+    Ok(ArtworkRefreshResult {
+        attempted,
+        updated,
+        remaining: attempted.saturating_sub(updated),
+    })
+}
+
+#[tauri::command]
+async fn refresh_missing_covers(app: AppHandle) -> Result<ArtworkRefreshResult, String> {
+    tauri::async_runtime::spawn_blocking(move || refresh_missing_covers_blocking(app))
+        .await
+        .map_err(|error| format!("Cover AI worker failed: {error}"))?
+}
+
 
 
 #[tauri::command]
@@ -5390,6 +5779,7 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             list_games,
             scan_games,
+            refresh_missing_covers,
             list_profiles,
             get_active_profile,
             create_profile,
