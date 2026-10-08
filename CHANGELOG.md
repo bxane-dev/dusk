@@ -2,6 +2,18 @@
 
 All notable Dusk changes are documented here.
 
+## 1.7.1 - 2026-10-08
+
+Game library cleanup and portrait artwork hotfix.
+
+- Replaced wide Steam header artwork with portrait Steam library artwork suited to Dusk game cards.
+- Prefer locally cached Steam 600x900 library artwork before downloading an official Steam portrait fallback.
+- Local artwork detection now favors covers, posters, key art, box art, capsules, and vertical images while rejecting wide headers, heroes, banners, logos, and icons.
+- Added scanner deduplication by executable/install location with launcher manifests preferred over generic device-folder matches.
+- Existing stale device-scan duplicates that match Steam, Epic, or GOG installs are hidden on the next scan.
+- Added cover-origin tracking so user-selected manual covers are preserved while old automatic artwork can refresh to the improved portrait format.
+- Keeps the stronger executable filtering and expanded Windows library scanning from v1.7.0.
+
 ## 1.7.0 - 2026-10-08
 
 Stronger installed-game detection and automatic per-game artwork.
