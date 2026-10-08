@@ -41,20 +41,37 @@ export type DuskAccount = {
   avatarUrl: string | null;
 };
 
-async function loadAvatarUrl(userId: string) {
+async function loadAvatarUrl(user: User) {
   const supabase = getSupabaseClient();
   if (!supabase) return null;
 
-  const path = `${userId}/avatar`;
-  const { data: objects, error: listError } = await supabase.storage
-    .from("dusk-avatars")
-    .list(userId, { limit: 20, search: "avatar" });
+  // The stable storage object path is persisted in account metadata.
+  // Signed URLs are intentionally regenerated whenever the account loads.
+  let path =
+    typeof user.user_metadata?.avatar_path === "string" &&
+    user.user_metadata.avatar_path.trim()
+      ? user.user_metadata.avatar_path.trim()
+      : "";
 
-  if (listError || !objects?.some((item) => item.name === "avatar")) return null;
+  // Backward compatibility for avatars uploaded before avatar_path was saved.
+  if (!path) {
+    const legacyPath = `${user.id}/avatar`;
+    const { data: objects, error: listError } = await supabase.storage
+      .from("dusk-avatars")
+      .list(user.id, { limit: 20, search: "avatar" });
+
+    if (listError || !objects?.some((item) => item.name === "avatar")) return null;
+    path = legacyPath;
+
+    // Best-effort migration so future launches do not need to list the bucket.
+    await supabase.auth.updateUser({
+      data: { avatar_path: path },
+    }).catch(() => undefined);
+  }
 
   const { data, error } = await supabase.storage
     .from("dusk-avatars")
-    .createSignedUrl(path, 60 * 60 * 24);
+    .createSignedUrl(path, 60 * 60 * 24 * 7);
 
   if (error) return null;
   return data.signedUrl;
@@ -101,7 +118,7 @@ export async function currentDuskAccount(): Promise<DuskAccount | null> {
     username: profile.username,
     displayName: profile.displayName,
     email: session.user.email || "",
-    avatarUrl: await loadAvatarUrl(session.user.id),
+    avatarUrl: await loadAvatarUrl(session.user),
   };
 }
 
@@ -200,7 +217,7 @@ export async function loginDuskAccount(username: string, password: string): Prom
     username: profile.username || String(payload.username || username).trim(),
     displayName: profile.displayName,
     email: data.user.email || "",
-    avatarUrl: await loadAvatarUrl(data.user.id),
+    avatarUrl: await loadAvatarUrl(data.user),
   };
 }
 
@@ -254,7 +271,7 @@ export async function updateDuskAccount(input: {
     username: profile.username,
     displayName: profile.displayName,
     email: user.email || String(payload.email || input.email || ""),
-    avatarUrl: await loadAvatarUrl(user.id),
+    avatarUrl: await loadAvatarUrl(user),
   };
 }
 
@@ -312,9 +329,16 @@ export async function uploadDuskAvatar(file: File): Promise<string> {
 
   if (uploadError) throw uploadError;
 
+  // Save the stable object path on the Dusk account so the avatar survives
+  // restarts and re-logins without relying on bucket listing.
+  const { error: metadataError } = await supabase.auth.updateUser({
+    data: { avatar_path: path },
+  });
+  if (metadataError) throw metadataError;
+
   const { data, error: signedError } = await supabase.storage
     .from("dusk-avatars")
-    .createSignedUrl(path, 60 * 60 * 24);
+    .createSignedUrl(path, 60 * 60 * 24 * 7);
 
   if (signedError) throw signedError;
   return data.signedUrl;
@@ -329,9 +353,20 @@ export async function removeDuskAvatar() {
   const session = sessionData.session;
   if (!session?.user?.id) throw new Error("Sign in to remove your avatar.");
 
+  const path =
+    typeof session.user.user_metadata?.avatar_path === "string" &&
+    session.user.user_metadata.avatar_path.trim()
+      ? session.user.user_metadata.avatar_path.trim()
+      : `${session.user.id}/avatar`;
+
   const { error } = await supabase.storage
     .from("dusk-avatars")
-    .remove([`${session.user.id}/avatar`]);
+    .remove([path]);
 
   if (error) throw error;
+
+  const { error: metadataError } = await supabase.auth.updateUser({
+    data: { avatar_path: null },
+  });
+  if (metadataError) throw metadataError;
 }
