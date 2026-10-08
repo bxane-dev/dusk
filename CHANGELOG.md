@@ -2,6 +2,19 @@
 
 All notable Dusk changes are documented here.
 
+## 1.7.5 - 2026-10-09
+
+Structured web fallback for missing non-Steam game covers.
+
+- Replaced the weak Wikipedia page-thumbnail fallback with Wikidata game entities and Wikimedia Commons artwork.
+- Searches by the detected game title and uses executable publisher/developer metadata when available to strengthen matching.
+- Reads Wikidata P18 artwork for matched video-game entities instead of relying on arbitrary page thumbnails.
+- Resolves artwork through Wikimedia Commons and rejects square or landscape images that do not fit Dusk's portrait cards.
+- Keeps strict confidence checks: weaker title matches require publisher/developer agreement when metadata is available.
+- Web lookup remains fallback-only after manual, launcher-native, and local portrait artwork fail.
+- Accepted web covers are cached locally.
+- Includes persistent profile pictures and the scanner/deduplication fixes from prior releases.
+
 ## 1.7.4 - 2026-10-09
 
 Build fix for profile-picture persistence and artwork fallback.
