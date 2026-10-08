@@ -32,7 +32,7 @@ jobs:
       - name: Smoke test packaged app startup
         shell: pwsh
         run: |
-          $exe = 'src-tauri/target/release/dusk.exe'
+          $exe = 'src-tauri/target/release/DuskLauncher.exe'
           if (-not (Test-Path $exe)) { throw "Dusk executable was not produced." }
           $process = Start-Process -FilePath $exe -PassThru
           Start-Sleep -Seconds 8
