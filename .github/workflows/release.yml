@@ -84,17 +84,18 @@ jobs:
           tagName: dusk-v__VERSION__
           releaseName: Dusk v__VERSION__
           releaseBody: |
-            # Dusk v1.7.4
+            # Dusk v1.7.5
 
-            Build fix for profile persistence and artwork fallback.
+            Structured fallback covers for missing non-Steam artwork.
 
             ## What's new
 
-            - Fixes the Rust compile collision in the artwork matching helpers.
-            - Enables reqwest query support required by the MediaWiki fallback lookup.
-            - Includes persistent profile pictures across restarts and sign-ins.
-            - Includes local-first portrait artwork with fallback-only web lookup.
-            - Keeps scanner deduplication, stronger executable detection, DuskLauncher.exe Discord mitigation, and optional Discord Rich Presence.
+            - Replaces Wikipedia page-thumbnail lookup with Wikidata game entities and Wikimedia Commons artwork.
+            - Uses title plus publisher/developer metadata when available for stricter matching.
+            - Reads Wikidata P18 artwork and rejects landscape/square images.
+            - Keeps web requests fallback-only after launcher/local artwork fail.
+            - Includes persistent profile pictures and scanner deduplication.
+            - Keeps stronger executable detection, DuskLauncher.exe Discord mitigation, and optional Discord Rich Presence.
 
             ## Notes
 
