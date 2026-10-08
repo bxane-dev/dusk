@@ -5188,16 +5188,87 @@ fn download_latest_dusk_installer() -> Result<PathBuf, String> {
     Ok(installer_path)
 }
 
+#[cfg(target_os = "windows")]
+fn launch_silent_update_helper(installer_path: &Path) -> Result<(), String> {
+    let current_exe = env::current_exe()
+        .map_err(|error| format!("Could not locate the running Dusk executable: {error}"))?;
+    let current_pid = std::process::id();
+
+    let escape_ps = |value: &str| value.replace(''', "''");
+    let installer = escape_ps(&installer_path.to_string_lossy());
+    let executable = escape_ps(&current_exe.to_string_lossy());
+
+    let script_path = env::temp_dir().join(format!("dusk-update-{}.ps1", Uuid::new_v4()));
+    let script_path_ps = escape_ps(&script_path.to_string_lossy());
+
+    let script = format!(
+        r#"$ErrorActionPreference = 'Stop'
+$DuskPid = {current_pid}
+$Installer = '{installer}'
+$DuskExe = '{executable}'
+$ScriptPath = '{script_path_ps}'
+
+try {{
+    for ($i = 0; $i -lt 120; $i++) {{
+        $process = Get-Process -Id $DuskPid -ErrorAction SilentlyContinue
+        if ($null -eq $process) {{ break }}
+        Start-Sleep -Milliseconds 250
+    }}
+
+    $process = Start-Process -FilePath $Installer -ArgumentList '/S' -PassThru -Wait
+    if ($process.ExitCode -ne 0) {{
+        throw "Dusk updater installer exited with code $($process.ExitCode)."
+    }}
+
+    Start-Sleep -Milliseconds 750
+    if (-not (Test-Path -LiteralPath $DuskExe)) {{
+        throw "Updated Dusk executable was not found after installation."
+    }}
+
+    Start-Process -FilePath $DuskExe
+}} finally {{
+    Remove-Item -LiteralPath $Installer -Force -ErrorAction SilentlyContinue
+    Remove-Item -LiteralPath $ScriptPath -Force -ErrorAction SilentlyContinue
+}}
+"#,
+    );
+
+    fs::write(&script_path, script)
+        .map_err(|error| format!("Could not prepare the Dusk update helper: {error}"))?;
+
+    hidden_windows_command("powershell")
+        .args([
+            "-NoProfile",
+            "-NonInteractive",
+            "-ExecutionPolicy",
+            "Bypass",
+            "-File",
+            &script_path.to_string_lossy(),
+        ])
+        .spawn()
+        .map_err(|error| format!("Could not start the Dusk update helper: {error}"))?;
+
+    Ok(())
+}
+
+#[cfg(not(target_os = "windows"))]
+fn launch_silent_update_helper(installer_path: &Path) -> Result<(), String> {
+    Command::new(installer_path)
+        .spawn()
+        .map_err(|error| format!("Could not launch the Dusk installer: {error}"))?;
+    Ok(())
+}
+
 #[tauri::command]
 async fn install_github_update(app: AppHandle) -> Result<(), String> {
     let installer_path = tauri::async_runtime::spawn_blocking(download_latest_dusk_installer)
         .await
         .map_err(|error| format!("Dusk updater worker failed: {error}"))??;
 
-    Command::new(&installer_path)
-        .spawn()
-        .map_err(|error| format!("Could not launch the Dusk installer: {error}"))?;
+    launch_silent_update_helper(&installer_path)?;
 
+    // The detached helper waits for this process to exit, performs a silent
+    // in-place NSIS upgrade, and then launches the updated Dusk executable.
     app.exit(0);
     Ok(())
 }
