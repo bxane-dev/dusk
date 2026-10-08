@@ -818,6 +818,233 @@ fn wikidata_related_labels(
         .collect()
 }
 
+
+fn download_cover_url(
+    client: &reqwest::blocking::Client,
+    url: &str,
+    covers_dir: &Path,
+    base: &str,
+) -> Option<PathBuf> {
+    let response = client.get(url).send().ok()?;
+    if !response.status().is_success() {
+        return None;
+    }
+    let content_type = response
+        .headers()
+        .get(reqwest::header::CONTENT_TYPE)
+        .and_then(|v| v.to_str().ok())
+        .unwrap_or("")
+        .to_ascii_lowercase();
+
+    let extension = if content_type.contains("png") {
+        "png"
+    } else if content_type.contains("webp") {
+        "webp"
+    } else {
+        "jpg"
+    };
+
+    let bytes = response.bytes().ok()?;
+    if bytes.len() < 4096 {
+        return None;
+    }
+
+    let destination = covers_dir.join(format!("{base}.{extension}"));
+    fs::write(&destination, &bytes).ok()?;
+    Some(destination)
+}
+
+fn epic_store_cover_fallback(
+    game: &DiscoveredGame,
+    covers_dir: &Path,
+    base: &str,
+) -> Option<PathBuf> {
+    let client = reqwest::blocking::Client::builder()
+        .timeout(Duration::from_secs(8))
+        .user_agent("Dusk-Desktop-Artwork/1.7.6")
+        .build()
+        .ok()?;
+
+    let graphql = r#"
+      query DuskSearch($keywords: String!) {
+        Catalog {
+          searchStore(
+            country: "US"
+            locale: "en-US"
+            keywords: $keywords
+            count: 10
+            start: 0
+          ) {
+            elements {
+              title
+              developerDisplayName
+              publisherDisplayName
+              seller { name }
+              keyImages { type url }
+            }
+          }
+        }
+      }
+    "#;
+
+    let payload = serde_json::json!({
+        "query": graphql,
+        "variables": { "keywords": game.title }
+    });
+
+    let response = client
+        .post("https://graphql.epicgames.com/graphql")
+        .json(&payload)
+        .send()
+        .ok()?;
+
+    if !response.status().is_success() {
+        return None;
+    }
+
+    let json: serde_json::Value = response.json().ok()?;
+    let elements = json
+        .get("data")?
+        .get("Catalog")?
+        .get("searchStore")?
+        .get("elements")?
+        .as_array()?;
+
+    let exe_company = executable_company_name(game.exe_path.as_deref())
+        .map(|value| normalized_artwork_match_text(&value));
+
+    let mut best: Option<(f32, String)> = None;
+
+    for element in elements {
+        let title = element.get("title").and_then(|v| v.as_str()).unwrap_or_default();
+        let title_score = title_match_confidence(&game.title, title);
+        if title_score < 0.82 {
+            continue;
+        }
+
+        let mut company_match = false;
+        if let Some(expected) = exe_company.as_deref() {
+            for field in ["developerDisplayName", "publisherDisplayName"] {
+                if let Some(value) = element.get(field).and_then(|v| v.as_str()) {
+                    let actual = normalized_artwork_match_text(value);
+                    if actual == expected || actual.contains(expected) || expected.contains(&actual) {
+                        company_match = true;
+                    }
+                }
+            }
+            if let Some(value) = element
+                .get("seller")
+                .and_then(|v| v.get("name"))
+                .and_then(|v| v.as_str())
+            {
+                let actual = normalized_artwork_match_text(value);
+                if actual == expected || actual.contains(expected) || expected.contains(&actual) {
+                    company_match = true;
+                }
+            }
+        }
+
+        if title_score < 0.93 && exe_company.is_some() && !company_match {
+            continue;
+        }
+
+        let images = match element.get("keyImages").and_then(|v| v.as_array()) {
+            Some(value) => value,
+            None => continue,
+        };
+
+        let priorities = [
+            "DieselGameBoxTall",
+            "OfferImageTall",
+            "DieselStoreFrontTall",
+            "VaultClosed",
+            "Thumbnail",
+        ];
+
+        let mut chosen: Option<String> = None;
+        for wanted in priorities {
+            if let Some(url) = images.iter().find_map(|image| {
+                let kind = image.get("type").and_then(|v| v.as_str())?;
+                let url = image.get("url").and_then(|v| v.as_str())?;
+                if kind.eq_ignore_ascii_case(wanted) && url.starts_with("https://") {
+                    Some(url.to_string())
+                } else {
+                    None
+                }
+            }) {
+                chosen = Some(url);
+                break;
+            }
+        }
+
+        let Some(url) = chosen else { continue };
+        let score = title_score + if company_match { 0.07 } else { 0.0 };
+        if best.as_ref().map(|(current, _)| score > *current).unwrap_or(true) {
+            best = Some((score, url));
+        }
+    }
+
+    let (score, url) = best?;
+    if score < 0.9 {
+        return None;
+    }
+    download_cover_url(&client, &url, covers_dir, base)
+}
+
+fn steam_store_cover_fallback(
+    game: &DiscoveredGame,
+    covers_dir: &Path,
+    base: &str,
+) -> Option<PathBuf> {
+    let client = reqwest::blocking::Client::builder()
+        .timeout(Duration::from_secs(7))
+        .user_agent("Dusk-Desktop-Artwork/1.7.6")
+        .build()
+        .ok()?;
+
+    let response = client
+        .get("https://store.steampowered.com/api/storesearch/")
+        .query(&[
+            ("term", game.title.as_str()),
+            ("l", "english"),
+            ("cc", "US"),
+        ])
+        .send()
+        .ok()?;
+
+    if !response.status().is_success() {
+        return None;
+    }
+
+    let json: serde_json::Value = response.json().ok()?;
+    let items = json.get("items")?.as_array()?;
+
+    let mut candidates: Vec<(f32, u64)> = items
+        .iter()
+        .filter_map(|item| {
+            let name = item.get("name")?.as_str()?;
+            let id = item.get("id")?.as_u64()?;
+            let score = title_match_confidence(&game.title, name);
+            if score >= 0.9 { Some((score, id)) } else { None }
+        })
+        .collect();
+
+    candidates.sort_by(|a, b| b.0.partial_cmp(&a.0).unwrap_or(std::cmp::Ordering::Equal));
+
+    for (_, app_id) in candidates.into_iter().take(4) {
+        for extension in ["jpg", "png"] {
+            let url = format!(
+                "https://cdn.cloudflare.steamstatic.com/steam/apps/{app_id}/library_600x900.{extension}"
+            );
+            if let Some(path) = download_cover_url(&client, &url, covers_dir, base) {
+                return Some(path);
+            }
+        }
+    }
+
+    None
+}
+
 fn wikidata_cover_fallback(
     game: &DiscoveredGame,
     covers_dir: &Path,
@@ -830,7 +1057,7 @@ fn wikidata_cover_fallback(
 
     let client = reqwest::blocking::Client::builder()
         .timeout(Duration::from_secs(7))
-        .user_agent("Dusk-Desktop-Artwork/1.7.5")
+        .user_agent("Dusk-Desktop-Artwork/1.7.6")
         .build()
         .ok()?;
 
@@ -1041,7 +1268,7 @@ fn auto_apply_game_artwork(app: &AppHandle, connection: &Connection, game: &Disc
             let destination = covers_dir.join(format!("{base}.jpg"));
             let downloaded = reqwest::blocking::Client::builder()
                 .timeout(Duration::from_secs(5))
-                .user_agent("Dusk-Desktop-Artwork/1.7.5")
+                .user_agent("Dusk-Desktop-Artwork/1.7.6")
                 .build().ok()
                 .and_then(|client| client.get(url).send().ok())
                 .filter(|response| response.status().is_success())
@@ -1056,11 +1283,23 @@ fn auto_apply_game_artwork(app: &AppHandle, connection: &Connection, game: &Disc
                 return;
             }
         }
-    } else if let Some(destination) = wikidata_cover_fallback(game, &covers_dir, &base) {
-        let _ = connection.execute(
-            "UPDATE games SET cover_path = ?1, cover_origin = 'web-fallback' WHERE id = ?2",
-            params![destination.to_string_lossy().into_owned(), game.id],
-        );
+    } else {
+        let web_cover = if game.source == "epic" {
+            epic_store_cover_fallback(game, &covers_dir, &base)
+                .or_else(|| steam_store_cover_fallback(game, &covers_dir, &base))
+                .or_else(|| wikidata_cover_fallback(game, &covers_dir, &base))
+        } else {
+            steam_store_cover_fallback(game, &covers_dir, &base)
+                .or_else(|| epic_store_cover_fallback(game, &covers_dir, &base))
+                .or_else(|| wikidata_cover_fallback(game, &covers_dir, &base))
+        };
+
+        if let Some(destination) = web_cover {
+            let _ = connection.execute(
+                "UPDATE games SET cover_path = ?1, cover_origin = 'web-fallback' WHERE id = ?2",
+                params![destination.to_string_lossy().into_owned(), game.id],
+            );
+        }
     }
 }
 
