@@ -84,19 +84,16 @@ jobs:
           tagName: dusk-v__VERSION__
           releaseName: Dusk v__VERSION__
           releaseBody: |
-            # Dusk v1.7.8
+            # Dusk v1.7.9
 
-            Lightweight Cover AI for missing game artwork.
+            Account login placeholder cleanup.
 
             ## What's new
 
-            - Adds a lightweight local Cover AI that ranks artwork candidates instead of trusting one lookup.
-            - Generates cleaned title variants such as Fortnite OG -> Fortnite and Invokyr Demo -> Invokyr.
-            - Searches Steam Store, Steam Community app search, and Epic Games Store candidates.
-            - Scores title, publisher/company, source, and portrait-art confidence locally.
-            - Retries existing blank covers automatically at startup, independent of the game-scan timer.
-            - Keeps web artwork fallback-only and caches successful matches locally.
-            - Includes restart-to-update, profile-picture persistence, scanner improvements, DuskLauncher.exe Discord mitigation, and optional Discord Rich Presence.
+            - Removes the hardcoded bxane placeholder from the username field.
+            - Uses a generic username placeholder for sign-in and registration.
+            - Does not change saved usernames, credentials, or account data.
+            - Includes the lightweight Cover AI, automatic missing-cover refresh, restart-to-update, profile-picture persistence, scanner improvements, DuskLauncher.exe Discord mitigation, and optional Discord Rich Presence.
 
             ## Notes
 
