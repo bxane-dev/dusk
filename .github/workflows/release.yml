@@ -84,18 +84,19 @@ jobs:
           tagName: dusk-v__VERSION__
           releaseName: Dusk v__VERSION__
           releaseBody: |
-            # Dusk v1.7.7
+            # Dusk v1.7.8
 
-            Restart-to-update Windows flow.
+            Lightweight Cover AI for missing game artwork.
 
             ## What's new
 
-            - Replaces the visible updater installer flow with Restart to update.
-            - Downloads and SHA-256 verifies the official GitHub Release installer.
-            - Closes Dusk, runs the NSIS upgrade silently with /S, waits for completion, and relaunches DuskLauncher.exe.
-            - Adds an automatic update check shortly after startup.
-            - Normal future in-app updates no longer require interacting with an uninstall/reinstall wizard.
-            - Keeps the 1.7.x artwork, scanner, profile-picture, DuskLauncher.exe Discord mitigation, and optional Discord Rich Presence improvements.
+            - Adds a lightweight local Cover AI that ranks artwork candidates instead of trusting one lookup.
+            - Generates cleaned title variants such as Fortnite OG -> Fortnite and Invokyr Demo -> Invokyr.
+            - Searches Steam Store, Steam Community app search, and Epic Games Store candidates.
+            - Scores title, publisher/company, source, and portrait-art confidence locally.
+            - Retries existing blank covers automatically at startup, independent of the game-scan timer.
+            - Keeps web artwork fallback-only and caches successful matches locally.
+            - Includes restart-to-update, profile-picture persistence, scanner improvements, DuskLauncher.exe Discord mitigation, and optional Discord Rich Presence.
 
             ## Notes
 
