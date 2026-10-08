@@ -84,18 +84,18 @@ jobs:
           tagName: dusk-v__VERSION__
           releaseName: Dusk v__VERSION__
           releaseBody: |
-            # Dusk v1.7.6
+            # Dusk v1.7.7
 
-            Expanded fallback artwork lookup for missing game covers.
+            Restart-to-update Windows flow.
 
             ## What's new
 
-            - Non-Steam games can now search Steam by detected game title even when installed elsewhere.
-            - Strong Steam title matches use official 600x900 library artwork.
-            - Epic games try Epic Store tall artwork first, then Steam-by-name, then Wikidata/Commons.
-            - Other non-Steam games try Steam-by-name first, then Epic Store, then Wikidata/Commons.
-            - Web lookup remains fallback-only after manual, launcher-native, and local portrait artwork fail.
-            - Keeps persistent profile pictures, stronger executable detection, scanner deduplication, DuskLauncher.exe Discord mitigation, and optional Discord Rich Presence.
+            - Replaces the visible updater installer flow with Restart to update.
+            - Downloads and SHA-256 verifies the official GitHub Release installer.
+            - Closes Dusk, runs the NSIS upgrade silently with /S, waits for completion, and relaunches DuskLauncher.exe.
+            - Adds an automatic update check shortly after startup.
+            - Normal future in-app updates no longer require interacting with an uninstall/reinstall wizard.
+            - Keeps the 1.7.x artwork, scanner, profile-picture, DuskLauncher.exe Discord mitigation, and optional Discord Rich Presence improvements.
 
             ## Notes
 
