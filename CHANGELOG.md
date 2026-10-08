@@ -2,6 +2,17 @@
 
 All notable Dusk changes are documented here.
 
+## 1.6.10 - 2026-10-08
+
+Windows app icon and Discord detection cleanup.
+
+- Explicitly sets the live Dusk window/taskbar icon from the official crescent PNG at runtime.
+- Enabled Tauri PNG decoding and the window set-icon permission for the packaged app.
+- Keeps the crescent embedded in the executable, shortcuts, installer, and uninstaller.
+- Renamed the main Windows process binary from dusk.exe to DuskLauncher.exe while keeping the installed product, shortcut, and UI name as Dusk.
+- Updated CI and release startup tests for the new executable filename.
+- Dusk has no Discord RPC integration and does not publish Discord activity itself; the executable rename is intended to reduce Discord's automatic false game detection.
+
 ## 1.6.9 - 2026-10-08
 
 Official transparent crescent branding.
