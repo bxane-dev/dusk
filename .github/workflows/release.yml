@@ -84,18 +84,19 @@ jobs:
           tagName: dusk-v__VERSION__
           releaseName: Dusk v__VERSION__
           releaseBody: |
-            # Dusk v1.7.0
+            # Dusk v1.7.1
 
-            Stronger installed-game detection and automatic per-game artwork.
+            Game library cleanup and portrait artwork hotfix.
 
             ## What's new
 
-            - Expanded Windows game-folder discovery for more common launcher and library locations.
-            - Improved executable scoring to avoid helpers, redistributables, anti-cheat binaries, updaters, and uninstallers.
-            - Automatically discovers installed cover, poster, key art, capsule, header, hero, banner, and library images.
-            - Steam games automatically use their own official Steam header artwork when no custom cover exists.
-            - Existing user-selected covers remain untouched.
-            - Keeps the DuskLauncher.exe Discord-detection mitigation and optional Discord Rich Presence from v1.6.11.
+            - Fixed cropped/incorrect artwork by switching Steam fallback art to portrait 600x900 library artwork.
+            - Prefer local Steam library-cache artwork before downloading the game's official portrait image.
+            - Local artwork detection now favors cover/poster/key-art/box-art assets and rejects wide banners, headers, heroes, logos, and icons.
+            - Deduplicates scanner results by executable/install path and prefers Steam, Epic, and GOG metadata over generic device-folder matches.
+            - Hides stale device-scan duplicates after the next scan.
+            - Preserves manually selected covers while refreshing automatic artwork.
+            - Keeps stronger executable filtering, DuskLauncher.exe Discord mitigation, and optional Discord Rich Presence.
 
             ## Notes
 
