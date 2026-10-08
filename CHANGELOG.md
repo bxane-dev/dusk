@@ -2,6 +2,19 @@
 
 All notable Dusk changes are documented here.
 
+## 1.7.2 - 2026-10-09
+
+Fallback-only web artwork lookup for non-Steam games.
+
+- Keeps Dusk local-first: manual covers are preserved, launcher-native/local portrait art is preferred, and web lookup only runs when those sources fail.
+- Added non-Steam web artwork fallback using title plus detected publisher/company metadata when available.
+- Uses Wikipedia/MediaWiki as a keyless metadata source instead of arbitrary image scraping.
+- Requires strong title matching, video-game context, portrait-oriented artwork, and extra publisher/company agreement for weaker title matches.
+- Rejects ambiguous, landscape, square, tiny, or non-HTTPS image results instead of guessing.
+- Caches accepted fallback artwork locally so Dusk does not re-download it on every launch.
+- Steam keeps its official portrait library-art fallback, but only after local Steam cache and local install-folder artwork fail.
+- Existing scanner deduplication, portrait-art filtering, and manual-cover preservation from v1.7.1 remain included.
+
 ## 1.7.1 - 2026-10-08
 
 Game library cleanup and portrait artwork hotfix.
