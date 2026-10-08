@@ -2,6 +2,19 @@
 
 All notable Dusk changes are documented here.
 
+## 1.7.7 - 2026-10-09
+
+Restart-to-update Windows flow.
+
+- Replaced the visible installer-based in-app update flow with a restart-to-update experience.
+- Dusk downloads and SHA-256 verifies the official GitHub Release installer before restarting.
+- Clicking Restart to update closes Dusk, runs the Tauri NSIS installer silently with /S, waits for installation to finish, and automatically relaunches DuskLauncher.exe.
+- Normal in-app updates no longer require interacting with an uninstall/reinstall wizard.
+- Added an automatic update check shortly after startup so new releases can appear without manually checking first.
+- Updated the Settings UI to show Restart to update and explain the silent restart behavior.
+- Local Dusk data, account data, game library state, covers, saves, and settings remain outside the replaced application binaries.
+- Includes the game artwork, scanner, profile-picture, and Discord improvements from prior 1.7.x releases.
+
 ## 1.7.6 - 2026-10-09
 
 Expanded fallback artwork lookup for missing game covers.
