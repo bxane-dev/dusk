@@ -4454,8 +4454,7 @@ fn discord_rpc_enable(client_id: String, state: Option<String>) -> Result<(), St
         let _ = existing.close();
     }
 
-    let mut client = DiscordIpcClient::new(client_id)
-        .map_err(|error| format!("Could not create Discord IPC client: {error}"))?;
+    let mut client = DiscordIpcClient::new(client_id);
     client
         .connect()
         .map_err(|error| format!("Discord is not available or RPC could not connect: {error}"))?;
