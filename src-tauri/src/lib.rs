@@ -607,6 +607,69 @@ fn quoted_vdf_value(contents: &str, key: &str) -> Option<String> {
         .map(|value| value.as_str().replace(r"\\", r"\"))
 }
 
+fn find_local_artwork(root: &Path) -> Option<PathBuf> {
+    if !root.exists() { return None; }
+    let preferred = ["cover", "poster", "keyart", "capsule", "header", "hero", "banner", "library"];
+    let mut best: Option<(i64, PathBuf)> = None;
+    for entry in WalkDir::new(root).max_depth(4).follow_links(false).into_iter().filter_map(Result::ok).take(3000) {
+        if !entry.file_type().is_file() { continue; }
+        let path = entry.path();
+        let ext = path.extension().and_then(|v| v.to_str()).unwrap_or_default().to_ascii_lowercase();
+        if !["png","jpg","jpeg","webp"].contains(&ext.as_str()) { continue; }
+        let name = path.file_stem().and_then(|v| v.to_str()).unwrap_or_default().to_ascii_lowercase();
+        let mut score = 40_i64 - entry.depth() as i64 * 4;
+        for (index, word) in preferred.iter().enumerate() {
+            if name.contains(word) { score += 120 - index as i64 * 8; }
+        }
+        if name.contains("icon") || name.contains("logo") { score -= 35; }
+        if best.as_ref().map(|(current, _)| score > *current).unwrap_or(true) {
+            best = Some((score, path.to_path_buf()));
+        }
+    }
+    best.filter(|(score, _)| *score >= 80).map(|(_, path)| path)
+}
+
+fn auto_apply_game_artwork(app: &AppHandle, connection: &Connection, game: &DiscoveredGame) {
+    let existing: Option<String> = connection.query_row(
+        "SELECT cover_path FROM games WHERE id = ?1",
+        params![game.id],
+        |row| row.get(0),
+    ).optional().ok().flatten().flatten();
+    if existing.as_ref().map(|p| Path::new(p).exists()).unwrap_or(false) { return; }
+
+    let covers_dir = match app_data_dir(app) { Ok(dir) => dir.join("covers"), Err(_) => return };
+    if fs::create_dir_all(&covers_dir).is_err() { return; }
+    let base = game.id.replace(':', "_");
+
+    if game.source == "steam" {
+        if let Some(app_id) = game.source_id.as_deref() {
+            let url = format!("https://cdn.cloudflare.steamstatic.com/steam/apps/{app_id}/header.jpg");
+            let destination = covers_dir.join(format!("{base}.jpg"));
+            let downloaded = reqwest::blocking::Client::builder()
+                .timeout(Duration::from_secs(5)).build().ok()
+                .and_then(|client| client.get(url).send().ok())
+                .filter(|response| response.status().is_success())
+                .and_then(|response| response.bytes().ok())
+                .filter(|bytes| bytes.len() > 1024)
+                .and_then(|bytes| fs::write(&destination, &bytes).ok().map(|_| ()));
+            if downloaded.is_some() {
+                let _ = connection.execute("UPDATE games SET cover_path = ?1 WHERE id = ?2",
+                    params![destination.to_string_lossy().into_owned(), game.id]);
+                return;
+            }
+        }
+    }
+
+    if let Some(source) = find_local_artwork(Path::new(&game.install_path)) {
+        let ext = source.extension().and_then(|v| v.to_str()).unwrap_or("png").to_ascii_lowercase();
+        let destination = covers_dir.join(format!("{base}.{ext}"));
+        if fs::copy(&source, &destination).is_ok() {
+            let _ = connection.execute("UPDATE games SET cover_path = ?1 WHERE id = ?2",
+                params![destination.to_string_lossy().into_owned(), game.id]);
+        }
+    }
+}
+
 fn find_best_executable(root: &Path, game_name: &str) -> Option<PathBuf> {
     if !root.exists() {
         return None;
@@ -651,6 +714,17 @@ fn find_best_executable(root: &Path, game_name: &str) -> Option<PathBuf> {
             "dxsetup",
             "setup",
             "unitycrashhandler",
+            "easyanticheat",
+            "eac",
+            "battleye",
+            "redist",
+            "prereq",
+            "bootstrapper",
+            "updater",
+            "update",
+            "helper",
+            "service",
+            "cefprocess",
             "dotnet",
         ];
         if blocked.iter().any(|word| filename.contains(word)) {
@@ -1258,7 +1332,12 @@ fn common_device_game_roots() -> Vec<PathBuf> {
                 continue;
             }
 
-            for relative in ["Games", "Game", "PortableGames", "Portable Games"] {
+            for relative in [
+                "Games", "Game", "PortableGames", "Portable Games",
+                "XboxGames", "EA Games", "Ubisoft Games",
+                "Program Files\\EA Games",
+                "Program Files (x86)\\Ubisoft\\Ubisoft Game Launcher\\games",
+            ] {
                 let candidate = drive.join(relative);
                 if candidate.is_dir() {
                     roots.push(candidate);
@@ -1420,6 +1499,7 @@ fn scan_games_blocking(app: AppHandle) -> Result<ScanResult, String> {
         } else {
             added += 1;
         }
+        auto_apply_game_artwork(&app, &connection, game);
     }
 
     Ok(ScanResult {
