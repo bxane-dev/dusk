@@ -2,6 +2,18 @@
 
 All notable Dusk changes are documented here.
 
+## 1.7.3 - 2026-10-09
+
+Persistent Dusk profile pictures.
+
+- Dusk now saves each account avatar's stable private-storage path in the authenticated account metadata.
+- Profile pictures persist reliably across app restarts, sign-outs, and later sign-ins.
+- Signed avatar URLs are regenerated from the saved private object path instead of rediscovering the file on every launch.
+- Existing avatars from earlier Dusk versions are detected once and migrated automatically to the persistent avatar-path format.
+- Avatar signed URLs now last up to seven days while the underlying private avatar remains permanently stored until the user removes it.
+- Removing an avatar deletes the private storage object and clears the saved account metadata path.
+- Keeps the local-first artwork lookup and scanner fixes from v1.7.2.
+
 ## 1.7.2 - 2026-10-09
 
 Fallback-only web artwork lookup for non-Steam games.
