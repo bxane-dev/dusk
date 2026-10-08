@@ -690,40 +690,19 @@ fn executable_company_name(_exe_path: Option<&str>) -> Option<String> {
     None
 }
 
-fn wikipedia_cover_fallback(
-    game: &DiscoveredGame,
-    covers_dir: &Path,
-    base: &str,
-) -> Option<PathBuf> {
-    // This is deliberately the final artwork fallback. It is not called when
-    // launcher-native or local portrait artwork already exists.
-    let publisher = executable_company_name(game.exe_path.as_deref());
-    let query = match publisher.as_deref() {
-        Some(company) if !company.trim().is_empty() => {
-            format!("{} {} video game", game.title, company.trim())
-        }
-        _ => format!("{} video game", game.title),
-    };
-
-    let client = reqwest::blocking::Client::builder()
-        .timeout(Duration::from_secs(6))
-        .user_agent("Dusk-Desktop-Artwork/1.7.2")
-        .build()
-        .ok()?;
-
+fn wikimedia_image_for_filename(
+    client: &reqwest::blocking::Client,
+    filename: &str,
+) -> Option<String> {
+    let title = format!("File:{filename}");
     let response = client
-        .get("https://en.wikipedia.org/w/api.php")
+        .get("https://commons.wikimedia.org/w/api.php")
         .query(&[
             ("action", "query"),
-            ("generator", "search"),
-            ("gsrsearch", query.as_str()),
-            ("gsrnamespace", "0"),
-            ("gsrlimit", "5"),
-            ("prop", "pageimages|extracts"),
-            ("piprop", "thumbnail"),
-            ("pithumbsize", "900"),
-            ("exintro", "1"),
-            ("explaintext", "1"),
+            ("titles", title.as_str()),
+            ("prop", "imageinfo"),
+            ("iiprop", "url|size"),
+            ("iiurlwidth", "900"),
             ("format", "json"),
             ("formatversion", "2"),
         ])
@@ -735,86 +714,268 @@ fn wikipedia_cover_fallback(
     }
 
     let json: serde_json::Value = response.json().ok()?;
-    let pages = json
-        .get("query")?
-        .get("pages")?
-        .as_array()?;
+    let page = json.get("query")?.get("pages")?.as_array()?.first()?;
+    let info = page.get("imageinfo")?.as_array()?.first()?;
+    let width = info.get("width").and_then(|v| v.as_u64()).unwrap_or(0);
+    let height = info.get("height").and_then(|v| v.as_u64()).unwrap_or(0);
 
+    // Dusk cards are portrait; reject square/landscape media.
+    if width == 0 || height == 0 || height < width.saturating_mul(6) / 5 {
+        return None;
+    }
+
+    info.get("thumburl")
+        .or_else(|| info.get("url"))
+        .and_then(|v| v.as_str())
+        .filter(|url| url.starts_with("https://"))
+        .map(ToOwned::to_owned)
+}
+
+fn wikidata_entity_details(
+    client: &reqwest::blocking::Client,
+    entity_id: &str,
+) -> Option<serde_json::Value> {
+    let response = client
+        .get("https://www.wikidata.org/w/api.php")
+        .query(&[
+            ("action", "wbgetentities"),
+            ("ids", entity_id),
+            ("props", "claims|labels|descriptions"),
+            ("languages", "en"),
+            ("format", "json"),
+        ])
+        .send()
+        .ok()?;
+
+    if !response.status().is_success() {
+        return None;
+    }
+    let json: serde_json::Value = response.json().ok()?;
+    json.get("entities")?.get(entity_id).cloned()
+}
+
+fn wikidata_related_labels(
+    client: &reqwest::blocking::Client,
+    entity: &serde_json::Value,
+) -> Vec<String> {
+    let mut ids = Vec::new();
+    for property in ["P123", "P178"] {
+        if let Some(claims) = entity
+            .get("claims")
+            .and_then(|v| v.get(property))
+            .and_then(|v| v.as_array())
+        {
+            for claim in claims {
+                if let Some(id) = claim
+                    .get("mainsnak")
+                    .and_then(|v| v.get("datavalue"))
+                    .and_then(|v| v.get("value"))
+                    .and_then(|v| v.get("id"))
+                    .and_then(|v| v.as_str())
+                {
+                    ids.push(id.to_string());
+                }
+            }
+        }
+    }
+    ids.sort();
+    ids.dedup();
+    if ids.is_empty() {
+        return Vec::new();
+    }
+
+    let joined = ids.join("|");
+    let response = match client
+        .get("https://www.wikidata.org/w/api.php")
+        .query(&[
+            ("action", "wbgetentities"),
+            ("ids", joined.as_str()),
+            ("props", "labels"),
+            ("languages", "en"),
+            ("format", "json"),
+        ])
+        .send()
+    {
+        Ok(response) if response.status().is_success() => response,
+        _ => return Vec::new(),
+    };
+
+    let json: serde_json::Value = match response.json() {
+        Ok(value) => value,
+        Err(_) => return Vec::new(),
+    };
+
+    ids.into_iter()
+        .filter_map(|id| {
+            json.get("entities")?
+                .get(&id)?
+                .get("labels")?
+                .get("en")?
+                .get("value")?
+                .as_str()
+                .map(ToOwned::to_owned)
+        })
+        .collect()
+}
+
+fn wikidata_cover_fallback(
+    game: &DiscoveredGame,
+    covers_dir: &Path,
+    base: &str,
+) -> Option<PathBuf> {
+    // Final fallback only: manual, launcher-native and local portrait artwork
+    // are checked before this function is called.
+    let publisher = executable_company_name(game.exe_path.as_deref());
     let normalized_publisher = publisher.as_deref().map(normalized_artwork_match_text);
-    let mut best: Option<(f32, String)> = None;
 
-    for page in pages {
-        let page_title = page.get("title").and_then(|v| v.as_str()).unwrap_or_default();
-        let extract = page.get("extract").and_then(|v| v.as_str()).unwrap_or_default();
-        let combined = normalized_artwork_match_text(&format!("{page_title} {extract}"));
+    let client = reqwest::blocking::Client::builder()
+        .timeout(Duration::from_secs(7))
+        .user_agent("Dusk-Desktop-Artwork/1.7.5")
+        .build()
+        .ok()?;
 
-        // Only accept pages that clearly describe a video game.
-        if !combined.contains("video game") && !combined.contains("videogame") {
-            continue;
-        }
+    let response = client
+        .get("https://www.wikidata.org/w/api.php")
+        .query(&[
+            ("action", "wbsearchentities"),
+            ("search", game.title.as_str()),
+            ("language", "en"),
+            ("type", "item"),
+            ("limit", "8"),
+            ("format", "json"),
+        ])
+        .send()
+        .ok()?;
 
-        let title_confidence = title_match_confidence(&game.title, page_title);
-        if title_confidence < 0.72 {
-            continue;
-        }
+    if !response.status().is_success() {
+        return None;
+    }
 
-        let publisher_bonus = match normalized_publisher.as_deref() {
-            Some(company) if !company.is_empty() && combined.contains(company) => 0.08,
-            Some(company) if !company.is_empty() && title_confidence < 0.9 => continue,
-            _ => 0.0,
-        };
+    let json: serde_json::Value = response.json().ok()?;
+    let results = json.get("search")?.as_array()?;
+    let mut candidates: Vec<(f32, String)> = Vec::new();
 
-        let thumbnail = match page.get("thumbnail") {
+    for result in results {
+        let id = match result.get("id").and_then(|v| v.as_str()) {
             Some(value) => value,
             None => continue,
         };
-        let width = thumbnail.get("width").and_then(|v| v.as_u64()).unwrap_or(0);
-        let height = thumbnail.get("height").and_then(|v| v.as_u64()).unwrap_or(0);
-        // Dusk's cards are portrait. Reject landscape/square results.
-        if width == 0 || height == 0 || height < width.saturating_mul(6) / 5 {
+        let label = result.get("label").and_then(|v| v.as_str()).unwrap_or_default();
+        let description = result
+            .get("description")
+            .and_then(|v| v.as_str())
+            .unwrap_or_default();
+
+        let description_normalized = normalized_artwork_match_text(description);
+        if !description_normalized.contains("video game")
+            && !description_normalized.contains("videogame")
+        {
             continue;
         }
-        let source = match thumbnail.get("source").and_then(|v| v.as_str()) {
-            Some(value) if value.starts_with("https://") => value.to_string(),
+
+        let title_score = title_match_confidence(&game.title, label);
+        if title_score < 0.72 {
+            continue;
+        }
+
+        let entity = match wikidata_entity_details(&client, id) {
+            Some(value) => value,
+            None => continue,
+        };
+
+        let related_labels = wikidata_related_labels(&client, &entity);
+        let publisher_match = normalized_publisher
+            .as_deref()
+            .map(|expected| {
+                related_labels.iter().any(|label| {
+                    let actual = normalized_artwork_match_text(label);
+                    actual == expected || actual.contains(expected) || expected.contains(&actual)
+                })
+            })
+            .unwrap_or(false);
+
+        // Exact/near-exact title is allowed without publisher metadata.
+        // Weaker title matches require publisher/developer agreement.
+        if title_score < 0.9 && normalized_publisher.is_some() && !publisher_match {
+            continue;
+        }
+
+        let filename = entity
+            .get("claims")
+            .and_then(|v| v.get("P18"))
+            .and_then(|v| v.as_array())
+            .and_then(|values| values.first())
+            .and_then(|claim| claim.get("mainsnak"))
+            .and_then(|v| v.get("datavalue"))
+            .and_then(|v| v.get("value"))
+            .and_then(|v| v.as_str());
+
+        let Some(filename) = filename else {
+            continue;
+        };
+
+        if wikimedia_image_for_filename(&client, filename).is_none() {
+            continue;
+        }
+
+        let score = title_score + if publisher_match { 0.08 } else { 0.0 };
+        candidates.push((score, id.to_string()));
+    }
+
+    candidates.sort_by(|a, b| b.0.partial_cmp(&a.0).unwrap_or(std::cmp::Ordering::Equal));
+
+    for (score, id) in candidates {
+        if score < 0.82 {
+            continue;
+        }
+        let entity = wikidata_entity_details(&client, &id)?;
+        let filename = entity
+            .get("claims")
+            .and_then(|v| v.get("P18"))
+            .and_then(|v| v.as_array())
+            .and_then(|values| values.first())
+            .and_then(|claim| claim.get("mainsnak"))
+            .and_then(|v| v.get("datavalue"))
+            .and_then(|v| v.get("value"))
+            .and_then(|v| v.as_str())?;
+
+        let image_url = match wikimedia_image_for_filename(&client, filename) {
+            Some(value) => value,
+            None => continue,
+        };
+
+        let image_response = match client.get(&image_url).send() {
+            Ok(response) if response.status().is_success() => response,
             _ => continue,
         };
 
-        let score = title_confidence + publisher_bonus;
-        if best.as_ref().map(|(current, _)| score > *current).unwrap_or(true) {
-            best = Some((score, source));
+        let content_type = image_response
+            .headers()
+            .get(reqwest::header::CONTENT_TYPE)
+            .and_then(|v| v.to_str().ok())
+            .unwrap_or("")
+            .to_ascii_lowercase();
+
+        let extension = if content_type.contains("png") {
+            "png"
+        } else if content_type.contains("webp") {
+            "webp"
+        } else {
+            "jpg"
+        };
+
+        let bytes = match image_response.bytes() {
+            Ok(value) if value.len() >= 4096 => value,
+            _ => continue,
+        };
+
+        let destination = covers_dir.join(format!("{base}.{extension}"));
+        if fs::write(&destination, &bytes).is_ok() {
+            return Some(destination);
         }
     }
 
-    let (score, image_url) = best?;
-    if score < 0.8 {
-        return None;
-    }
-
-    let image_response = client.get(&image_url).send().ok()?;
-    if !image_response.status().is_success() {
-        return None;
-    }
-    let content_type = image_response
-        .headers()
-        .get(reqwest::header::CONTENT_TYPE)
-        .and_then(|v| v.to_str().ok())
-        .unwrap_or("")
-        .to_ascii_lowercase();
-
-    let extension = if content_type.contains("png") {
-        "png"
-    } else if content_type.contains("webp") {
-        "webp"
-    } else {
-        "jpg"
-    };
-    let bytes = image_response.bytes().ok()?;
-    if bytes.len() < 4096 {
-        return None;
-    }
-    let destination = covers_dir.join(format!("{base}.{extension}"));
-    fs::write(&destination, &bytes).ok()?;
-    Some(destination)
+    None
 }
 
 fn auto_apply_game_artwork(app: &AppHandle, connection: &Connection, game: &DiscoveredGame) {
@@ -880,7 +1041,7 @@ fn auto_apply_game_artwork(app: &AppHandle, connection: &Connection, game: &Disc
             let destination = covers_dir.join(format!("{base}.jpg"));
             let downloaded = reqwest::blocking::Client::builder()
                 .timeout(Duration::from_secs(5))
-                .user_agent("Dusk-Desktop-Artwork/1.7.2")
+                .user_agent("Dusk-Desktop-Artwork/1.7.5")
                 .build().ok()
                 .and_then(|client| client.get(url).send().ok())
                 .filter(|response| response.status().is_success())
@@ -895,7 +1056,7 @@ fn auto_apply_game_artwork(app: &AppHandle, connection: &Connection, game: &Disc
                 return;
             }
         }
-    } else if let Some(destination) = wikipedia_cover_fallback(game, &covers_dir, &base) {
+    } else if let Some(destination) = wikidata_cover_fallback(game, &covers_dir, &base) {
         let _ = connection.execute(
             "UPDATE games SET cover_path = ?1, cover_origin = 'web-fallback' WHERE id = ?2",
             params![destination.to_string_lossy().into_owned(), game.id],
