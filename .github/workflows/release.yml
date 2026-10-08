@@ -84,18 +84,18 @@ jobs:
           tagName: dusk-v__VERSION__
           releaseName: Dusk v__VERSION__
           releaseBody: |
-            # Dusk v1.6.10
+            # Dusk v1.6.11
 
             Windows app icon fix and Discord game-detection mitigation.
 
             ## What's new
 
-            - Forces the official crescent onto the live Dusk window/taskbar icon at runtime.
-            - Keeps the crescent embedded in the executable, shortcuts, installer, and uninstaller.
-            - Renames the Windows process binary to DuskLauncher.exe while keeping the installed app and shortcut name Dusk.
-            - The process rename reduces Discord's false automatic detection of Dusk as a game.
-            - Dusk does not include Discord RPC or publish activity by itself.
-            - Existing transparent violet/cyan/red brand assets remain committed and synchronized.
+            - Added optional Dusk Discord Rich Presence.
+            - Discord RPC is disabled by default and only connects when explicitly enabled in Settings.
+            - Users can configure a Discord Application ID for a dedicated Dusk launcher identity.
+            - Presence states follow Dusk activity such as browsing the library, screenshots, achievements, settings, or launching a game.
+            - Dusk clears and closes the IPC activity when Rich Presence is disabled.
+            - Keeps the live crescent taskbar/window icon and DuskLauncher.exe process identity from v1.6.10.
 
             ## Notes
 
