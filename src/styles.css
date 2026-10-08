@@ -1789,8 +1789,9 @@ button:disabled { cursor: not-allowed; opacity: 0.55; }
 .account-window-brand img {
   width: 22px;
   height: 22px;
-  object-fit: cover;
-  border-radius: 5px;
+  object-fit: contain;
+  border-radius: 0;
+  background: transparent;
   filter: drop-shadow(0 0 6px rgba(139, 92, 246, 0.48));
 }
 
@@ -1823,21 +1824,21 @@ button:disabled { cursor: not-allowed; opacity: 0.55; }
 }
 
 .account-logo {
-  background: #07070a;
-  border-color: rgba(139, 92, 246, 0.24);
+  background: transparent;
+  border-color: transparent;
   padding: 2px;
 }
 
 .account-logo-image {
-  border-radius: 12px;
-  object-fit: cover;
+  border-radius: 0;
+  object-fit: contain;
 }
 
 .window-title-logo,
 .brand-logo-image {
-  background: #07070a;
-  border-radius: 6px;
-  object-fit: cover;
+  background: transparent;
+  border-radius: 0;
+  object-fit: contain;
 }
 
 .account-divider {
