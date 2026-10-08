@@ -2,6 +2,16 @@
 
 All notable Dusk changes are documented here.
 
+## 1.7.4 - 2026-10-09
+
+Build fix for profile-picture persistence and artwork fallback.
+
+- Fixed a Rust compile collision caused by two functions using the same normalized-match helper name.
+- Enabled reqwest query support required by the fallback-only MediaWiki artwork lookup.
+- Includes persistent Dusk profile pictures from v1.7.3.
+- Includes local-first portrait artwork and non-Steam web fallback from v1.7.2.
+- Keeps scanner deduplication, stronger executable detection, DuskLauncher.exe Discord mitigation, and optional Discord Rich Presence.
+
 ## 1.7.3 - 2026-10-09
 
 Persistent Dusk profile pictures.
