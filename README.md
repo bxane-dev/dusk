@@ -2,7 +2,7 @@
 
 Dusk is a local-first Windows game launcher built with Tauri, Rust, React, TypeScript, and SQLite.
 
-**Current stable version: 1.6.10**
+**Current stable version: 1.6.11**
 
 It scans real local game installations, launches games, tracks sessions it can observe, and keeps the library database on the user's PC. Dusk does not ship with fake games or seeded playtime.
 
@@ -18,6 +18,7 @@ It scans real local game installations, launches games, tracks sessions it can o
 - Password recovery by email with a hosted Dusk reset page
 - Private account avatars with user uploads up to 150 MB and round in-app display
 - Official violet Dusk desktop logo across the app, executable, shortcuts, and installer
+- Optional Discord Rich Presence for an intentional Dusk launcher identity
 - Custom dark-violet NSIS installer artwork with branded header/sidebar and matching install/uninstall icons
 - Hidden background Windows scan helpers with no flashing terminal windows
 - Safe local installer hub for user-selected EXE/MSI installers
