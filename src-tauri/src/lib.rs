@@ -633,7 +633,7 @@ fn find_local_artwork(root: &Path) -> Option<PathBuf> {
 }
 
 
-fn normalized_match_text(value: &str) -> String {
+fn normalized_artwork_match_text(value: &str) -> String {
     value
         .to_ascii_lowercase()
         .chars()
@@ -645,8 +645,8 @@ fn normalized_match_text(value: &str) -> String {
 }
 
 fn title_match_confidence(expected: &str, candidate: &str) -> f32 {
-    let expected = normalized_match_text(expected);
-    let candidate = normalized_match_text(candidate);
+    let expected = normalized_artwork_match_text(expected);
+    let candidate = normalized_artwork_match_text(candidate);
     if expected.is_empty() || candidate.is_empty() {
         return 0.0;
     }
@@ -740,13 +740,13 @@ fn wikipedia_cover_fallback(
         .get("pages")?
         .as_array()?;
 
-    let normalized_publisher = publisher.as_deref().map(normalized_match_text);
+    let normalized_publisher = publisher.as_deref().map(normalized_artwork_match_text);
     let mut best: Option<(f32, String)> = None;
 
     for page in pages {
         let page_title = page.get("title").and_then(|v| v.as_str()).unwrap_or_default();
         let extract = page.get("extract").and_then(|v| v.as_str()).unwrap_or_default();
-        let combined = normalized_match_text(&format!("{page_title} {extract}"));
+        let combined = normalized_artwork_match_text(&format!("{page_title} {extract}"));
 
         // Only accept pages that clearly describe a video game.
         if !combined.contains("video game") && !combined.contains("videogame") {
