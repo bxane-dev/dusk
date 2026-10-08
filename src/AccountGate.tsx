@@ -1,7 +1,7 @@
 import { type FormEvent, type MouseEvent, type ReactNode, useEffect, useState } from "react";
 import { ArrowLeft, KeyRound, LockKeyhole, LogIn, Mail, Minus, Square, UserRound, UserPlus, X } from "lucide-react";
 import { getCurrentWindow } from "@tauri-apps/api/window";
-import duskLogo from "./assets/dusk-logo.png";
+import duskLogo from "./assets/dusk-logo.svg";
 import {
   currentDuskAccount,
   loginDuskAccount,
