@@ -632,6 +632,191 @@ fn find_local_artwork(root: &Path) -> Option<PathBuf> {
     best.filter(|(score, _)| *score >= 80).map(|(_, path)| path)
 }
 
+
+fn normalized_match_text(value: &str) -> String {
+    value
+        .to_ascii_lowercase()
+        .chars()
+        .filter(|c| c.is_ascii_alphanumeric() || c.is_ascii_whitespace())
+        .collect::<String>()
+        .split_whitespace()
+        .collect::<Vec<_>>()
+        .join(" ")
+}
+
+fn title_match_confidence(expected: &str, candidate: &str) -> f32 {
+    let expected = normalized_match_text(expected);
+    let candidate = normalized_match_text(candidate);
+    if expected.is_empty() || candidate.is_empty() {
+        return 0.0;
+    }
+    if expected == candidate {
+        return 1.0;
+    }
+    if candidate.contains(&expected) || expected.contains(&candidate) {
+        return 0.92;
+    }
+    let expected_tokens: HashSet<&str> = expected.split_whitespace().collect();
+    let candidate_tokens: HashSet<&str> = candidate.split_whitespace().collect();
+    let common = expected_tokens.intersection(&candidate_tokens).count() as f32;
+    let denom = expected_tokens.len().max(candidate_tokens.len()) as f32;
+    if denom <= 0.0 { 0.0 } else { common / denom }
+}
+
+#[cfg(target_os = "windows")]
+fn executable_company_name(exe_path: Option<&str>) -> Option<String> {
+    let path = exe_path?;
+    if !Path::new(path).is_file() {
+        return None;
+    }
+    let escaped = path.replace('\'', "''");
+    let script = format!(
+        "$v=(Get-Item -LiteralPath '{}').VersionInfo.CompanyName; if($v){{$v}}",
+        escaped
+    );
+    let output = hidden_windows_command("powershell")
+        .args(["-NoProfile", "-NonInteractive", "-Command", &script])
+        .output()
+        .ok()?;
+    if !output.status.success() {
+        return None;
+    }
+    let value = String::from_utf8_lossy(&output.stdout).trim().to_string();
+    if value.is_empty() { None } else { Some(value) }
+}
+
+#[cfg(not(target_os = "windows"))]
+fn executable_company_name(_exe_path: Option<&str>) -> Option<String> {
+    None
+}
+
+fn wikipedia_cover_fallback(
+    game: &DiscoveredGame,
+    covers_dir: &Path,
+    base: &str,
+) -> Option<PathBuf> {
+    // This is deliberately the final artwork fallback. It is not called when
+    // launcher-native or local portrait artwork already exists.
+    let publisher = executable_company_name(game.exe_path.as_deref());
+    let query = match publisher.as_deref() {
+        Some(company) if !company.trim().is_empty() => {
+            format!("{} {} video game", game.title, company.trim())
+        }
+        _ => format!("{} video game", game.title),
+    };
+
+    let client = reqwest::blocking::Client::builder()
+        .timeout(Duration::from_secs(6))
+        .user_agent("Dusk-Desktop-Artwork/1.7.2")
+        .build()
+        .ok()?;
+
+    let response = client
+        .get("https://en.wikipedia.org/w/api.php")
+        .query(&[
+            ("action", "query"),
+            ("generator", "search"),
+            ("gsrsearch", query.as_str()),
+            ("gsrnamespace", "0"),
+            ("gsrlimit", "5"),
+            ("prop", "pageimages|extracts"),
+            ("piprop", "thumbnail"),
+            ("pithumbsize", "900"),
+            ("exintro", "1"),
+            ("explaintext", "1"),
+            ("format", "json"),
+            ("formatversion", "2"),
+        ])
+        .send()
+        .ok()?;
+
+    if !response.status().is_success() {
+        return None;
+    }
+
+    let json: serde_json::Value = response.json().ok()?;
+    let pages = json
+        .get("query")?
+        .get("pages")?
+        .as_array()?;
+
+    let normalized_publisher = publisher.as_deref().map(normalized_match_text);
+    let mut best: Option<(f32, String)> = None;
+
+    for page in pages {
+        let page_title = page.get("title").and_then(|v| v.as_str()).unwrap_or_default();
+        let extract = page.get("extract").and_then(|v| v.as_str()).unwrap_or_default();
+        let combined = normalized_match_text(&format!("{page_title} {extract}"));
+
+        // Only accept pages that clearly describe a video game.
+        if !combined.contains("video game") && !combined.contains("videogame") {
+            continue;
+        }
+
+        let title_confidence = title_match_confidence(&game.title, page_title);
+        if title_confidence < 0.72 {
+            continue;
+        }
+
+        let publisher_bonus = match normalized_publisher.as_deref() {
+            Some(company) if !company.is_empty() && combined.contains(company) => 0.08,
+            Some(company) if !company.is_empty() && title_confidence < 0.9 => continue,
+            _ => 0.0,
+        };
+
+        let thumbnail = match page.get("thumbnail") {
+            Some(value) => value,
+            None => continue,
+        };
+        let width = thumbnail.get("width").and_then(|v| v.as_u64()).unwrap_or(0);
+        let height = thumbnail.get("height").and_then(|v| v.as_u64()).unwrap_or(0);
+        // Dusk's cards are portrait. Reject landscape/square results.
+        if width == 0 || height == 0 || height < width.saturating_mul(6) / 5 {
+            continue;
+        }
+        let source = match thumbnail.get("source").and_then(|v| v.as_str()) {
+            Some(value) if value.starts_with("https://") => value.to_string(),
+            _ => continue,
+        };
+
+        let score = title_confidence + publisher_bonus;
+        if best.as_ref().map(|(current, _)| score > *current).unwrap_or(true) {
+            best = Some((score, source));
+        }
+    }
+
+    let (score, image_url) = best?;
+    if score < 0.8 {
+        return None;
+    }
+
+    let image_response = client.get(&image_url).send().ok()?;
+    if !image_response.status().is_success() {
+        return None;
+    }
+    let content_type = image_response
+        .headers()
+        .get(reqwest::header::CONTENT_TYPE)
+        .and_then(|v| v.to_str().ok())
+        .unwrap_or("")
+        .to_ascii_lowercase();
+
+    let extension = if content_type.contains("png") {
+        "png"
+    } else if content_type.contains("webp") {
+        "webp"
+    } else {
+        "jpg"
+    };
+    let bytes = image_response.bytes().ok()?;
+    if bytes.len() < 4096 {
+        return None;
+    }
+    let destination = covers_dir.join(format!("{base}.{extension}"));
+    fs::write(&destination, &bytes).ok()?;
+    Some(destination)
+}
+
 fn auto_apply_game_artwork(app: &AppHandle, connection: &Connection, game: &DiscoveredGame) {
     let existing: Option<(Option<String>, Option<String>)> = connection.query_row(
         "SELECT cover_path, cover_origin FROM games WHERE id = ?1",
@@ -647,9 +832,9 @@ fn auto_apply_game_artwork(app: &AppHandle, connection: &Connection, game: &Disc
     if fs::create_dir_all(&covers_dir).is_err() { return; }
     let base = game.id.replace(':', "_");
 
+    // 1) Launcher-native local Steam library artwork.
     if game.source == "steam" {
         if let Some(app_id) = game.source_id.as_deref() {
-            // Prefer Steam's portrait library art from the local cache.
             for steam_root in steam_roots() {
                 let cache = steam_root.join("appcache").join("librarycache");
                 for filename in [
@@ -663,39 +848,58 @@ fn auto_apply_game_artwork(app: &AppHandle, connection: &Connection, game: &Disc
                         let ext = source.extension().and_then(|v| v.to_str()).unwrap_or("jpg");
                         let destination = covers_dir.join(format!("{base}.{ext}"));
                         if fs::copy(&source, &destination).is_ok() {
-                            let _ = connection.execute("UPDATE games SET cover_path = ?1, cover_origin = 'auto' WHERE id = ?2",
-                                params![destination.to_string_lossy().into_owned(), game.id]);
+                            let _ = connection.execute(
+                                "UPDATE games SET cover_path = ?1, cover_origin = 'auto' WHERE id = ?2",
+                                params![destination.to_string_lossy().into_owned(), game.id],
+                            );
                             return;
                         }
                     }
                 }
             }
+        }
+    }
 
-            // Official Steam portrait artwork fallback. Do not use header.jpg because it is landscape.
+    // 2) Local portrait cover/poster/key art from the installed game.
+    if let Some(source) = find_local_artwork(Path::new(&game.install_path)) {
+        let ext = source.extension().and_then(|v| v.to_str()).unwrap_or("png").to_ascii_lowercase();
+        let destination = covers_dir.join(format!("{base}.{ext}"));
+        if fs::copy(&source, &destination).is_ok() {
+            let _ = connection.execute(
+                "UPDATE games SET cover_path = ?1, cover_origin = 'auto' WHERE id = ?2",
+                params![destination.to_string_lossy().into_owned(), game.id],
+            );
+            return;
+        }
+    }
+
+    // 3) Web lookup is fallback-only.
+    if game.source == "steam" {
+        if let Some(app_id) = game.source_id.as_deref() {
             let url = format!("https://cdn.cloudflare.steamstatic.com/steam/apps/{app_id}/library_600x900.jpg");
             let destination = covers_dir.join(format!("{base}.jpg"));
             let downloaded = reqwest::blocking::Client::builder()
-                .timeout(Duration::from_secs(5)).build().ok()
+                .timeout(Duration::from_secs(5))
+                .user_agent("Dusk-Desktop-Artwork/1.7.2")
+                .build().ok()
                 .and_then(|client| client.get(url).send().ok())
                 .filter(|response| response.status().is_success())
                 .and_then(|response| response.bytes().ok())
                 .filter(|bytes| bytes.len() > 4096)
                 .and_then(|bytes| fs::write(&destination, &bytes).ok().map(|_| ()));
             if downloaded.is_some() {
-                let _ = connection.execute("UPDATE games SET cover_path = ?1, cover_origin = 'auto' WHERE id = ?2",
-                    params![destination.to_string_lossy().into_owned(), game.id]);
+                let _ = connection.execute(
+                    "UPDATE games SET cover_path = ?1, cover_origin = 'auto' WHERE id = ?2",
+                    params![destination.to_string_lossy().into_owned(), game.id],
+                );
                 return;
             }
         }
-    }
-
-    if let Some(source) = find_local_artwork(Path::new(&game.install_path)) {
-        let ext = source.extension().and_then(|v| v.to_str()).unwrap_or("png").to_ascii_lowercase();
-        let destination = covers_dir.join(format!("{base}.{ext}"));
-        if fs::copy(&source, &destination).is_ok() {
-            let _ = connection.execute("UPDATE games SET cover_path = ?1 WHERE id = ?2",
-                params![destination.to_string_lossy().into_owned(), game.id]);
-        }
+    } else if let Some(destination) = wikipedia_cover_fallback(game, &covers_dir, &base) {
+        let _ = connection.execute(
+            "UPDATE games SET cover_path = ?1, cover_origin = 'web-fallback' WHERE id = ?2",
+            params![destination.to_string_lossy().into_owned(), game.id],
+        );
     }
 }
 
