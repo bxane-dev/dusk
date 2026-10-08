@@ -21,6 +21,7 @@ import {
   Play,
   Plus,
   RefreshCw,
+  Radio,
   RotateCcw,
   ScanSearch,
   Save,
@@ -968,6 +969,12 @@ export default function App() {
   const [accent, setAccent] = useState<AccentName>(
     () => (localStorage.getItem("dusk-accent") as AccentName) || "violet",
   );
+  const [discordRpcEnabled, setDiscordRpcEnabled] = useState(
+    () => localStorage.getItem("dusk-discord-rpc-enabled") === "true",
+  );
+  const [discordClientId, setDiscordClientId] = useState(
+    () => localStorage.getItem("dusk-discord-client-id") || "",
+  );
 
   const showToast = useCallback((message: string, type: "ok" | "error" = "ok") => {
     if (toastTimerRef.current !== null) {
@@ -979,6 +986,48 @@ export default function App() {
       toastTimerRef.current = null;
     }, 3600);
   }, []);
+
+  function discordPresenceState() {
+    if (playingId) {
+      const game = games.find((item) => item.id === playingId);
+      return game ? "Launching " + game.title : "Launching a game";
+    }
+    if (view === "library" || view === "favorites") return "Browsing library";
+    if (view === "screenshots") return "Viewing screenshots";
+    if (view === "achievements") return "Viewing achievements";
+    if (view === "settings") return "Adjusting Dusk settings";
+    return "Using Dusk";
+  }
+
+  async function enableDiscordRpc() {
+    const clientId = discordClientId.trim();
+    if (!/^\d{15,24}$/.test(clientId)) {
+      showToast("Enter a valid Discord Application ID first.", "error");
+      return;
+    }
+
+    try {
+      await api.discordRpcEnable(clientId, discordPresenceState());
+      localStorage.setItem("dusk-discord-client-id", clientId);
+      localStorage.setItem("dusk-discord-rpc-enabled", "true");
+      setDiscordClientId(clientId);
+      setDiscordRpcEnabled(true);
+      showToast("Dusk Rich Presence connected to Discord.");
+    } catch (error) {
+      showToast(readableError(error), "error");
+    }
+  }
+
+  async function disableDiscordRpc() {
+    localStorage.setItem("dusk-discord-rpc-enabled", "false");
+    setDiscordRpcEnabled(false);
+    try {
+      await api.discordRpcDisable();
+      showToast("Dusk Rich Presence disabled.");
+    } catch (error) {
+      showToast(readableError(error), "error");
+    }
+  }
 
   const refreshCore = useCallback(
     async (initial = false) => {
@@ -1114,6 +1163,22 @@ export default function App() {
     }, 30000);
     return () => window.clearInterval(timer);
   }, [refreshCore]);
+
+  useEffect(() => {
+    if (!discordRpcEnabled) return;
+    const clientId = localStorage.getItem("dusk-discord-client-id") || discordClientId.trim();
+    if (!/^\d{15,24}$/.test(clientId)) return;
+
+    void api.discordRpcEnable(clientId, discordPresenceState()).catch(() => {
+      localStorage.setItem("dusk-discord-rpc-enabled", "false");
+      setDiscordRpcEnabled(false);
+    });
+  }, []);
+
+  useEffect(() => {
+    if (!discordRpcEnabled) return;
+    void api.discordRpcUpdate(discordPresenceState()).catch(() => undefined);
+  }, [discordRpcEnabled, view, playingId]);
 
   useEffect(() => {
     document.documentElement.dataset.theme = theme;
@@ -2434,6 +2499,53 @@ export default function App() {
                           </button>
                         ))}
                       </div>
+                    </div>
+                  </section>
+
+                  <section className="settings-card">
+                    <div className="settings-card-head">
+                      <Radio size={20} />
+                      <div>
+                        <h3>Discord Rich Presence</h3>
+                        <p>Optional launcher presence. Disabled by default.</p>
+                      </div>
+                    </div>
+
+                    <div className="setting-row">
+                      <div>
+                        <strong>{discordRpcEnabled ? "Connected as Dusk" : "No Dusk RPC activity"}</strong>
+                        <span>
+                          Dusk cannot control Discord's separate Registered Games scanner. This optional
+                          RPC gives Dusk an intentional launcher identity instead of relying on automatic
+                          process detection.
+                        </span>
+                      </div>
+                      <button
+                        className={cx("button", discordRpcEnabled ? "primary" : "secondary")}
+                        onClick={() => void (discordRpcEnabled ? disableDiscordRpc() : enableDiscordRpc())}
+                      >
+                        <Radio size={15} />
+                        {discordRpcEnabled ? "Disable" : "Enable"}
+                      </button>
+                    </div>
+
+                    <div className="discord-rpc-config">
+                      <label>
+                        <span>Discord Application ID</span>
+                        <input
+                          value={discordClientId}
+                          onChange={(event) =>
+                            setDiscordClientId(event.target.value.replace(/\D/g, "").slice(0, 24))
+                          }
+                          inputMode="numeric"
+                          placeholder="Create a Dusk app in Discord Developer Portal"
+                          disabled={discordRpcEnabled}
+                        />
+                      </label>
+                      <p>
+                        Use a Discord application named <strong>Dusk</strong>. Rich Presence stays off
+                        until you enable it here.
+                      </p>
                     </div>
                   </section>
 
