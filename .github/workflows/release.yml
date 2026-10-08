@@ -84,18 +84,18 @@ jobs:
           tagName: dusk-v__VERSION__
           releaseName: Dusk v__VERSION__
           releaseBody: |
-            # Dusk v1.7.2
+            # Dusk v1.7.3
 
-            Fallback-only web artwork lookup for non-Steam games.
+            Persistent Dusk profile pictures.
 
             ## What's new
 
-            - Keeps artwork local-first: manual, launcher-native, and local portrait art are preferred.
-            - Adds a final web fallback for non-Steam games using title plus publisher/company metadata when available.
-            - Uses strict title/context/orientation checks and skips ambiguous matches.
-            - Caches accepted fallback artwork locally.
-            - Steam official portrait artwork also stays fallback-only after local sources fail.
-            - Keeps v1.7.1 scanner deduplication, portrait-art filtering, DuskLauncher.exe Discord mitigation, and optional Discord Rich Presence.
+            - Saves the private avatar object path in Dusk account metadata.
+            - Profile pictures now persist across restarts, sign-outs, and later sign-ins.
+            - Existing avatars are migrated automatically on the next account load.
+            - Regenerates signed private-avatar URLs from the saved path instead of rediscovering the file each launch.
+            - Removing an avatar deletes the storage object and clears the saved metadata path.
+            - Keeps v1.7.2 local-first artwork fallback, scanner deduplication, DuskLauncher.exe Discord mitigation, and optional Discord Rich Presence.
 
             ## Notes
 
