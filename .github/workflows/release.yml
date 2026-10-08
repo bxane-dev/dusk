@@ -84,18 +84,20 @@ jobs:
           tagName: dusk-v__VERSION__
           releaseName: Dusk v__VERSION__
           releaseBody: |
-            # Dusk v1.6.8
+            # Dusk v1.6.9
 
-            Profile UI cleanup and removal of duplicate owner-profile controls.
+            Official transparent crescent branding across app, Windows icons, and installer.
 
             ## What's new
 
-            - Removed the Profiles item from the main sidebar.
-            - Removed the standalone Profiles page.
-            - Removed the bottom owner-profile dropdown and add-profile button from the sidebar.
-            - Existing owner-profile data, libraries, saves, and backups remain intact.
-            - Profile management remains available in Settings.
-            - Custom account avatars, password recovery, synced achievements, and account editing remain included.
+            - Replaced the old Dusk mark with the approved transparent crescent.
+            - Uses a smooth vector crescent inside the app with no background tile.
+            - Added violet, cyan, and red official brand variants.
+            - Regenerated Windows PNG/ICO assets from the same crescent geometry.
+            - Regenerated installer and uninstaller artwork with the crescent.
+            - Added subtle cyan/red installer accents while keeping violet primary.
+            - Added an automated Brand Assets workflow so generated assets stay committed and synchronized.
+            - Existing avatars, password recovery, account editing, updater, and synced achievements remain included.
 
             ## Notes
 

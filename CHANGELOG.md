@@ -2,6 +2,21 @@
 
 All notable Dusk changes are documented here.
 
+## 1.6.9 - 2026-10-08
+
+Official transparent crescent branding.
+
+- Replaced the previous Dusk desktop mark with the user-approved crescent logo.
+- The in-app logo now uses a smooth transparent SVG instead of a raster tile.
+- Removed the artificial dark/violet background behind the in-app logo.
+- Added official violet, cyan, and red transparent SVG variants under the brand folder.
+- Added generated violet, cyan, and red transparent PNG variants to the repository.
+- Regenerated Windows icon sizes and icon.ico from the same crescent geometry.
+- Regenerated installer and uninstaller header/sidebar artwork with the new crescent.
+- Added subtle cyan and red installer accent rails while keeping violet as Dusk's primary color.
+- Added a Brand Assets workflow that regenerates and commits raster/Windows assets when the vector branding changes.
+- App, title-bar, login/register screen, executable, shortcuts, installer, and uninstaller now share the same crescent identity.
+
 ## 1.6.8 - 2026-10-07
 
 Profile UI cleanup.
