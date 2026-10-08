@@ -67,7 +67,7 @@ jobs:
       - name: Smoke test release startup
         shell: pwsh
         run: |
-          $exe = 'src-tauri/target/release/dusk.exe'
+          $exe = 'src-tauri/target/release/DuskLauncher.exe'
           if (-not (Test-Path $exe)) { throw "Dusk executable was not produced." }
           $process = Start-Process -FilePath $exe -PassThru
           Start-Sleep -Seconds 8
@@ -84,20 +84,18 @@ jobs:
           tagName: dusk-v__VERSION__
           releaseName: Dusk v__VERSION__
           releaseBody: |
-            # Dusk v1.6.9
+            # Dusk v1.6.10
 
-            Official transparent crescent branding across app, Windows icons, and installer.
+            Windows app icon fix and Discord game-detection mitigation.
 
             ## What's new
 
-            - Replaced the old Dusk mark with the approved transparent crescent.
-            - Uses a smooth vector crescent inside the app with no background tile.
-            - Added violet, cyan, and red official brand variants.
-            - Regenerated Windows PNG/ICO assets from the same crescent geometry.
-            - Regenerated installer and uninstaller artwork with the crescent.
-            - Added subtle cyan/red installer accents while keeping violet primary.
-            - Added an automated Brand Assets workflow so generated assets stay committed and synchronized.
-            - Existing avatars, password recovery, account editing, updater, and synced achievements remain included.
+            - Forces the official crescent onto the live Dusk window/taskbar icon at runtime.
+            - Keeps the crescent embedded in the executable, shortcuts, installer, and uninstaller.
+            - Renames the Windows process binary to DuskLauncher.exe while keeping the installed app and shortcut name Dusk.
+            - The process rename reduces Discord's false automatic detection of Dusk as a game.
+            - Dusk does not include Discord RPC or publish activity by itself.
+            - Existing transparent violet/cyan/red brand assets remain committed and synchronized.
 
             ## Notes
 
