@@ -2,7 +2,7 @@
 
 Dusk is a local-first Windows game launcher built with Tauri, Rust, React, TypeScript, and SQLite.
 
-**Current stable version: 1.6.9**
+**Current stable version: 1.6.10**
 
 It scans real local game installations, launches games, tracks sessions it can observe, and keeps the library database on the user's PC. Dusk does not ship with fake games or seeded playtime.
 
@@ -209,3 +209,8 @@ You may use, modify, fork, redistribute, and build on the code, including commer
 See LICENSE for the full terms.
 
 DOCL is a custom open-code license and is not presented as an OSI-approved open-source license.
+
+
+### Windows process identity
+
+Dusk installs and appears to users as **Dusk**, but the Windows process binary is **DuskLauncher.exe**. This avoids using the generic `dusk.exe` process name that Discord can falsely auto-detect as a game.
