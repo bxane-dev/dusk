@@ -1,4 +1,5 @@
 use chrono::{DateTime, Utc};
+use discord_rich_presence::{activity, DiscordIpc, DiscordIpcClient};
 use regex::Regex;
 use rusqlite::{params, Connection, OptionalExtension};
 use serde::Serialize;
@@ -22,6 +23,7 @@ use walkdir::WalkDir;
 
 static INITIALIZED_DATABASES: OnceLock<Mutex<HashSet<PathBuf>>> = OnceLock::new();
 static ACCOUNT_SCOPE: OnceLock<Mutex<Option<String>>> = OnceLock::new();
+static DISCORD_RPC: OnceLock<Mutex<Option<DiscordIpcClient>>> = OnceLock::new();
 
 #[cfg(target_os = "windows")]
 const CREATE_NO_WINDOW: u32 = 0x08000000;
@@ -4423,6 +4425,94 @@ async fn install_github_update(app: AppHandle) -> Result<(), String> {
     Ok(())
 }
 
+
+fn discord_rpc_state() -> &'static Mutex<Option<DiscordIpcClient>> {
+    DISCORD_RPC.get_or_init(|| Mutex::new(None))
+}
+
+fn dusk_discord_activity<'a>(state: &'a str) -> activity::Activity<'a> {
+    activity::Activity::new()
+        .name("Dusk")
+        .activity_type(activity::ActivityType::Watching)
+        .details("Dusk desktop launcher")
+        .state(state)
+}
+
+#[tauri::command]
+fn discord_rpc_enable(client_id: String, state: Option<String>) -> Result<(), String> {
+    let client_id = client_id.trim();
+    if client_id.len() < 15 || client_id.len() > 24 || !client_id.chars().all(|ch| ch.is_ascii_digit()) {
+        return Err("Enter a valid Discord Application ID.".into());
+    }
+
+    let mut guard = discord_rpc_state()
+        .lock()
+        .map_err(|_| "Could not lock Discord Rich Presence state.".to_string())?;
+
+    if let Some(existing) = guard.as_mut() {
+        let _ = existing.clear_activity();
+        let _ = existing.close();
+    }
+
+    let mut client = DiscordIpcClient::new(client_id)
+        .map_err(|error| format!("Could not create Discord IPC client: {error}"))?;
+    client
+        .connect()
+        .map_err(|error| format!("Discord is not available or RPC could not connect: {error}"))?;
+
+    let state = state
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .unwrap_or("Browsing library");
+
+    client
+        .set_activity(dusk_discord_activity(state))
+        .map_err(|error| format!("Could not publish Dusk Rich Presence: {error}"))?;
+
+    *guard = Some(client);
+    Ok(())
+}
+
+#[tauri::command]
+fn discord_rpc_update(state: String) -> Result<(), String> {
+    let mut guard = discord_rpc_state()
+        .lock()
+        .map_err(|_| "Could not lock Discord Rich Presence state.".to_string())?;
+
+    let Some(client) = guard.as_mut() else {
+        return Ok(());
+    };
+
+    let state = state.trim();
+    let state = if state.is_empty() { "Browsing library" } else { state };
+
+    if let Err(error) = client.set_activity(dusk_discord_activity(state)) {
+        client
+            .reconnect()
+            .map_err(|reconnect_error| format!("Discord RPC reconnect failed: {reconnect_error}"))?;
+        client
+            .set_activity(dusk_discord_activity(state))
+            .map_err(|retry_error| format!("Discord RPC update failed after reconnect: {retry_error}; first error: {error}"))?;
+    }
+
+    Ok(())
+}
+
+#[tauri::command]
+fn discord_rpc_disable() -> Result<(), String> {
+    let mut guard = discord_rpc_state()
+        .lock()
+        .map_err(|_| "Could not lock Discord Rich Presence state.".to_string())?;
+
+    if let Some(mut client) = guard.take() {
+        let _ = client.clear_activity();
+        let _ = client.close();
+    }
+
+    Ok(())
+}
+
 #[tauri::command]
 fn data_directory(app: AppHandle) -> Result<String, String> {
     Ok(app_data_dir(&app)?.to_string_lossy().into_owned())
@@ -4498,6 +4588,9 @@ pub fn run() {
             import_account_state,
             check_github_update,
             install_github_update,
+            discord_rpc_enable,
+            discord_rpc_update,
+            discord_rpc_disable,
             data_directory,
         ])
         .run(tauri::generate_context!())
