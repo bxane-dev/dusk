@@ -1101,6 +1101,24 @@ export default function App() {
   }, [refreshCore]);
 
   useEffect(() => {
+    let cancelled = false;
+    const timer = window.setTimeout(() => {
+      void checkForDuskUpdate()
+        .then((result) => {
+          if (!cancelled && result.available && result.version) {
+            setAvailableUpdate(result.version);
+          }
+        })
+        .catch(() => undefined);
+    }, 2500);
+
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timer);
+    };
+  }, []);
+
+  useEffect(() => {
     if (localStorage.getItem("dusk-account-mode") === "guest") {
       setAccountIdentity(null);
       return;
@@ -2564,8 +2582,8 @@ export default function App() {
                         </strong>
                         <span>
                           {availableUpdate
-                            ? "Download and install the new version."
-                            : "Check for a newer signed Dusk release."}
+                            ? "Restart Dusk once; it updates silently and opens the new version automatically."
+                            : "Dusk checks for newer releases automatically. You can also check now."}
                         </span>
                       </div>
                       {availableUpdate ? (
@@ -2574,7 +2592,7 @@ export default function App() {
                           disabled={updateBusy}
                           onClick={() => void installUpdate()}
                         >
-                          {updateBusy ? "Updating…" : "Install update"}
+                          {updateBusy ? "Preparing update…" : "Restart to update"}
                         </button>
                       ) : (
                         <button
