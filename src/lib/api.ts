@@ -117,5 +117,9 @@ export const api = {
     accessToken: string;
     authUserId: string;
   }) => invoke<void>("upload_cloud_manifest", input),
+  discordRpcEnable: (clientId: string, state?: string) =>
+    invoke<void>("discord_rpc_enable", { clientId, state: state ?? null }),
+  discordRpcUpdate: (state: string) => invoke<void>("discord_rpc_update", { state }),
+  discordRpcDisable: () => invoke<void>("discord_rpc_disable"),
   dataDirectory: () => invoke<string>("data_directory"),
 };
