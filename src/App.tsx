@@ -1091,7 +1091,15 @@ export default function App() {
   }, [showToast]);
 
   useEffect(() => {
-    void refreshCore(true);
+    void refreshCore(true)
+      .then(() => api.refreshMissingCovers())
+      .then((result) => {
+        if (result.updated > 0) {
+          return refreshCore(false);
+        }
+        return undefined;
+      })
+      .catch(() => undefined);
     void api.dataDirectory().then(setDataDirectory).catch(() => undefined);
     void cloudSaveStatus().then(setCloudStatus);
     const syncTimer = window.setInterval(() => {
