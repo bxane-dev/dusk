@@ -470,6 +470,7 @@ fn initialize_schema(connection: &Connection) -> Result<(), String> {
 
     // Existing Dusk databases predate automatic screenshot source tracking.
     let _ = connection.execute("ALTER TABLE screenshots ADD COLUMN source_path TEXT", []);
+    let _ = connection.execute("ALTER TABLE games ADD COLUMN cover_origin TEXT", []);
     connection
         .execute_batch(
             r#"
@@ -632,19 +633,14 @@ fn find_local_artwork(root: &Path) -> Option<PathBuf> {
 }
 
 fn auto_apply_game_artwork(app: &AppHandle, connection: &Connection, game: &DiscoveredGame) {
-    let existing: Option<String> = connection.query_row(
-        "SELECT cover_path FROM games WHERE id = ?1",
+    let existing: Option<(Option<String>, Option<String>)> = connection.query_row(
+        "SELECT cover_path, cover_origin FROM games WHERE id = ?1",
         params![game.id],
-        |row| row.get(0),
-    ).optional().ok().flatten().flatten();
-    if let Some(existing_path) = existing.as_deref() {
-        let generated_name = game.id.replace(':', "_");
-        let is_generated = Path::new(existing_path)
-            .file_stem()
-            .and_then(|v| v.to_str())
-            .map(|stem| stem.eq_ignore_ascii_case(&generated_name))
-            .unwrap_or(false);
-        if Path::new(existing_path).exists() && !is_generated { return; }
+        |row| Ok((row.get(0)?, row.get(1)?)),
+    ).optional().ok().flatten();
+
+    if let Some((Some(existing_path), Some(origin))) = existing.as_ref() {
+        if origin == "manual" && Path::new(existing_path).exists() { return; }
     }
 
     let covers_dir = match app_data_dir(app) { Ok(dir) => dir.join("covers"), Err(_) => return };
@@ -667,7 +663,7 @@ fn auto_apply_game_artwork(app: &AppHandle, connection: &Connection, game: &Disc
                         let ext = source.extension().and_then(|v| v.to_str()).unwrap_or("jpg");
                         let destination = covers_dir.join(format!("{base}.{ext}"));
                         if fs::copy(&source, &destination).is_ok() {
-                            let _ = connection.execute("UPDATE games SET cover_path = ?1 WHERE id = ?2",
+                            let _ = connection.execute("UPDATE games SET cover_path = ?1, cover_origin = 'auto' WHERE id = ?2",
                                 params![destination.to_string_lossy().into_owned(), game.id]);
                             return;
                         }
@@ -686,7 +682,7 @@ fn auto_apply_game_artwork(app: &AppHandle, connection: &Connection, game: &Disc
                 .filter(|bytes| bytes.len() > 4096)
                 .and_then(|bytes| fs::write(&destination, &bytes).ok().map(|_| ()));
             if downloaded.is_some() {
-                let _ = connection.execute("UPDATE games SET cover_path = ?1 WHERE id = ?2",
+                let _ = connection.execute("UPDATE games SET cover_path = ?1, cover_origin = 'auto' WHERE id = ?2",
                     params![destination.to_string_lossy().into_owned(), game.id]);
                 return;
             }
@@ -2015,7 +2011,7 @@ fn choose_cover(app: AppHandle, game_id: String) -> Result<bool, String> {
     let connection = open_database(&app)?;
     connection
         .execute(
-            "UPDATE games SET cover_path = ?1 WHERE id = ?2",
+            "UPDATE games SET cover_path = ?1, cover_origin = 'manual' WHERE id = ?2",
             params![destination.to_string_lossy().into_owned(), game_id],
         )
         .map_err(|error| format!("Could not save cover image: {error}"))?;
