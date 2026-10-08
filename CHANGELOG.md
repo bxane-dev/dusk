@@ -2,6 +2,20 @@
 
 All notable Dusk changes are documented here.
 
+## 1.6.11 - 2026-10-08
+
+Optional Dusk Discord Rich Presence.
+
+- Added optional Discord Rich Presence support using Discord IPC.
+- Rich Presence is disabled by default and never connects unless the user enables it.
+- Added a Discord Rich Presence card in Settings with a Discord Application ID field.
+- When enabled, Dusk identifies itself intentionally as the Dusk desktop launcher instead of relying on generic process detection.
+- Presence states include Browsing library, Viewing screenshots, Viewing achievements, Adjusting Dusk settings, and Launching a game.
+- Dusk uses a non-game-style Watching activity type rather than publishing itself as a played game.
+- Disabling Rich Presence clears the activity and closes the Discord IPC connection.
+- Dusk still cannot override Discord's separate Registered Games process scanner; users can independently disable Dusk there in Discord.
+- Includes the v1.6.10 live window/taskbar crescent icon and DuskLauncher.exe process identity changes.
+
 ## 1.6.10 - 2026-10-08
 
 Windows app icon and Discord detection cleanup.
