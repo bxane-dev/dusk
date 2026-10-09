@@ -2,6 +2,17 @@
 
 All notable Dusk changes are documented here.
 
+## 1.8.7 - 2026-10-10
+
+Fix game download buttons that do nothing.
+
+- Get game now identifies a real Hosters game archive and starts a direct file transfer in the native Downloads panel.
+- Parses and displays actual archive filenames and trusted file-host providers, distinguishing complete games from fix-only updates.
+- Unblocks FileDitch, FileKeeper, Pixeldrain, Gofile and VikingFile inside the isolated download browser.
+- Keeps suspicious pop-ups blocked and respects the file host's own dangerous-download confirmation.
+- Shows a visible notice for blocked links instead of silently ignoring clicks.
+- Replaces the native downloader's 60-second total timeout with a per-read timeout, allowing large transfers to finish.
+
 ## 1.8.6 - 2026-10-10
 
 Add a standalone, native in-app download manager.
