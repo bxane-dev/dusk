@@ -92,7 +92,7 @@ type WebDownloadLink = {
 function matchesGameArchive(filename: string, title: string) {
   const clean = (text: string) => text.toLocaleLowerCase()
     .replace(/\b(online|multiplayer|co-op|coop)\b/g, " ")
-    .replace(/[\u043f\u043e]\s*[\u0441\u0435\u0442\u0438]/g, " ")
+    .replace(/по\s+сети/gu, " ")
     .replace(/[^\p{L}\p{N}]+/gu, " ").trim();
   const tokens = clean(title).split(" ").filter((part) => part.length >= 2);
   const file = clean(filename.replace(/\.(zip|rar|7z)(\.\d+)?$/i, ""));
