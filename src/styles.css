@@ -329,6 +329,20 @@ button:disabled { cursor: not-allowed; opacity: 0.55; }
   backdrop-filter: blur(16px);
 }
 
+.download-watch-panel {
+  display: flex;
+  gap: 13px;
+  align-items: center;
+  border: 1px solid rgba(var(--accent-rgb), 0.4);
+  background: var(--surface);
+  border-radius: 12px;
+  padding: 14px;
+  margin-bottom: 16px;
+}
+.download-watch-panel > svg { flex-shrink: 0; color: var(--accent); }
+.download-watch-panel > div { flex: 1; min-width: 0; }
+.download-watch-panel strong { display: block; font-size: 13px; }
+.download-watch-panel p { color: var(--muted); margin: 5px 0 0; font-size: 12px; overflow-wrap: anywhere; }
 .web-results-page { padding: 28px; max-width: 1050px; }
 .web-results-heading { display: flex; justify-content: space-between; gap: 16px; align-items: center; margin-bottom: 22px; }
 .web-results-heading h1 { margin: 7px 0; font-size: 25px; }
