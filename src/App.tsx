@@ -81,6 +81,7 @@ type View =
 type SortMode = "name" | "recent" | "playtime";
 type ThemeName = "night" | "oled" | "slate";
 type AccentName = "violet" | "ember" | "cyan";
+type WebGameResult = { title: string; url: string; description: string };
 
 const EMPTY_STATS: Stats = {
   gameCount: 0,
@@ -924,6 +925,10 @@ export default function App() {
   const [collectionFilter, setCollectionFilter] = useState("all");
   const [query, setQuery] = useState("");
   const [webSearchEnabled, setWebSearchEnabled] = useState(false);
+  const [webResults, setWebResults] = useState<WebGameResult[]>([]);
+  const [webSearched, setWebSearched] = useState(false);
+  const [webLoading, setWebLoading] = useState(false);
+  const [webError, setWebError] = useState("");
   const [sourceFilter, setSourceFilter] = useState("all");
   const [sortMode, setSortMode] = useState<SortMode>("name");
   const [addOpen, setAddOpen] = useState(false);
@@ -1775,11 +1780,17 @@ export default function App() {
 
   async function searchWeb() {
     const term = query.trim();
-    if (!term) return;
+    if (!term || webLoading) return;
+    setWebLoading(true);
+    setWebSearched(true);
+    setWebError("");
+    setWebResults([]);
     try {
-      await api.openWebSearch(term);
+      setWebResults(await api.searchOnlineFixGames(term));
     } catch (error) {
-      showToast(readableError(error), "error");
+      setWebError(readableError(error));
+    } finally {
+      setWebLoading(false);
     }
   }
 
@@ -2020,7 +2031,7 @@ export default function App() {
                 onFocus={() => {
                   if (!webSearchEnabled && view === "home") setView("library");
                 }}
-                placeholder={webSearchEnabled ? "Search the web (Enter)" : "Search your games"}
+                placeholder={webSearchEnabled ? "Find games on Online-Fix (Enter)" : "Search your games"}
                 aria-label={webSearchEnabled ? "Web search query" : "Search your games"}
               />
               {query && (
@@ -2029,7 +2040,7 @@ export default function App() {
                 </button>
               )}
               {webSearchEnabled && (
-                <button type="button" onClick={() => void searchWeb()} disabled={!query.trim()} aria-label="Search web" title="Open web results in your browser">
+                <button type="button" onClick={() => void searchWeb()} disabled={!query.trim()} aria-label="Search online games" title="Search Online-Fix game listings inside Dusk">
                   <Search size={16} />
                 </button>
               )}
@@ -2038,10 +2049,10 @@ export default function App() {
               <input
                 type="checkbox"
                 checked={webSearchEnabled}
-                onChange={(event) => setWebSearchEnabled(event.target.checked)}
+                onChange={(event) => { setWebSearchEnabled(event.target.checked); setWebSearched(false); setWebResults([]); setWebError(""); }}
               />
               <span className="web-search-switch" aria-hidden="true" />
-              <span>Web</span>
+              <span>Online-Fix</span>
             </label>
           </div>
 
@@ -2066,6 +2077,36 @@ export default function App() {
               <RefreshCw className="spin" size={20} />
               <span>Loading your local library…</span>
             </div>
+          ) : webSearchEnabled && webSearched ? (
+            <section className="web-results-page">
+              <div className="web-results-heading">
+                <div>
+                  <span className="eyebrow">Online game listings</span>
+                  <h1>Online-Fix game search</h1>
+                  <p>Results for “{query.trim()}” from public pages indexed on online-fix.me.</p>
+                </div>
+                {webLoading && <RefreshCw className="spin" size={19} />}
+              </div>
+              {webError && <div className="inline-error" role="alert">{webError}</div>}
+              {!webLoading && !webError && webResults.length === 0 && (
+                <p className="web-results-empty">No matching listings found. Try the full game title or another keyword.</p>
+              )}
+              <div className="web-results-list">
+                {webResults.map((result) => (
+                  <article className="web-result-card" key={result.url}>
+                    <div>
+                      <h3>{result.title}</h3>
+                      {result.description && <p>{result.description}</p>}
+                      <span>online-fix.me</span>
+                    </div>
+                    <button className="button secondary" onClick={() => void api.openOnlineFixResult(result.url).catch((error: unknown) => showToast(readableError(error), "error"))}>
+                      <ExternalLink size={15} /> View listing
+                    </button>
+                  </article>
+                ))}
+              </div>
+              <p className="web-results-note">Listings are informational. Dusk does not download or install files from this source.</p>
+            </section>
           ) : (
             <>
               {view === "home" && (
