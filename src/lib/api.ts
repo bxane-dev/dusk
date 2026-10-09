@@ -39,8 +39,10 @@ export const api = {
   chooseGameInstaller: () => invoke<string | null>("choose_game_installer"),
   runGameInstaller: (installerPath: string) =>
     invoke<void>("run_game_installer", { installerPath }),
-  openWebSearch: (query: string) =>
-    invoke<void>("open_web_search", { encodedQuery: encodeURIComponent(query) }),
+  searchOnlineFixGames: (query: string) =>
+    invoke<Array<{ title: string; url: string; description: string }>>("search_online_fix_games", { query }),
+  openOnlineFixResult: (url: string) =>
+    invoke<void>("open_online_fix_result", { url }),
   openExternalTarget: (target: "creator" | "steam" | "epic" | "gog" | "itch") =>
     invoke<void>("open_external_target", { target }),
   addManualGame: (title: string, exePath: string) =>
