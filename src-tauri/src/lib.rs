@@ -3211,7 +3211,9 @@ fn verified_online_fix_url(url: &str) -> Result<reqwest::Url, String> {
         || !matches!(parsed.host_str(), Some(
             "online-fix.me" | "www.online-fix.me"
             | "hosters.online-fix.me" | "drive.online-fix.me"
-            | "uploads.online-fix.me"
+            | "uploads.online-fix.me" | "fileditchfiles.st"
+            | "filekeeper.net" | "pixeldrain.com"
+            | "gofile.io" | "vikingfile.com"
         ))
     {
         return Err("Only secure online-fix.me listing URLs are allowed.".into());
