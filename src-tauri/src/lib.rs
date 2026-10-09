@@ -3122,12 +3122,11 @@ fn is_online_fix_site(url: &reqwest::Url) -> bool {
 }
 
 fn is_https_archive_url(url: &reqwest::Url) -> bool {
-    url.scheme() == "https"
-        && !known_ad_network(url.host_str().unwrap_or_default())
-        && url.path().to_ascii_lowercase().ends_with(".zip")
-            || (url.scheme() == "https"
-                && !known_ad_network(url.host_str().unwrap_or_default())
-                && [".rar", ".7z", ".001"].iter().any(|ext| url.path().to_ascii_lowercase().ends_with(ext)))
+    if url.scheme() != "https" || known_ad_network(url.host_str().unwrap_or_default()) {
+        return false;
+    }
+    let path = url.path().to_ascii_lowercase();
+    [".zip", ".rar", ".7z", ".001"].iter().any(|suffix| path.ends_with(suffix))
 }
 
 fn known_ad_network(host: &str) -> bool {
@@ -3147,7 +3146,7 @@ fn is_safe_game_archive_download(url: &reqwest::Url, filename: &str) -> bool {
     if filename.is_empty()
         || filename.len() > 240
         || filename == "." || filename == ".."
-        || filename.contains(['/', '\\', ':', '\0'])
+        || filename.chars().any(|c| matches!(c, '/' | '\\' | ':' | '\0'))
     {
         return false;
     }
@@ -3259,7 +3258,7 @@ async fn open_online_fix_result(
             }
             tauri::webview::DownloadEvent::Finished { url, path, success } => {
                 if !success {
-                    eprintln!("Online-Fix download failed: {url} -> {}", path.display());
+                    eprintln!("Online-Fix download failed: {url} -> {path:?}");
                 }
                 true
             }
