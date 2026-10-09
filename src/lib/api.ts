@@ -53,6 +53,10 @@ export const api = {
     invoke<void>("run_game_installer", { installerPath }),
   searchOnlineFixGames: (query: string) =>
     invoke<Array<{ title: string; url: string; description: string }>>("search_online_fix_games", { query }),
+  getOnlineFixDownloadLinks: (listingUrl: string) =>
+    invoke<Array<{ url: string; label: string; kind: "game" | "mirror" | "torrent" | "fix"; recommended: boolean }>>(
+      "get_online_fix_download_links", { listingUrl },
+    ),
   openOnlineFixResult: (url: string) =>
     invoke<void>("open_online_fix_result", { url }),
   openOnlineFixBrowser: (url: string) =>
