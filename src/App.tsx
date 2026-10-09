@@ -929,6 +929,11 @@ export default function App() {
   const [webSearched, setWebSearched] = useState(false);
   const [webLoading, setWebLoading] = useState(false);
   const [webError, setWebError] = useState("");
+  const [activeDownloadWatch, setActiveDownloadWatch] = useState<{ sinceMs: number; title: string; url: string } | null>(null);
+  const [downloadWatchMessage, setDownloadWatchMessage] = useState("");
+  const downloadStabilityRef = useRef(new Map<string, { size: number; stable: number }>());
+  const watchBusyRef = useRef(false);
+  const watchAttemptedRef = useRef(new Set<string>());
   const [sourceFilter, setSourceFilter] = useState("all");
   const [sortMode, setSortMode] = useState<SortMode>("name");
   const [addOpen, setAddOpen] = useState(false);
@@ -1760,27 +1765,50 @@ export default function App() {
     }
   }
 
+  async function finishGameImport(result: { directory: string; game: GameRecord | null; installers: string[] }) {
+    if (result.game) {
+      await refreshCore(false);
+      showToast("Extracted and added " + result.game.title + " to your Dusk library.");
+      return;
+    }
+    if (result.installers.length === 1) {
+      showToast("Files extracted to " + result.directory + ". Installer awaiting confirmation.");
+      if (window.confirm("Run the extracted installer? Only proceed if you trust the downloaded files. Dusk will not bypass Windows security warnings.")) {
+        await api.runGameInstaller(result.installers[0]);
+        showToast("Installer launched. Scan your PC when setup finishes.");
+      }
+    } else if (result.installers.length > 1) {
+      showToast("Multiple installers found in " + result.directory + ". Choose the correct installer manually.", "error");
+    } else {
+      showToast("Files extracted to " + result.directory + ". Choose the game's executable with Add game.");
+    }
+  }
+
   async function importArchive() {
     if (archiveBusy) return;
     setArchiveBusy(true);
     try {
       const result = await api.importGameArchive();
-      if (!result) return;
-      if (result.game) {
-        await refreshCore(false);
-        showToast("Extracted and added " + result.game.title + " to Dusk.");
-      } else if (result.installers.length) {
-        showToast("Files extracted to " + result.directory + ". Installer requires manual confirmation.");
-        if (result.installers.length === 1 && window.confirm("Run extracted installer? Only proceed if you trust this game's source.")) {
-          await api.runGameInstaller(result.installers[0]);
-        }
-      } else {
-        showToast("Files extracted to " + result.directory + ". Select the game's executable with Add game.");
-      }
+      if (result) await finishGameImport(result);
     } catch (error) {
       showToast(readableError(error), "error");
     } finally {
       setArchiveBusy(false);
+    }
+  }
+
+  async function trackOnlineFixDownload(result: WebGameResult) {
+    downloadStabilityRef.current.clear();
+    watchAttemptedRef.current.clear();
+    setDownloadWatchMessage("Waiting for a completed ZIP, RAR, or 7z archive in Downloads…");
+    // Start monitoring before opening the page so fast downloads are not missed.
+    setActiveDownloadWatch({ sinceMs: Date.now() - 2000, title: result.title, url: result.url });
+    try {
+      await api.openOnlineFixResult(result.url);
+    } catch (error) {
+      setActiveDownloadWatch(null);
+      setDownloadWatchMessage("");
+      showToast(readableError(error), "error");
     }
   }
 
@@ -1855,6 +1883,51 @@ export default function App() {
       : collectionFilter !== "all"
         ? activeCollection?.name || "Collection"
         : "Library";
+
+  // One tracked download at a time; this never imports files that predate opening a listing.
+  useEffect(() => {
+    if (!activeDownloadWatch) return;
+    let cancelled = false;
+    const watch = activeDownloadWatch;
+    const poll = async () => {
+      if (cancelled || watchBusyRef.current) return;
+      watchBusyRef.current = true;
+      try {
+        if (Date.now() - watch.sinceMs > 2 * 60 * 60 * 1000) {
+          setActiveDownloadWatch(null);
+          setDownloadWatchMessage("Download monitoring stopped after two hours.");
+          return;
+        }
+        const archives = await api.listRecentGameArchives(watch.sinceMs);
+        if (cancelled) return;
+        for (const candidate of archives) {
+          const prior = downloadStabilityRef.current.get(candidate.path);
+          const stable = prior && prior.size === candidate.sizeBytes ? prior.stable + 1 : 0;
+          downloadStabilityRef.current.set(candidate.path, { size: candidate.sizeBytes, stable });
+          if (stable < 2 || watchAttemptedRef.current.has(candidate.path + ":" + candidate.sizeBytes)) continue;
+          watchAttemptedRef.current.add(candidate.path + ":" + candidate.sizeBytes);
+          setDownloadWatchMessage("Download complete: " + candidate.filename + ". Extracting into Dusk…");
+          try {
+            const imported = await api.importDownloadedGameArchive(candidate.path, watch.title, "online-fix.me");
+            if (cancelled) return;
+            setActiveDownloadWatch(null);
+            setDownloadWatchMessage("Imported " + candidate.filename + ".");
+            await finishGameImport(imported);
+          } catch (error) {
+            if (!cancelled) setDownloadWatchMessage("Import failed: " + readableError(error) + " — monitoring continues.");
+          }
+          break;
+        }
+      } catch (error) {
+        if (!cancelled) setDownloadWatchMessage("Could not check Downloads: " + readableError(error));
+      } finally {
+        watchBusyRef.current = false;
+      }
+    };
+    void poll();
+    const timer = window.setInterval(() => void poll(), 6000);
+    return () => { cancelled = true; window.clearInterval(timer); };
+  }, [activeDownloadWatch]);
 
   const guestMode = localStorage.getItem("dusk-account-mode") === "guest";
 
@@ -2082,9 +2155,9 @@ export default function App() {
           </div>
 
           <div className="top-actions">
-            <button className="button secondary" onClick={() => void importArchive()} disabled={archiveBusy} title="Extract a downloaded ZIP, register portable games, or confirm an installer">
+            <button className="button secondary" onClick={() => void importArchive()} disabled={archiveBusy} title="Extract ZIP, RAR, or 7z archives with Python fallback">
               {archiveBusy ? <RefreshCw className="spin" size={16} /> : <Archive size={16} />}
-              {archiveBusy ? "Extracting…" : "Import ZIP"}
+              {archiveBusy ? "Extracting…" : "Import archive"}
             </button>
             <button className="button secondary" onClick={() => setAddOpen(true)}>
               <Plus size={16} />
@@ -2116,7 +2189,18 @@ export default function App() {
                 </div>
                 {webLoading && <RefreshCw className="spin" size={19} />}
               </div>
-              {webError && <div className="inline-error" role="alert">{webError}</div>}
+              {activeDownloadWatch && (
+                <div className="download-watch-panel" role="status">
+                  <RefreshCw className="spin" size={16} />
+                  <div>
+                    <strong>Tracking: {activeDownloadWatch.title}</strong>
+                    <p>{downloadWatchMessage}</p>
+                  </div>
+                  <button className="button ghost" onClick={() => { setActiveDownloadWatch(null); setDownloadWatchMessage(""); }}>Stop</button>
+                </div>
+              )}
+              {!activeDownloadWatch && downloadWatchMessage && <p className="web-results-note" role="status">{downloadWatchMessage}</p>}
+              {webError && <div className="inline-error" role="alert">{webError}</div>
               {!webLoading && !webError && webResults.length === 0 && (
                 <p className="web-results-empty">No matching listings found. Try the full game title or another keyword.</p>
               )}
@@ -2128,13 +2212,13 @@ export default function App() {
                       {result.description && <p>{result.description}</p>}
                       <span>online-fix.me</span>
                     </div>
-                    <button className="button secondary" onClick={() => void api.openOnlineFixResult(result.url).catch((error: unknown) => showToast(readableError(error), "error"))}>
-                      <ExternalLink size={15} /> View listing
+                    <button className="button secondary" onClick={() => void trackOnlineFixDownload(result)}>
+                      <ExternalLink size={15} /> View & track download
                     </button>
                   </article>
                 ))}
               </div>
-              <p className="web-results-note">Listings are informational. Dusk does not download or install files from this source.</p>
+              <p className="web-results-note">Open a listing and complete its download normally. Dusk monitors new archives in Downloads and automatically extracts them into managed storage. ZIP is built in; RAR/7z require 7-Zip or Python libraries. Executing installers always requires approval.</p>
             </section>
           ) : (
             <>
