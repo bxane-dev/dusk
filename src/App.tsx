@@ -1797,14 +1797,15 @@ export default function App() {
     }
   }
 
-  async function trackOnlineFixDownload(result: WebGameResult) {
+  async function trackOnlineFixDownload(result: WebGameResult, externalBrowser = false) {
     downloadStabilityRef.current.clear();
     watchAttemptedRef.current.clear();
     setDownloadWatchMessage("Waiting for a completed ZIP, RAR, or 7z archive in Downloads…");
     // Start monitoring before opening the page so fast downloads are not missed.
     setActiveDownloadWatch({ sinceMs: Date.now() - 2000, title: result.title, url: result.url });
     try {
-      await api.openOnlineFixResult(result.url);
+      if (externalBrowser) await api.openOnlineFixBrowser(result.url);
+      else await api.openOnlineFixResult(result.url);
     } catch (error) {
       setActiveDownloadWatch(null);
       setDownloadWatchMessage("");
@@ -2212,9 +2213,14 @@ export default function App() {
                       {result.description && <p>{result.description}</p>}
                       <span>online-fix.me</span>
                     </div>
-                    <button className="button secondary" onClick={() => void trackOnlineFixDownload(result)}>
-                      <ExternalLink size={15} /> View & track download
-                    </button>
+                    <div className="web-result-actions">
+                      <button className="button secondary" onClick={() => void trackOnlineFixDownload(result)} title="Browse the listing in a separate Dusk window and detect downloaded archives">
+                        <Globe2 size={15} /> Open in Dusk
+                      </button>
+                      <button className="button ghost" onClick={() => void trackOnlineFixDownload(result, true)} title="Use the external browser if the in-app site cannot complete a download">
+                        <ExternalLink size={15} /> Browser fallback
+                      </button>
+                    </div>
                   </article>
                 ))}
               </div>
