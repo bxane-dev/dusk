@@ -55,6 +55,41 @@ It scans real local game installations, launches games, tracks sessions it can o
 - Vite
 - SQLite via rusqlite
 
+## In-app game discovery and managed archive import
+
+Dusk has an **Online-Fix** search toggle beside the library search box. Search
+results appear inside Dusk, and **Open in Dusk** opens the selected listing in
+an isolated webview window. **Browser fallback** uses your normal browser if
+a third-party download host does not work in the embedded window.
+
+Opening a listing starts a **two-hour download monitor**. While Dusk is open,
+it checks the current Windows user's `Downloads` folder for new, completed
+ZIP, RAR, and 7z archives. It waits for file size to stabilize before attempting
+automatic import. Multipart archives are supported when all parts are available
+in the same folder; the first `.part1.rar` or `.7z.001` file starts extraction.
+If you download to a different folder, use **Import archive** and pick the file
+manually.
+
+Archives are extracted into `<Dusk app data>/managed-games/<game>-<id>`.
+Dusk prefers an installed **7-Zip** executable; on Windows ZIPs also have
+a PowerShell/.NET fallback. An installed **Python 3** interpreter provides
+another fallback: ZIP needs only the standard library, 7z needs `py7zr`,
+and RAR needs `rarfile` and an extraction backend such as `unrar`.
+For monitored Online-Fix downloads, the documented archive password is
+used automatically. Dusk rejects unsafe archive paths and symlinks and applies
+a 20 GiB / 50,000-entry extraction limit.
+
+If the archive contains exactly one plausible portable-game executable, Dusk
+adds it directly to the library. For installers, Dusk requires an explicit
+confirmation before executing any installer, and it does not bypass Windows
+security prompts. Multiple possible executables require manual selection.
+
+**Limitations:** Third-party sites may require user actions, login, an ad
+unlock, or a torrent client before any archive exists in Downloads.
+Dusk does not bypass these steps, download arbitrary gated files, or
+automatically execute untrusted programs. The monitor only runs while Dusk
+is open.
+
 ## Run in development
 
 Requirements:
