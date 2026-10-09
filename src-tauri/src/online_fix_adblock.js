@@ -7,6 +7,8 @@
   const allowedPages = new Set([
     "online-fix.me", "www.online-fix.me", "hosters.online-fix.me",
     "drive.online-fix.me", "uploads.online-fix.me",
+    "fileditchfiles.st", "filekeeper.net", "pixeldrain.com",
+    "gofile.io", "vikingfile.com",
   ]);
   if (!allowedPages.has(location.hostname)) return;
 
@@ -40,8 +42,9 @@
   ];
   // File hosts may put download controls inside generic `ad-container`
   // wrappers. Do not hide entire UI sections on Drive/Hosters pages.
-  if (location.hostname === "drive.online-fix.me" ||
-      location.hostname === "hosters.online-fix.me") {
+  if (["drive.online-fix.me", "hosters.online-fix.me",
+      "fileditchfiles.st", "filekeeper.net", "pixeldrain.com",
+      "gofile.io", "vikingfile.com"].includes(location.hostname)) {
     for (const name of [".ad-banner", ".ad-container", ".ad-wrapper",
         ".ad-slot", ".advertisement", ".advertising-block", ".in-page-ad"]) {
       const index = adSelectors.indexOf(name);
