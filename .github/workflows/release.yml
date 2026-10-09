@@ -37,6 +37,7 @@ jobs:
         run: |
           node scripts/test-online-fix-navigation.cjs
           node scripts/test-online-fix-adblock.cjs
+          node scripts/test-online-fix-autoselect.cjs
 
       - name: Prepare Dusk branding
         run: npm run brand:prepare
