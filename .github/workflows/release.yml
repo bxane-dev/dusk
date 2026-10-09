@@ -90,18 +90,20 @@ jobs:
           tagName: dusk-v__VERSION__
           releaseName: Dusk v__VERSION__
           releaseBody: |
-            # Dusk v1.8.5 — Hosters and Drive download fixes
+            # Dusk v1.8.6 — Native download manager
 
-            - Fixes downloads blocked when Online-Fix files are delivered from third-party HTTPS CDNs or official-site blobs.
-            - Handles WebView2 ZIP, RAR and 7z downloads in manual and automatic download windows.
-            - Keeps genuine download controls accessible on Hosters and Drive pages.
-            - Allows manually downloaded fix/repair archives without importing them as full games.
-            - Adds an external browser fallback for each Drive/Hosters download link.
+            - Native HTTPS archive downloader in Dusk's top toolbar.
+            - Live download progress, cancellation, and error reporting.
+            - Safe Downloads-folder storage and explicit Extract & add to library action.
+            - ZIP, 7z and RAR support, including some multipart archive formats.
+            - Security checks for public HTTPS URLs, archive signatures, and maximum transfer size.
+            - Preserves the in-app browser for Hosters/Drive login-based downloads.
 
-            ## Notes
-            Some hosters still require login or downloads in the system browser.
-            Dusk does not bypass login gates, hidden download links or malware prompts.
-            Unsigned installers may trigger Windows SmartScreen.
+            ## Important
+            Paste direct downloadable archive URLs, not download-host landing pages.
+            Browser-only downloads that require authentication or third-party gates
+            must still be completed through the relevant host.
+            Windows may show an unrecognized publisher warning if unsigned.
           releaseDraft: false
           prerelease: false
           uploadUpdaterJson: false
