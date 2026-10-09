@@ -353,6 +353,7 @@ button:disabled { cursor: not-allowed; opacity: 0.55; }
 .web-result-card p { color: var(--muted); font-size: 12px; line-height: 1.5; margin: 0 0 8px; }
 .web-result-card span { font-size: 11px; color: var(--accent); }
 .web-download-action-group { display: flex; flex-direction: column; align-items: flex-end; gap: 9px; min-width: 250px; }
+.web-download-source-group { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
 .web-download-sources { display: flex; flex-wrap: wrap; gap: 8px; justify-content: flex-end; }
 .web-download-source { background: transparent; border: 1px solid var(--border); border-radius: 8px; padding: 7px 9px; color: var(--muted); display: inline-flex; align-items: center; gap: 6px; font: inherit; font-size: 11px; cursor: pointer; }
 .web-download-source:hover { border-color: var(--accent); color: var(--accent); }
