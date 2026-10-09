@@ -129,7 +129,10 @@ fn download_file(id: String, url: reqwest::Url, filename: String, target: std::p
     let output = (|| -> Result<(), String> {
         let client = reqwest::blocking::Client::builder()
             .connect_timeout(Duration::from_secs(15))
-            .timeout(Duration::from_secs(60))
+            // Request timeout used to abort EVERY download after 60 seconds,
+            // even if gigabytes were still arriving. Read timeout resets on
+            // each successful chunk and only catches stalled transfers.
+            .read_timeout(Duration::from_secs(90))
             .redirect(reqwest::redirect::Policy::custom(|attempt| {
                 if attempt.previous().len() > 8 || !valid_public_https(attempt.url()) {
                     attempt.stop()
@@ -137,7 +140,7 @@ fn download_file(id: String, url: reqwest::Url, filename: String, target: std::p
                     attempt.follow()
                 }
             }))
-            .user_agent("DuskLauncher/1.8")
+            .user_agent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/131.0.0.0 Safari/537.36")
             .build().map_err(|e| e.to_string())?;
         let mut response = client.get(url).send().map_err(|e| format!("Cannot connect to download: {e}"))?
             .error_for_status().map_err(|e| format!("File host declined download: {e}"))?;
