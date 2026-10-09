@@ -2996,8 +2996,8 @@ fn parse_online_fix_download_links(html: &str) -> Result<Vec<OnlineFixDownloadLi
             continue;
         }
         let kind = match parsed.host_str() {
-            Some("hosters.online-fix.me") if label.contains("Hosters") => "game",
-            Some("drive.online-fix.me") if label.contains("Drive") => "mirror",
+            Some("hosters.online-fix.me") if label.contains("Hosters") => "mirror",
+            Some("drive.online-fix.me") if label.contains("Drive") => "game",
             Some("uploads.online-fix.me") if parsed.path().starts_with("/torrents/") && label.to_lowercase().contains("torrent") => "torrent",
             Some("uploads.online-fix.me") if parsed.path().starts_with("/uploads/") && label.to_lowercase().contains("фикс") => "fix",
             _ => continue,
@@ -3006,8 +3006,8 @@ fn parse_online_fix_download_links(html: &str) -> Result<Vec<OnlineFixDownloadLi
             found.push(OnlineFixDownloadLink {
                 url,
                 label: match kind {
-                    "game" => "Full game · Hosters",
-                    "mirror" => "Full game · Drive mirror",
+                    "game" => "Full game · Online-Fix Drive",
+                    "mirror" => "Hosters · archives (may be fixes only)",
                     "torrent" => "Torrent · manual download",
                     _ => "Fix-only files · not the full game",
                 }.into(),
@@ -3074,6 +3074,7 @@ mod online_fix_download_tests {
         assert_eq!(sources.len(), 4);
         assert_eq!(sources[0].kind, "game");
         assert!(sources[0].recommended);
+        assert!(sources[0].url.contains("drive.online-fix.me"));
         assert_eq!(sources[1].kind, "mirror");
         assert_eq!(sources[2].kind, "torrent");
         assert_eq!(sources[3].kind, "fix");
@@ -3111,14 +3112,66 @@ fn verified_online_fix_url(url: &str) -> Result<reqwest::Url, String> {
 // An isolated remote webview window keeps browsing inside Dusk without loading
 // untrusted remote content into the privileged local game-library window.
 #[tauri::command]
-async fn open_online_fix_result(app: AppHandle, url: String) -> Result<(), String> {
+async fn open_online_fix_result(
+    app: AppHandle,
+    url: String,
+    game_title: Option<String>,
+    auto_select: Option<bool>,
+) -> Result<(), String> {
     let parsed = verified_online_fix_url(&url)?;
     let label = format!("online-fix-{}", Uuid::new_v4().simple());
-    tauri::WebviewWindowBuilder::new(&app, label, tauri::WebviewUrl::External(parsed))
-        .title("Dusk — Online-Fix")
+    let mut builder = tauri::WebviewWindowBuilder::new(&app, label, tauri::WebviewUrl::External(parsed))
+        .title("Dusk — Online-Fix downloads")
         .inner_size(1100.0, 760.0)
-        .on_navigation(|url| url.scheme() == "https")
-        .build()
+        .on_navigation(|url| url.scheme() == "https");
+
+    if auto_select.unwrap_or(false) {
+        let game_title = game_title.unwrap_or_default();
+        if game_title.trim().is_empty() || game_title.len() > 200 {
+            return Err("A valid game title is required for automatic link selection.".into());
+        }
+        let title_literal = serde_json::to_string(&game_title)
+            .map_err(|error| format!("Could not prepare game title: {error}"))?;
+        let script = include_str!("online_fix_autoselect.js")
+            .replace("__DUSK_TITLE__", &title_literal);
+        builder = builder
+            .initialization_script(script)
+            // WebView2 downloads need to land in the directory Dusk monitors.
+            // Do not accept EXEs, fixes, HTML, ads, or arbitrary host files.
+            .on_download(move |_webview, event| {
+                match event {
+                    tauri::webview::DownloadEvent::Requested { url, destination } => {
+                        if url.scheme() != "https" {
+                            return false;
+                        }
+                        let filename = destination.file_name()
+                            .and_then(|part| part.to_str())
+                            .unwrap_or_default();
+                        let lower = filename.to_ascii_lowercase();
+                        let is_archive = lower.ends_with(".zip")
+                            || lower.ends_with(".7z")
+                            || lower.ends_with(".7z.001")
+                            || lower.ends_with(".rar");
+                        if !is_archive || lower.contains("fix_repair")
+                            || lower.contains("fix-repair") || lower.contains("update")
+                        {
+                            return false;
+                        }
+                        let Some(home) = env::var_os("USERPROFILE") else { return false; };
+                        let downloads = PathBuf::from(home).join("Downloads");
+                        if !downloads.is_dir() { return false; }
+                        let path = downloads.join(filename);
+                        // Preserve existing archives (especially multipart volumes).
+                        if path.exists() { return false; }
+                        *destination = path;
+                        true
+                    }
+                    _ => true,
+                }
+            });
+    }
+
+    builder.build()
         .map_err(|error| format!("Could not open the in-app browser: {error}"))?;
     Ok(())
 }
