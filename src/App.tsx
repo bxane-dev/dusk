@@ -1927,17 +1927,30 @@ export default function App() {
       // Drive can require authorization, so do not silently open a 401 page.
       const hosters = links.find((link) => link.url.startsWith("https://hosters.online-fix.me"));
       if (hosters) {
-        const files = await api.getOnlineFixHosterFiles(hosters.url);
-        setHosterFiles((current) => ({ ...current, [result.url]: files }));
-        const primary = files.find((file) => file.directArchive && !file.isFix && !file.requiresCaution);
-        if (primary) {
-          await startHosterFileDownload(result, primary);
+        try {
+          const files = await api.getOnlineFixHosterFiles(hosters.url);
+          setHosterFiles((current) => ({ ...current, [result.url]: files }));
+          const primary = files.find((file) => file.directArchive && !file.isFix && !file.requiresCaution);
+          if (primary) {
+            await startHosterFileDownload(result, primary);
+            return;
+          }
+          showToast("Choose a game archive from the Hosters files below.");
+          return;
+        } catch (error) {
+          showToast("Native file discovery failed: " + readableError(error) + ". Opening Hosters directly.");
+          await trackOnlineFixDownload(result, false, hosters.url, false);
           return;
         }
-        showToast("Choose a game archive from the Hosters files below.");
+      }
+      const drive = links.find((link) => link.url.startsWith("https://drive.online-fix.me"));
+      if (drive) {
+        showToast("Hosters was not listed. Opening Drive; account authorization may be required.");
+        await trackOnlineFixDownload(result, false, drive.url, false);
         return;
       }
-      showToast("No Hosters files were found. Try an available Drive or browser source.", "error");
+      showToast("No recognized download sources found. Opening the game listing.");
+      await trackOnlineFixDownload(result, false, result.url, false);
     } catch (error) {
       showToast("Could not load game files: " + readableError(error), "error");
     } finally {
@@ -2444,6 +2457,8 @@ export default function App() {
                                 title={file.directArchive ? "Download this archive using Dusk's native download manager" : "This provider requires opening the file-host page"}>
                                 {file.directArchive ? "Download in Dusk" : "Open file host"}
                               </button>
+                              <button className="button ghost" onClick={() => void trackOnlineFixDownload(result, true, file.url)}
+                                title="Open this precise archive's provider link in your regular browser">Browser</button>
                             </div>
                           ))}
                           {!hosterFiles[result.url].some((file) => !file.isFix) && (
