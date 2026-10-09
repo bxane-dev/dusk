@@ -2,7 +2,7 @@
 
 Dusk is a local-first Windows game launcher built with Tauri, Rust, React, TypeScript, and SQLite.
 
-**Current version: 1.7.10**
+**Current version: 1.8.0**
 
 It scans real local game installations, launches games, tracks sessions it can observe, and keeps the library database on the user's PC. Dusk does not ship with fake games or seeded playtime.
 
@@ -54,6 +54,18 @@ It scans real local game installations, launches games, tracks sessions it can o
 - TypeScript
 - Vite
 - SQLite via rusqlite
+
+## Cloud-synced hours played (v1.8.0)
+
+Signed-in users' hours played and launch counts are synchronized to Supabase.
+Dusk imports prior 1.7.x cloud totals once, then uploads distinct play sessions
+identified by device and local session ID. Devices merge recorded totals without
+deleting other devices' sessions; offline play is uploaded when cloud access
+returns. Local game executable paths stay on the PC.
+
+Guest accounts remain local-only. Session duration is counted only when Dusk
+can observe the launched process. Sync runs automatically when refreshing the
+library and periodically while online.
 
 ## In-app game discovery and managed archive import
 
