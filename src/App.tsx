@@ -2280,11 +2280,18 @@ export default function App() {
                       {downloadSources[result.url] && (
                         <div className="web-download-sources">
                           {downloadSources[result.url].filter((link) => link.kind === "game" || link.kind === "mirror").map((link) => (
-                            <button key={link.url} className="web-download-source"
-                              onClick={() => void trackOnlineFixDownload(result, false, link.url, true)}
-                              title={link.kind === "game" ? "Auto-select matching archives after host access is granted" : "Hosters may offer fixes or updates rather than the full game"}>
-                              <ExternalLink size={12} /> {link.label}
-                            </button>
+                            <div className="web-download-source-group" key={link.url}>
+                              <button className="web-download-source"
+                                onClick={() => void trackOnlineFixDownload(result, false, link.url, true)}
+                                title="Download via Dusk; files may come from a separate HTTPS CDN">
+                                <Archive size={12} /> {link.label}
+                              </button>
+                              <button className="web-download-source"
+                                onClick={() => void trackOnlineFixDownload(result, true, link.url)}
+                                title="Open this exact Hosters/Drive source in your default browser if its controls do not work inside Dusk">
+                                <ExternalLink size={12} /> Browser fallback
+                              </button>
+                            </div>
                           ))}
                           {!downloadSources[result.url].some((link) => link.kind === "game" || link.kind === "mirror") && (
                             <span>No verified full-game download sources found.</span>
@@ -2295,7 +2302,7 @@ export default function App() {
                   </article>
                 ))}
               </div>
-              <p className="web-results-note">Get game opens the full-game Drive source and automatically selects matching archive files once the host makes them available. Complete sign-in or download-host tasks manually when required. Hosters may offer fixes only. Dusk monitors matching downloads and asks before running any installer.</p>
+              <p className="web-results-note">Get game opens Online-Fix Drive and detects supported archive downloads, including files served by HTTPS CDNs. If Hosters or Drive blocks an in-app download, use Browser fallback beside that exact source. Some download-host steps still require manual interaction. Dusk only runs installers after confirmation.</p>
             </section>
           ) : (
             <>
