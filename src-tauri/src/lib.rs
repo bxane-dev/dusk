@@ -5088,7 +5088,6 @@ fn set_account_scope(app: AppHandle, account_user_id: Option<String>) -> Result<
 }
 
 #[derive(Serialize)]
-#[serde(rename_all = "camelCase")]
 struct CloudPlaytimeSession {
     device_id: String,
     session_id: i64,
