@@ -84,27 +84,18 @@ jobs:
           tagName: dusk-v__VERSION__
           releaseName: Dusk v__VERSION__
           releaseBody: |
-            # Dusk v1.7.10
+            # Dusk v1.8.0
 
-            Windows NSIS installer release with in-app game search and managed archives.
+            ## Changes
+            - Cloud-synced game hours and launch counts for signed-in accounts.
+            - Multi-device session merging with offline retry and historical progress preservation.
+            - Online-Fix game search now uses the site's native search endpoint instead of Bing.
+            - Includes managed ZIP/7z/RAR game archive import from v1.7.10.
 
-            ## What's new
-
-            - Search for game listings using the Online-Fix toggle, and browse results in an isolated in-app window.
-            - Watch for completed downloads in the standard Downloads folder after opening a listing.
-            - Import ZIP, RAR and 7z archives, including first multipart volumes when all parts are downloaded.
-            - Extract archives into Dusk's managed-games directory, using 7-Zip or Python as fallbacks.
-            - Register portable games automatically when a single launchable executable is identified.
-            - Confirm before running any executable installer.
-
-            ## Important
-
-            Some downloads require manual browser actions or external torrent software. Dusk does not bypass download-host restrictions.
-            For RAR and 7z extraction, install 7-Zip or the optional Python dependencies.
-            The auto-import monitor only runs while Dusk is open.
-            Windows SmartScreen may show an unrecognized-app warning when publisher certificate signing is not configured.
-
-            Install by downloading the .exe file from the release assets.
+            ## Requirements
+            Sign in to a Dusk account for cloud playtime sync. Guest mode remains local.
+            Game sessions are only counted when Dusk can track the process.
+            Windows may show a SmartScreen warning if the publisher certificate is unconfigured.
           releaseDraft: false
           prerelease: false
           uploadUpdaterJson: false
