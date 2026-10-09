@@ -352,6 +352,7 @@ button:disabled { cursor: not-allowed; opacity: 0.55; }
 .web-result-card h3 { margin: 0 0 8px; font-size: 16px; }
 .web-result-card p { color: var(--muted); font-size: 12px; line-height: 1.5; margin: 0 0 8px; }
 .web-result-card span { font-size: 11px; color: var(--accent); }
+.web-result-actions { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; justify-content: flex-end; }
 .web-result-card .button { flex-shrink: 0; }
 .web-results-note { margin-top: 20px; }
 @media (max-width: 700px) { .web-result-card { align-items: flex-start; flex-direction: column; } }
