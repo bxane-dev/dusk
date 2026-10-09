@@ -2942,26 +2942,46 @@ async fn search_online_fix_games(query: String) -> Result<Vec<OnlineFixSearchRes
     }).await.map_err(|error| error.to_string())?
 }
 
-#[cfg(target_os = "windows")]
-#[tauri::command]
-fn open_online_fix_result(url: String) -> Result<(), String> {
-    let parsed = reqwest::Url::parse(&url).map_err(|_| "Invalid listing URL.")?;
+fn verified_online_fix_url(url: &str) -> Result<reqwest::Url, String> {
+    let parsed = reqwest::Url::parse(url).map_err(|_| "Invalid listing URL.")?;
     if parsed.scheme() != "https"
         || !matches!(parsed.host_str(), Some("online-fix.me" | "www.online-fix.me"))
     {
-        return Err("Only online-fix.me listing links are allowed.".into());
+        return Err("Only secure online-fix.me listing URLs are allowed.".into());
     }
+    Ok(parsed)
+}
+
+// An isolated remote webview window keeps browsing inside Dusk without loading
+// untrusted remote content into the privileged local game-library window.
+#[tauri::command]
+async fn open_online_fix_result(app: AppHandle, url: String) -> Result<(), String> {
+    let parsed = verified_online_fix_url(&url)?;
+    let label = format!("online-fix-{}", Uuid::new_v4().simple());
+    tauri::WebviewWindowBuilder::new(&app, label, tauri::WebviewUrl::External(parsed))
+        .title("Dusk — Online-Fix")
+        .inner_size(1100.0, 760.0)
+        .on_navigation(|url| url.scheme() == "https")
+        .build()
+        .map_err(|error| format!("Could not open the in-app browser: {error}"))?;
+    Ok(())
+}
+
+#[cfg(target_os = "windows")]
+#[tauri::command]
+fn open_online_fix_browser(url: String) -> Result<(), String> {
+    verified_online_fix_url(&url)?;
     hidden_windows_command("rundll32")
         .args(["url.dll,FileProtocolHandler", &url])
         .spawn()
-        .map_err(|error| format!("Could not open listing: {error}"))?;
+        .map_err(|error| format!("Could not open listing in browser: {error}"))?;
     Ok(())
 }
 
 #[cfg(not(target_os = "windows"))]
 #[tauri::command]
-fn open_online_fix_result(_url: String) -> Result<(), String> {
-    Err("Opening listings is currently implemented for Windows.".into())
+fn open_online_fix_browser(_url: String) -> Result<(), String> {
+    Err("External browser integration is currently implemented for Windows.".into())
 }
 
 #[cfg(target_os = "windows")]
@@ -5888,6 +5908,7 @@ pub fn run() {
             open_external_target,
             search_online_fix_games,
             open_online_fix_result,
+            open_online_fix_browser,
             choose_executable,
             add_manual_game,
             set_favorite,
