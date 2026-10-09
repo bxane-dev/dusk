@@ -89,19 +89,19 @@ jobs:
           tagName: dusk-v__VERSION__
           releaseName: Dusk v__VERSION__
           releaseBody: |
-            # Dusk v1.8.2
+            # Dusk v1.8.3
 
-            ## Automatic archive file selection
-            - Get game opens Online-Fix Drive and automatically selects accessible archive downloads for the chosen title.
-            - Selects matching ZIP, RAR, 7z and multipart file links from supported official host pages.
-            - Downloads handled inside Dusk are directed into the Downloads folder for monitored import.
-            - Fixes, ads, updates, and unrelated archive files are excluded.
-            - Includes the v1.8.0 cloud-playtime synchronization and v1.8.1 source verification improvements.
+            ## Fixed and improved embedded Online-Fix browser
+            - Hosters and Drive links using target=_blank now open in Dusk's current download window.
+            - Added a lightweight, built-in ad blocker targeting known adult and pop-up ad networks.
+            - Restricted the in-app browser against unsolicited off-site redirects and new advertising windows.
+            - Kept game downloads and automatic archive selection working through official host links.
 
-            ## Limits
-            Login, ad-locker unlocks and some host-controlled file selections may still require manual action.
-            No authentication or download restriction is bypassed. No untrusted installer runs without confirmation.
-            The Windows installer may display a SmartScreen warning if unsigned.
+            ## Notes
+            The ad blocker protects Dusk's embedded Online-Fix windows only.
+            Some ads can evade DOM filtering, and external browser fallback uses your own browser's filtering.
+            Download-host authentication and unlock steps may still require manual action.
+            Windows can show an unrecognized-publisher warning if no signing certificate is configured.
           releaseDraft: false
           prerelease: false
           uploadUpdaterJson: false
