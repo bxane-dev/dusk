@@ -2,6 +2,16 @@
 
 All notable Dusk changes are documented here.
 
+## 1.8.3 - 2026-10-10
+
+Fix unresponsive download-host links and reduce unsafe advertising.
+
+- Trusted Hosters and Drive buttons now navigate in the existing Online-Fix window instead of silently failing to open a new window.
+- Block unsolicited new windows and off-domain advertising redirects from the embedded web browser.
+- Hide recognized advertising elements, remove known ad embeds, and intercept known advertising links, including adult advertising networks.
+- Keep official Online-Fix download sites accessible and preserve automatic archive selection.
+- Add automated regression tests for embedded browser navigation and ad filtering.
+
 ## 1.8.2 - 2026-10-09
 
 Automate selection of actual archive file links on supported Online-Fix hosts.
