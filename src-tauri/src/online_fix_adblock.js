@@ -11,7 +11,7 @@
   if (!allowedPages.has(location.hostname)) return;
 
   const advertisingHosts = [
-    "acscdn.com", "themone tizer.com".replace(" ", ""), "adsterra.com",
+    "acscdn.com", "themoneytizer.com", "adsterra.com",
     "propellerads.com", "onclickads.net", "popcash.net", "popads.net",
     "exoclick.com", "exosrv.com", "magsrv.com", "realsrv.com",
     "trafficjunky.net", "juicyads.com", "clickadu.com", "hilltopads.net",
@@ -36,7 +36,7 @@
     ".ad-banner", ".ad-container", ".ad-wrapper", ".ad-slot",
     ".advertisement", ".advertising-block", ".popunder",
     ".in-page-ad", ".adsbygoogle", "iframe[src*='acscdn.com']",
-    "iframe[src*='themone tizer.com']".replace(" ", ""),
+    "iframe[src*='themoneytizer.com']",
   ];
   const selector = adSelectors.join(",");
   const externalResources = "iframe,script,img,source,video,object,embed,link[rel='preload'],link[rel='stylesheet']";
