@@ -3140,9 +3140,16 @@ fn known_ad_network(host: &str) -> bool {
 }
 
 fn is_safe_game_archive_download(url: &reqwest::Url, filename: &str) -> bool {
-    if url.scheme() != "https" || known_ad_network(url.host_str().unwrap_or_default()) {
-        return false;
-    }
+    let allowed_origin = match url.scheme() {
+        "https" => !known_ad_network(url.host_str().unwrap_or_default()),
+        // Some WebView2 file hosts create local ZIP blobs after a server-side
+        // handshake. Only accept blobs originating on the official hosts.
+        "blob" => reqwest::Url::parse(url.path())
+            .map(|inner| is_online_fix_site(&inner))
+            .unwrap_or(false),
+        _ => false,
+    };
+    if !allowed_origin { return false; }
     if filename.is_empty()
         || filename.len() > 240
         || filename == "." || filename == ".."
@@ -3153,10 +3160,7 @@ fn is_safe_game_archive_download(url: &reqwest::Url, filename: &str) -> bool {
     let lower = filename.to_ascii_lowercase();
     let allowed_archive = [".zip", ".rar", ".7z", ".7z.001"]
         .iter().any(|ext| lower.ends_with(ext));
-    if !allowed_archive { return false; }
-    !lower.split(|c: char| !c.is_ascii_alphanumeric())
-        .any(|word| matches!(word, "fix" | "repair" | "update" | "updates"
-            | "patch" | "crack" | "cracks" | "redist" | "trainer"))
+    allowed_archive
 }
 
 #[cfg(test)]
@@ -3175,7 +3179,9 @@ mod online_fix_download_validation_tests {
     fn rejects_executables_ads_and_insecure_downloads() {
         let cdn = reqwest::Url::parse("https://cdn.example.net/file").unwrap();
         assert!(!is_safe_game_archive_download(&cdn, "setup.exe"));
-        assert!(!is_safe_game_archive_download(&cdn, "Game_fix_repair.zip"));
+        assert!(is_safe_game_archive_download(&cdn, "Game_fix_repair.zip"));
+        // Fix-only files can be downloaded manually; they must not be imported
+        // as full games by the frontend watcher.
         assert!(!is_safe_game_archive_download(&cdn, "../Game.zip"));
         let ad = reqwest::Url::parse("https://sub.exoclick.com/ads/Game.zip").unwrap();
         assert!(!is_safe_game_archive_download(&ad, "Game.zip"));
