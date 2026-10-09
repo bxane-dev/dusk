@@ -5087,6 +5087,62 @@ fn set_account_scope(app: AppHandle, account_user_id: Option<String>) -> Result<
     Ok(())
 }
 
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct CloudPlaytimeSession {
+    device_id: String,
+    session_id: i64,
+    game_id: String,
+    duration_seconds: i64,
+    ended_at: String,
+}
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct CloudPlaytimeUpload {
+    baselines: Vec<serde_json::Value>,
+    sessions: Vec<CloudPlaytimeSession>,
+}
+#[tauri::command]
+fn export_playtime_updates(app: AppHandle) -> Result<CloudPlaytimeUpload, String> {
+    let db = open_database(&app)?;
+    let device_id: String = match db.query_row("SELECT value FROM app_settings WHERE key='playtime_device_id'",[],|r|r.get(0)).optional().map_err(|e|e.to_string())? {
+        Some(id) => id,
+        None => {
+            let id=Uuid::new_v4().to_string();
+            db.execute("INSERT INTO app_settings(key,value) VALUES ('playtime_device_id',?1)",params![id]).map_err(|e|e.to_string())?;
+            id
+        }
+    };
+    let cutoff: i64 = match db.query_row("SELECT value FROM app_settings WHERE key='playtime_cutoff'",[],|r|r.get::<_,String>(0)).optional().map_err(|e|e.to_string())? {
+        Some(value) => value.parse().unwrap_or(0),
+        None => {
+            let max_id: i64 = db.query_row("SELECT COALESCE(MAX(id),0) FROM sessions",[],|r|r.get(0)).map_err(|e|e.to_string())?;
+            db.execute("INSERT INTO app_settings(key,value) VALUES ('playtime_cutoff',?1)",params![max_id.to_string()]).map_err(|e|e.to_string())?;
+            max_id
+        }
+    };
+    let mut baseline_stmt=db.prepare("SELECT id,total_seconds,launch_count,last_played FROM games WHERE total_seconds>0 OR launch_count>0").map_err(|e|e.to_string())?;
+    let baselines=baseline_stmt.query_map([],|r|Ok(serde_json::json!({"game_id":r.get::<_,String>(0)?,"total_seconds":r.get::<_,i64>(1)?.max(0),"launch_count":r.get::<_,i64>(2)?.max(0),"last_played":r.get::<_,Option<String>>(3)?}))).map_err(|e|e.to_string())?.collect::<Result<Vec<_>,_>>().map_err(|e|e.to_string())?;
+    let mut stmt=db.prepare("SELECT id,game_id,duration_seconds,ended_at FROM sessions WHERE id>?1 ORDER BY id").map_err(|e|e.to_string())?;
+    let sessions=stmt.query_map(params![cutoff],|r|Ok(CloudPlaytimeSession{device_id:device_id.clone(),session_id:r.get(0)?,game_id:r.get(1)?,duration_seconds:r.get(2)?,ended_at:r.get(3)?})).map_err(|e|e.to_string())?.collect::<Result<Vec<_>,_>>().map_err(|e|e.to_string())?;
+    Ok(CloudPlaytimeUpload{baselines,sessions})
+}
+#[tauri::command]
+fn merge_cloud_playtime(app: AppHandle, totals: serde_json::Value) -> Result<(),String> {
+    let mut db=open_database(&app)?;
+    let tx=db.transaction().map_err(|e|e.to_string())?;
+    if let Some(entries)=totals.as_array() {
+        for entry in entries {
+            let Some(id)=entry.get("game_id").and_then(|v|v.as_str()) else {continue};
+            let seconds=entry.get("total_seconds").and_then(|v|v.as_i64()).unwrap_or(0).max(0);
+            let launches=entry.get("launch_count").and_then(|v|v.as_i64()).unwrap_or(0).max(0);
+            let last=entry.get("last_played").and_then(|v|v.as_str());
+            tx.execute("UPDATE games SET total_seconds=MAX(total_seconds,?2), launch_count=MAX(launch_count,?3), last_played=CASE WHEN ?4 > COALESCE(last_played,'') THEN ?4 ELSE last_played END WHERE id=?1",params![id,seconds,launches,last]).map_err(|e|e.to_string())?;
+        }
+    }
+    tx.commit().map_err(|e|e.to_string())
+}
+
 #[tauri::command]
 fn export_account_state(app: AppHandle) -> Result<serde_json::Value, String> {
     let _ = list_achievements(app.clone())?;
@@ -5965,6 +6021,8 @@ pub fn run() {
             upload_cloud_manifest,
             set_account_scope,
             export_account_state,
+            export_playtime_updates,
+            merge_cloud_playtime,
             import_account_state,
             check_github_update,
             install_github_update,
