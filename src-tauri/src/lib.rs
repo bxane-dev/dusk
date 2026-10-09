@@ -3048,12 +3048,8 @@ async fn get_online_fix_download_links(listing_url: String) -> Result<Vec<Online
 fn verified_online_fix_listing_url(url: &str) -> Result<reqwest::Url, String> {
     let parsed = reqwest::Url::parse(url).map_err(|_| "Invalid game listing URL.")?;
     if parsed.scheme() != "https"
-        || !matches!(parsed.host_str(), Some(
-            "online-fix.me" | "www.online-fix.me"
-            | "hosters.online-fix.me" | "drive.online-fix.me"
-            | "uploads.online-fix.me"
-        ))
-        || !matches!(parsed.port(), None | Some(2053))
+        || !matches!(parsed.host_str(), Some("online-fix.me" | "www.online-fix.me"))
+        || parsed.port().is_some()
         || !parsed.path().starts_with("/games/")
         || !parsed.path().ends_with(".html")
     {
@@ -3100,7 +3096,12 @@ mod online_fix_download_tests {
 fn verified_online_fix_url(url: &str) -> Result<reqwest::Url, String> {
     let parsed = reqwest::Url::parse(url).map_err(|_| "Invalid listing URL.")?;
     if parsed.scheme() != "https"
-        || !matches!(parsed.host_str(), Some("online-fix.me" | "www.online-fix.me"))
+        || !matches!(parsed.port(), None | Some(2053))
+        || !matches!(parsed.host_str(), Some(
+            "online-fix.me" | "www.online-fix.me"
+            | "hosters.online-fix.me" | "drive.online-fix.me"
+            | "uploads.online-fix.me"
+        ))
     {
         return Err("Only secure online-fix.me listing URLs are allowed.".into());
     }
