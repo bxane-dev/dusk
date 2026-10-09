@@ -84,22 +84,27 @@ jobs:
           tagName: dusk-v__VERSION__
           releaseName: Dusk v__VERSION__
           releaseBody: |
-            # Dusk v1.7.9
+            # Dusk v1.7.10
 
-            Account login placeholder cleanup.
+            Windows NSIS installer release with in-app game search and managed archives.
 
             ## What's new
 
-            - Removes the hardcoded bxane placeholder from the username field.
-            - Uses a generic username placeholder for sign-in and registration.
-            - Does not change saved usernames, credentials, or account data.
-            - Includes the lightweight Cover AI, automatic missing-cover refresh, restart-to-update, profile-picture persistence, scanner improvements, DuskLauncher.exe Discord mitigation, and optional Discord Rich Presence.
+            - Search for game listings using the Online-Fix toggle, and browse results in an isolated in-app window.
+            - Watch for completed downloads in the standard Downloads folder after opening a listing.
+            - Import ZIP, RAR and 7z archives, including first multipart volumes when all parts are downloaded.
+            - Extract archives into Dusk's managed-games directory, using 7-Zip or Python as fallbacks.
+            - Register portable games automatically when a single launchable executable is identified.
+            - Confirm before running any executable installer.
 
-            ## Notes
+            ## Important
 
-            Dusk does not automatically download or install games from unofficial redistribution sites. Local installers stay under your control, and official store links open in your default browser.
+            Some downloads require manual browser actions or external torrent software. Dusk does not bypass download-host restrictions.
+            For RAR and 7z extraction, install 7-Zip or the optional Python dependencies.
+            The auto-import monitor only runs while Dusk is open.
+            Windows SmartScreen may show an unrecognized-app warning when publisher certificate signing is not configured.
 
-            The Windows installer is built from this public repository on GitHub Actions.
+            Install by downloading the .exe file from the release assets.
           releaseDraft: false
           prerelease: false
           uploadUpdaterJson: false
