@@ -17,6 +17,17 @@ import type {
   Stats,
 } from "../types";
 
+export type ManagedDownload = {
+  id: string;
+  title: string;
+  filename: string;
+  filePath: string;
+  status: "downloading" | "completed" | "failed" | "cancelled";
+  receivedBytes: number;
+  totalBytes: number | null;
+  error: string | null;
+};
+
 export const api = {
   setAccountScope: (userId: string | null) => invoke<void>("set_account_scope", { accountUserId: userId }),
   exportAccountState: () => invoke<Record<string, unknown>>("export_account_state"),
@@ -41,6 +52,11 @@ export const api = {
   refreshMissingCovers: () =>
     invoke<{ attempted: number; updated: number; remaining: number }>("refresh_missing_covers"),
   chooseExecutable: () => invoke<string | null>("choose_executable"),
+  startManagedDownload: (url: string, filename: string, title: string) =>
+    invoke<ManagedDownload>("start_managed_download", { url, filename, title }),
+  listManagedDownloads: () => invoke<ManagedDownload[]>("list_managed_downloads"),
+  cancelManagedDownload: (downloadId: string) =>
+    invoke<void>("cancel_managed_download", { downloadId }),
   importGameArchive: () => invoke<{ directory: string; game: GameRecord | null; installers: string[] } | null>("import_game_archive"),
   listRecentGameArchives: (sinceMs: number) =>
     invoke<Array<{ path: string; filename: string; sizeBytes: number; modifiedAtMs: number }>>("list_recent_game_archives", { sinceMs }),
