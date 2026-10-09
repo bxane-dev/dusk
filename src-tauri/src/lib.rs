@@ -2870,27 +2870,95 @@ fn run_game_installer(_installer_path: String) -> Result<(), String> {
     Err("Local installer launching is currently implemented for Windows.".into())
 }
 
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct OnlineFixSearchResult {
+    title: String,
+    url: String,
+    description: String,
+}
+
+fn xml_unescape(text: &str) -> String {
+    text.replace("&lt;", "<")
+        .replace("&gt;", ">")
+        .replace("&quot;", "\"")
+        .replace("&#39;", "'")
+        .replace("&apos;", "'")
+        .replace("&amp;", "&")
+}
+
+#[tauri::command]
+async fn search_online_fix_games(query: String) -> Result<Vec<OnlineFixSearchResult>, String> {
+    let search_term = query.trim().to_string();
+    if search_term.is_empty() || search_term.chars().count() > 120 {
+        return Err("Enter a game title (up to 120 characters).".into());
+    }
+
+    tauri::async_runtime::spawn_blocking(move || {
+        let client = reqwest::blocking::Client::builder()
+            .timeout(Duration::from_secs(12))
+            .user_agent("DuskGameLauncher/1.7")
+            .build()
+            .map_err(|error| error.to_string())?;
+        let response = client
+            .get("https://www.bing.com/search")
+            .query(&[("format", "rss"), ("q", &format!("site:online-fix.me {}", search_term))])
+            .send()
+            .map_err(|error| format!("Could not search online: {error}"))?
+            .error_for_status()
+            .map_err(|error| format!("Search provider error: {error}"))?;
+        let xml = response.text().map_err(|error| error.to_string())?;
+        let item_pattern = Regex::new(r"(?s)<item>(.*?)</item>").map_err(|error| error.to_string())?;
+        let title_pattern = Regex::new(r"(?s)<title>(.*?)</title>").map_err(|error| error.to_string())?;
+        let link_pattern = Regex::new(r"(?s)<link>(.*?)</link>").map_err(|error| error.to_string())?;
+        let description_pattern = Regex::new(r"(?s)<description>(.*?)</description>").map_err(|error| error.to_string())?;
+        let html_tags = Regex::new(r"<[^>]*>").map_err(|error| error.to_string())?;
+        let mut results = Vec::new();
+        for item in item_pattern.captures_iter(&xml) {
+            let body = &item[1];
+            let Some(link) = link_pattern.captures(body) else { continue };
+            let url = xml_unescape(link[1].trim());
+            let Ok(parsed_url) = reqwest::Url::parse(&url) else { continue };
+            if parsed_url.scheme() != "https"
+                || !matches!(parsed_url.host_str(), Some("online-fix.me" | "www.online-fix.me"))
+            {
+                continue;
+            }
+            let Some(title) = title_pattern.captures(body) else { continue };
+            let title = xml_unescape(&html_tags.replace_all(&title[1], "")).trim().to_string();
+            if title.is_empty() { continue; }
+            let description = description_pattern.captures(body)
+                .map(|value| xml_unescape(&html_tags.replace_all(&value[1], "")).trim().to_string())
+                .unwrap_or_default();
+            if !results.iter().any(|existing: &OnlineFixSearchResult| existing.url == url) {
+                results.push(OnlineFixSearchResult { title, url, description });
+            }
+            if results.len() >= 20 { break; }
+        }
+        Ok::<_, String>(results)
+    }).await.map_err(|error| error.to_string())?
+}
+
 #[cfg(target_os = "windows")]
 #[tauri::command]
-fn open_web_search(encoded_query: String) -> Result<(), String> {
-    if encoded_query.is_empty()
-        || encoded_query.len() > 2048
-        || !encoded_query.bytes().all(|byte| byte.is_ascii_alphanumeric() || b"-_.~%!'()*".contains(&byte))
+fn open_online_fix_result(url: String) -> Result<(), String> {
+    let parsed = reqwest::Url::parse(&url).map_err(|_| "Invalid listing URL.")?;
+    if parsed.scheme() != "https"
+        || !matches!(parsed.host_str(), Some("online-fix.me" | "www.online-fix.me"))
     {
-        return Err("Invalid web search query.".into());
+        return Err("Only online-fix.me listing links are allowed.".into());
     }
-    let url = format!("https://www.google.com/search?q={encoded_query}");
     hidden_windows_command("rundll32")
         .args(["url.dll,FileProtocolHandler", &url])
         .spawn()
-        .map_err(|error| format!("Could not open web search: {error}"))?;
+        .map_err(|error| format!("Could not open listing: {error}"))?;
     Ok(())
 }
 
 #[cfg(not(target_os = "windows"))]
 #[tauri::command]
-fn open_web_search(_encoded_query: String) -> Result<(), String> {
-    Err("Web search is currently implemented for Windows.".into())
+fn open_online_fix_result(_url: String) -> Result<(), String> {
+    Err("Opening listings is currently implemented for Windows.".into())
 }
 
 #[cfg(target_os = "windows")]
@@ -5812,7 +5880,8 @@ pub fn run() {
             choose_game_installer,
             run_game_installer,
             open_external_target,
-            open_web_search,
+            search_online_fix_games,
+            open_online_fix_result,
             choose_executable,
             add_manual_game,
             set_favorite,
