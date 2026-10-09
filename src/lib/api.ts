@@ -50,6 +50,8 @@ export const api = {
     invoke<Array<{ title: string; url: string; description: string }>>("search_online_fix_games", { query }),
   openOnlineFixResult: (url: string) =>
     invoke<void>("open_online_fix_result", { url }),
+  openOnlineFixBrowser: (url: string) =>
+    invoke<void>("open_online_fix_browser", { url }),
   openExternalTarget: (target: "creator" | "steam" | "epic" | "gog" | "itch") =>
     invoke<void>("open_external_target", { target }),
   addManualGame: (title: string, exePath: string) =>
