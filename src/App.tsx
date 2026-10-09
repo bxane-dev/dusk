@@ -2271,7 +2271,7 @@ export default function App() {
                         <div className="web-download-sources">
                           {downloadSources[result.url].filter((link) => link.kind === "game" || link.kind === "mirror").map((link) => (
                             <button key={link.url} className="web-download-source"
-                              onClick={() => void trackOnlineFixDownload(result, false, link.url, link.kind === "game")}
+                              onClick={() => void trackOnlineFixDownload(result, false, link.url, true)}
                               title={link.kind === "game" ? "Auto-select matching archives after host access is granted" : "Hosters may offer fixes or updates rather than the full game"}>
                               <ExternalLink size={12} /> {link.label}
                             </button>
