@@ -2,6 +2,18 @@
 
 All notable Dusk changes are documented here.
 
+## 1.8.5 - 2026-10-10
+
+Fix downloads that fail inside Online-Fix Hosters and Drive pages.
+
+- Accept ZIP/7z/RAR files delivered through HTTPS file-hosting CDNs and supported official-site blob URLs, rather than requiring downloads to originate on the initial mirror domain.
+- Attach the download handler to manual listing windows as well as automatic download windows.
+- Open supported direct HTTPS archive links in the same in-app browser window.
+- Avoid hiding download controls wrapped in generic ad-styled UI containers on Hosters and Drive.
+- Permit manually selected fix ZIPs, while excluding them from full-game automatic registration.
+- Avoid silently discarding repeated downloads of ordinary single-file game archives.
+- Add a browser fallback beside each detected game mirror for host-controlled redirects or downloads.
+
 ## 1.8.4 - 2026-10-10
 
 Correct version number in Dusk's About section.
