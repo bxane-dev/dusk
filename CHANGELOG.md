@@ -2,6 +2,14 @@
 
 All notable Dusk changes are documented here.
 
+## 1.8.4 - 2026-10-10
+
+Correct version number in Dusk's About section.
+
+- Replaced the hardcoded "Dusk 1.6.11" label with the actual installed app version returned by Tauri.
+- The displayed version now updates automatically with future releases, without manual UI edits.
+- All v1.8.3 download-link handling and embedded ad-filtering improvements are retained.
+
 ## 1.8.3 - 2026-10-10
 
 Fix unresponsive download-host links and reduce unsafe advertising.
