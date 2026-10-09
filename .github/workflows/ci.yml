@@ -29,6 +29,7 @@ jobs:
         run: |
           node scripts/test-online-fix-navigation.cjs
           node scripts/test-online-fix-adblock.cjs
+          node scripts/test-online-fix-autoselect.cjs
       - name: Build frontend
         run: npm run build
       - name: Check Tauri integration
