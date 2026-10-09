@@ -380,7 +380,7 @@ fn combined_multipart_size(first: &Path, filename: &str) -> Option<u64> {
         if name.ends_with(".crdownload") || name.ends_with(".part") || name.ends_with(".tmp") {
             return None;
         }
-        let volume = if ending.is_empty() { rest } else { rest.strip_suffix(ending)? };
+        let volume = if ending.is_empty() { rest } else if let Some(volume) = rest.strip_suffix(ending) { volume } else { continue };
         if volume.is_empty() || !volume.chars().all(|c| c.is_ascii_digit()) { continue; }
         let meta = entry.metadata().ok()?;
         if !meta.is_file() { continue; }
@@ -408,7 +408,15 @@ pub(crate) async fn list_recent_game_archives(since_ms: u64) -> Result<Vec<Recen
             if modified_at_ms + 1000 < since_ms { continue; }
             if freshest.elapsed().unwrap_or_default() < Duration::from_secs(8) { continue; }
             let filename = path.file_name().and_then(|name| name.to_str()).unwrap_or("archive").to_string();
-            let size_bytes = combined_multipart_size(&path, &filename).unwrap_or(metadata.len());
+            let lower = filename.to_ascii_lowercase();
+            let size_bytes = if lower.ends_with(".7z.001") || lower.contains(".part1.rar") || lower.contains(".part01.rar") {
+                match combined_multipart_size(&path, &filename) {
+                    Some(size) if size > 0 => size,
+                    _ => continue, // Another volume is still downloading.
+                }
+            } else {
+                metadata.len()
+            };
             archives.push(RecentGameArchive {
                 path: path.to_string_lossy().into_owned(),
                 filename,
