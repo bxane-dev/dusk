@@ -84,18 +84,18 @@ jobs:
           tagName: dusk-v__VERSION__
           releaseName: Dusk v__VERSION__
           releaseBody: |
-            # Dusk v1.8.0
+            # Dusk v1.8.1
 
-            ## Changes
-            - Cloud-synced game hours and launch counts for signed-in accounts.
-            - Multi-device session merging with offline retry and historical progress preservation.
-            - Online-Fix game search now uses the site's native search endpoint instead of Bing.
-            - Includes managed ZIP/7z/RAR game archive import from v1.7.10.
+            ## Improved game download links
+            - Get game now detects the full-game Hosters URL from the selected Online-Fix listing.
+            - Offers the Drive mirror as an alternative and ignores fix-only, torrent, and advertising links.
+            - Associates completed archives with the selected game's title before auto-import.
+            - Retains v1.8.0 cloud-synced playtime and Online-Fix native search.
 
-            ## Requirements
-            Sign in to a Dusk account for cloud playtime sync. Guest mode remains local.
-            Game sessions are only counted when Dusk can track the process.
-            Windows may show a SmartScreen warning if the publisher certificate is unconfigured.
+            ## Notes
+            Download hosts may still need login or manual interaction. Dusk does not bypass gated downloads.
+            Extracting files remains separate from launching an installer, which requires your approval.
+            Windows may show an unrecognized-publisher warning if certificate signing is not configured.
           releaseDraft: false
           prerelease: false
           uploadUpdaterJson: false
