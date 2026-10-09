@@ -17,6 +17,15 @@ import type {
   Stats,
 } from "../types";
 
+export type OnlineFixHosterFile = {
+  provider: string;
+  filename: string;
+  url: string;
+  isFix: boolean;
+  directArchive: boolean;
+  requiresCaution: boolean;
+};
+
 export type ManagedDownload = {
   id: string;
   title: string;
@@ -69,6 +78,8 @@ export const api = {
     invoke<void>("run_game_installer", { installerPath }),
   searchOnlineFixGames: (query: string) =>
     invoke<Array<{ title: string; url: string; description: string }>>("search_online_fix_games", { query }),
+  getOnlineFixHosterFiles: (hostersUrl: string) =>
+    invoke<OnlineFixHosterFile[]>("get_online_fix_hoster_files", { hostersUrl }),
   getOnlineFixDownloadLinks: (listingUrl: string) =>
     invoke<Array<{ url: string; label: string; kind: "game" | "mirror" | "torrent" | "fix"; recommended: boolean }>>(
       "get_online_fix_download_links", { listingUrl },
