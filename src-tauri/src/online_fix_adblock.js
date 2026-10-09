@@ -38,6 +38,16 @@
     ".in-page-ad", ".adsbygoogle", "iframe[src*='acscdn.com']",
     "iframe[src*='themoneytizer.com']",
   ];
+  // File hosts may put download controls inside generic `ad-container`
+  // wrappers. Do not hide entire UI sections on Drive/Hosters pages.
+  if (location.hostname === "drive.online-fix.me" ||
+      location.hostname === "hosters.online-fix.me") {
+    for (const name of [".ad-banner", ".ad-container", ".ad-wrapper",
+        ".ad-slot", ".advertisement", ".advertising-block", ".in-page-ad"]) {
+      const index = adSelectors.indexOf(name);
+      if (index >= 0) adSelectors.splice(index, 1);
+    }
+  }
   const selector = adSelectors.join(",");
   const externalResources = "iframe,script,img,source,video,object,embed,link[rel='preload'],link[rel='stylesheet']";
   const linkSelector = "a[href]";
