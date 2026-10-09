@@ -1815,7 +1815,7 @@ export default function App() {
     }
   }
 
-  async function trackOnlineFixDownload(result: WebGameResult, externalBrowser = false, destination = result.url) {
+  async function trackOnlineFixDownload(result: WebGameResult, externalBrowser = false, destination = result.url, autoSelect = false) {
     downloadStabilityRef.current.clear();
     watchAttemptedRef.current.clear();
     setDownloadWatchMessage("Waiting for a completed archive matching " + result.title + " in Downloads…");
@@ -1823,7 +1823,7 @@ export default function App() {
     setActiveDownloadWatch({ sinceMs: Date.now() - 2000, title: result.title, url: destination });
     try {
       if (externalBrowser) await api.openOnlineFixBrowser(destination);
-      else await api.openOnlineFixResult(destination);
+      else await api.openOnlineFixResult(destination, result.title, autoSelect);
     } catch (error) {
       setActiveDownloadWatch(null);
       setDownloadWatchMessage("");
@@ -1837,13 +1837,14 @@ export default function App() {
     try {
       const links = await api.getOnlineFixDownloadLinks(result.url);
       setDownloadSources((current) => ({ ...current, [result.url]: links }));
-      const chosen = links.find((link) => link.kind === "game") ||
-        links.find((link) => link.kind === "mirror");
+      // Drive provides full-game archives. Hosters often exposes only updates/fixes,
+      // so do not silently substitute Hosters when no Drive source is available.
+      const chosen = links.find((link) => link.kind === "game");
       if (chosen) {
-        showToast("Selected " + chosen.label + ". You can use the other mirror below.");
-        await trackOnlineFixDownload(result, false, chosen.url);
+        showToast("Dusk will select matching game archives when the download host makes them available.");
+        await trackOnlineFixDownload(result, false, chosen.url, true);
       } else {
-        showToast("No verified full-game download link found. Open the listing to choose manually.", "error");
+        showToast("No full-game Drive link is available. You can inspect the listing or Hosters manually.", "error");
       }
     } catch (error) {
       showToast("Could not identify download links: " + readableError(error), "error");
@@ -2269,7 +2270,9 @@ export default function App() {
                       {downloadSources[result.url] && (
                         <div className="web-download-sources">
                           {downloadSources[result.url].filter((link) => link.kind === "game" || link.kind === "mirror").map((link) => (
-                            <button key={link.url} className="web-download-source" onClick={() => void trackOnlineFixDownload(result, false, link.url)}>
+                            <button key={link.url} className="web-download-source"
+                              onClick={() => void trackOnlineFixDownload(result, false, link.url, link.kind === "game")}
+                              title={link.kind === "game" ? "Auto-select matching archives after host access is granted" : "Hosters may offer fixes or updates rather than the full game"}>
                               <ExternalLink size={12} /> {link.label}
                             </button>
                           ))}
@@ -2282,7 +2285,7 @@ export default function App() {
                   </article>
                 ))}
               </div>
-              <p className="web-results-note">Get game automatically selects the verified full-game Hosters link (or Drive when unavailable). Fix-only and torrent links are excluded. Complete any required host steps normally; Dusk imports a matching archive after download. Windows installers require your confirmation.</p>
+              <p className="web-results-note">Get game opens the full-game Drive source and automatically selects matching archive files once the host makes them available. Complete sign-in or download-host tasks manually when required. Hosters may offer fixes only. Dusk monitors matching downloads and asks before running any installer.</p>
             </section>
           ) : (
             <>
