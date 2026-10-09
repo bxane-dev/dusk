@@ -8,6 +8,7 @@ import {
   FolderOpen,
   Gamepad2,
   HardDrive,
+  Globe2,
   Heart,
   Home,
   ImagePlus,
@@ -922,6 +923,7 @@ export default function App() {
   const [selectedGameId, setSelectedGameId] = useState<string | null>(null);
   const [collectionFilter, setCollectionFilter] = useState("all");
   const [query, setQuery] = useState("");
+  const [webSearchEnabled, setWebSearchEnabled] = useState(false);
   const [sourceFilter, setSourceFilter] = useState("all");
   const [sortMode, setSortMode] = useState<SortMode>("name");
   const [addOpen, setAddOpen] = useState(false);
@@ -1363,7 +1365,7 @@ export default function App() {
       next = next.filter((game) => game.source === sourceFilter);
     }
 
-    const needle = query.trim().toLocaleLowerCase();
+    const needle = webSearchEnabled ? "" : query.trim().toLocaleLowerCase();
     if (needle) {
       next = next.filter((game) =>
         (game.title + " " + game.source).toLocaleLowerCase().includes(needle),
@@ -1379,7 +1381,7 @@ export default function App() {
     });
 
     return next;
-  }, [games, view, collectionFilter, membershipLookup, sourceFilter, query, sortMode]);
+  }, [games, view, collectionFilter, membershipLookup, sourceFilter, query, sortMode, webSearchEnabled]);
 
   const recentGames = useMemo(() => {
     return [...games]
@@ -1771,6 +1773,16 @@ export default function App() {
     }
   }
 
+  async function searchWeb() {
+    const term = query.trim();
+    if (!term) return;
+    try {
+      await api.openWebSearch(term);
+    } catch (error) {
+      showToast(readableError(error), "error");
+    }
+  }
+
   async function openExternal(target: "creator" | "steam" | "epic" | "gog" | "itch") {
     try {
       await api.openExternalTarget(target);
@@ -1993,21 +2005,44 @@ export default function App() {
 
       <main className="main">
         <header className="topbar">
-          <div className="search-box">
-            <Search size={17} />
-            <input
-              value={query}
-              onChange={(event) => setQuery(event.target.value)}
-              onFocus={() => {
-                if (view === "home") setView("library");
-              }}
-              placeholder="Search your games"
-            />
-            {query && (
-              <button onClick={() => setQuery("")} aria-label="Clear search">
-                <X size={15} />
-              </button>
-            )}
+          <div className="search-controls">
+            <div className="search-box">
+              {webSearchEnabled ? <Globe2 size={17} /> : <Search size={17} />}
+              <input
+                value={query}
+                onChange={(event) => setQuery(event.target.value)}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter" && webSearchEnabled) {
+                    event.preventDefault();
+                    void searchWeb();
+                  }
+                }}
+                onFocus={() => {
+                  if (!webSearchEnabled && view === "home") setView("library");
+                }}
+                placeholder={webSearchEnabled ? "Search the web (Enter)" : "Search your games"}
+                aria-label={webSearchEnabled ? "Web search query" : "Search your games"}
+              />
+              {query && (
+                <button type="button" onClick={() => setQuery("")} aria-label="Clear search">
+                  <X size={15} />
+                </button>
+              )}
+              {webSearchEnabled && (
+                <button type="button" onClick={() => void searchWeb()} disabled={!query.trim()} aria-label="Search web" title="Open web results in your browser">
+                  <Search size={16} />
+                </button>
+              )}
+            </div>
+            <label className="web-search-toggle" title="Search the internet instead of filtering your game library">
+              <input
+                type="checkbox"
+                checked={webSearchEnabled}
+                onChange={(event) => setWebSearchEnabled(event.target.checked)}
+              />
+              <span className="web-search-switch" aria-hidden="true" />
+              <span>Web</span>
+            </label>
           </div>
 
           <div className="top-actions">
