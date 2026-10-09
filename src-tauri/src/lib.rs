@@ -3229,7 +3229,7 @@ async fn open_online_fix_result(
                 let Some(file_name) = destination.file_name().and_then(|s| s.to_str()) else {
                     return false;
                 };
-                if !is_safe_game_archive_download(url, file_name) {
+                if !is_safe_game_archive_download(&url, file_name) {
                     return false;
                 }
                 let Some(home) = env::var_os("USERPROFILE") else { return false; };
