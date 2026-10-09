@@ -3111,6 +3111,80 @@ fn verified_online_fix_url(url: &str) -> Result<reqwest::Url, String> {
 
 // An isolated remote webview window keeps browsing inside Dusk without loading
 // untrusted remote content into the privileged local game-library window.
+// Official pages can navigate in the embedded browser. File downloads may
+// originate from a different HTTPS CDN due to ordinary HTTP redirects.
+fn is_online_fix_site(url: &reqwest::Url) -> bool {
+    url.scheme() == "https" && matches!(url.host_str(), Some(
+        "online-fix.me" | "www.online-fix.me"
+        | "hosters.online-fix.me" | "drive.online-fix.me"
+        | "uploads.online-fix.me"
+    ))
+}
+
+fn is_https_archive_url(url: &reqwest::Url) -> bool {
+    url.scheme() == "https"
+        && !known_ad_network(url.host_str().unwrap_or_default())
+        && url.path().to_ascii_lowercase().ends_with(".zip")
+            || (url.scheme() == "https"
+                && !known_ad_network(url.host_str().unwrap_or_default())
+                && [".rar", ".7z", ".001"].iter().any(|ext| url.path().to_ascii_lowercase().ends_with(ext)))
+}
+
+fn known_ad_network(host: &str) -> bool {
+    const BLOCKED: &[&str] = &[
+        "exoclick.com", "exosrv.com", "magsrv.com", "realsrv.com",
+        "juicyads.com", "adsterra.com", "propellerads.com",
+        "onclickads.net", "popads.net", "popcash.net",
+        "trafficjunky.net", "clickadu.com",
+    ];
+    BLOCKED.iter().any(|blocked| host == *blocked || host.ends_with(&format!(".{blocked}")))
+}
+
+fn is_safe_game_archive_download(url: &reqwest::Url, filename: &str) -> bool {
+    if url.scheme() != "https" || known_ad_network(url.host_str().unwrap_or_default()) {
+        return false;
+    }
+    if filename.is_empty()
+        || filename.len() > 240
+        || filename == "." || filename == ".."
+        || filename.contains(['/', '\\', ':', '\0'])
+    {
+        return false;
+    }
+    let lower = filename.to_ascii_lowercase();
+    let allowed_archive = [".zip", ".rar", ".7z", ".7z.001"]
+        .iter().any(|ext| lower.ends_with(ext));
+    if !allowed_archive { return false; }
+    !lower.split(|c: char| !c.is_ascii_alphanumeric())
+        .any(|word| matches!(word, "fix" | "repair" | "update" | "updates"
+            | "patch" | "crack" | "cracks" | "redist" | "trainer"))
+}
+
+#[cfg(test)]
+mod online_fix_download_validation_tests {
+    use super::*;
+
+    #[test]
+    fn accepts_signed_cdn_downloads_with_safe_archive_names() {
+        let url = reqwest::Url::parse("https://cdn.example.net/api/dl?signature=xyz").unwrap();
+        assert!(is_safe_game_archive_download(&url, "How to Fish.part1.rar"));
+        assert!(is_safe_game_archive_download(&url, "How to Fish.zip"));
+        assert!(is_safe_game_archive_download(&url, "How to Fish.7z.001"));
+    }
+
+    #[test]
+    fn rejects_executables_ads_and_insecure_downloads() {
+        let cdn = reqwest::Url::parse("https://cdn.example.net/file").unwrap();
+        assert!(!is_safe_game_archive_download(&cdn, "setup.exe"));
+        assert!(!is_safe_game_archive_download(&cdn, "Game_fix_repair.zip"));
+        assert!(!is_safe_game_archive_download(&cdn, "../Game.zip"));
+        let ad = reqwest::Url::parse("https://sub.exoclick.com/ads/Game.zip").unwrap();
+        assert!(!is_safe_game_archive_download(&ad, "Game.zip"));
+        let http = reqwest::Url::parse("http://cdn.example.net/Game.zip").unwrap();
+        assert!(!is_safe_game_archive_download(&http, "Game.zip"));
+    }
+}
+
 #[tauri::command]
 async fn open_online_fix_result(
     app: AppHandle,
@@ -3120,84 +3194,84 @@ async fn open_online_fix_result(
 ) -> Result<(), String> {
     let parsed = verified_online_fix_url(&url)?;
     let label = format!("online-fix-{}", Uuid::new_v4().simple());
+    let download_title = game_title.unwrap_or_default();
+    if auto_select.unwrap_or(false) && (download_title.trim().is_empty() || download_title.len() > 200) {
+        return Err("A valid game title is required for automatic link selection.".into());
+    }
     let mut builder = tauri::WebviewWindowBuilder::new(&app, label, tauri::WebviewUrl::External(parsed))
         .title("Dusk — Online-Fix downloads")
         .inner_size(1100.0, 760.0)
         .accept_first_mouse(true)
-        // Some Windows WebView2 versions silently drop target="_blank" clicks
-        // in external webviews. Route trusted host links to this same window.
-        // Apply to normal listing windows as well as auto-selection windows.
         .initialization_script(include_str!("online_fix_navigation.js"))
         .initialization_script(include_str!("online_fix_adblock.js"))
-        // Do not let an ad silently replace the game listing with an adult
-        // or other third-party website. External download hosts can still
-        // be opened through the explicit browser fallback.
         .on_navigation(|url| {
-            url.scheme() == "https"
-                && matches!(url.host_str(), Some(
-                    "online-fix.me" | "www.online-fix.me"
-                    | "hosters.online-fix.me" | "drive.online-fix.me"
-                    | "uploads.online-fix.me"
-                ))
+            // Only official site pages are browsable in Dusk. Signed HTTPS
+            // archive URLs from a storage CDN may navigate directly to a file;
+            // the download handler separately validates the filename.
+            is_online_fix_site(url)
+                || is_https_archive_url(url)
         })
         .on_new_window(|_url, _features| {
-            // Trusted target=_blank links are handled by the navigation
-            // script in this same window. Reject all separate popups.
+            // _blank download and navigation links are redirected to the
+            // current window by our navigation script; ad popups are denied.
             tauri::webview::NewWindowResponse::Deny
+        })
+        .on_download(|_webview, event| match event {
+            tauri::webview::DownloadEvent::Requested { url, destination } => {
+                // WebView2 may download from a CDN with a signed HTTPS URL
+                // rather than the original Drive/Hosters hostname.
+                // It also derives the filename from Content-Disposition.
+                let Some(file_name) = destination.file_name().and_then(|s| s.to_str()) else {
+                    return false;
+                };
+                if !is_safe_game_archive_download(url, file_name) {
+                    return false;
+                }
+                let Some(home) = env::var_os("USERPROFILE") else { return false; };
+                let downloads = PathBuf::from(home).join("Downloads");
+                if !downloads.is_dir() { return false; }
+
+                let mut target = downloads.join(file_name);
+                if target.exists() {
+                    // Do not silently reject a repeated download. WebView2
+                    // can write a suffixed copy of a normal one-file archive;
+                    // never rename multipart volumes, whose names must match.
+                    let multipart = file_name.to_ascii_lowercase().contains(".part")
+                        || file_name.to_ascii_lowercase().ends_with(".7z.001");
+                    if multipart {
+                        return false;
+                    }
+                    let extension = Path::new(file_name).extension().and_then(|s| s.to_str()).unwrap_or("zip");
+                    let stem = Path::new(file_name).file_stem().and_then(|s| s.to_str()).unwrap_or("game");
+                    let mut unique = None;
+                    for index in 2..100 {
+                        let proposed = downloads.join(format!("{stem} ({index}).{extension}"));
+                        if !proposed.exists() {
+                            unique = Some(proposed);
+                            break;
+                        }
+                    }
+                    let Some(next) = unique else { return false };
+                    target = next;
+                }
+                *destination = target;
+                true
+            }
+            tauri::webview::DownloadEvent::Finished { url, path, success } => {
+                if !success {
+                    eprintln!("Online-Fix download failed: {url} -> {}", path.display());
+                }
+                true
+            }
+            _ => true,
         });
 
     if auto_select.unwrap_or(false) {
-        let game_title = game_title.unwrap_or_default();
-        if game_title.trim().is_empty() || game_title.len() > 200 {
-            return Err("A valid game title is required for automatic link selection.".into());
-        }
-        let title_literal = serde_json::to_string(&game_title)
+        let title_literal = serde_json::to_string(&download_title)
             .map_err(|error| format!("Could not prepare game title: {error}"))?;
-        let script = include_str!("online_fix_autoselect.js")
-            .replace("__DUSK_TITLE__", &title_literal);
-        builder = builder
-            .initialization_script(script)
-            // WebView2 downloads need to land in the directory Dusk monitors.
-            // Do not accept EXEs, fixes, HTML, ads, or arbitrary host files.
-            .on_download(move |_webview, event| {
-                match event {
-                    tauri::webview::DownloadEvent::Requested { url, destination } => {
-                        if url.scheme() != "https"
-                            || !matches!(url.host_str(), Some(
-                                "drive.online-fix.me" | "hosters.online-fix.me"
-                            ))
-                        {
-                            return false;
-                        }
-                        let filename = destination.file_name()
-                            .and_then(|part| part.to_str())
-                            .unwrap_or_default();
-                        let lower = filename.to_ascii_lowercase();
-                        let is_archive = lower.ends_with(".zip")
-                            || lower.ends_with(".7z")
-                            || lower.ends_with(".7z.001")
-                            || lower.ends_with(".rar");
-                        let is_fix_or_update = lower
-                            .split(|c: char| !c.is_ascii_alphanumeric())
-                            .any(|word| matches!(word,
-                                "fix" | "repair" | "update" | "updates"
-                                | "patch" | "crack" | "cracks" | "trainer" | "redist"
-                            ));
-                        if !is_archive || is_fix_or_update {
-                            return false;
-                        }
-                        let Some(home) = env::var_os("USERPROFILE") else { return false; };
-                        let downloads = PathBuf::from(home).join("Downloads");
-                        if !downloads.is_dir() { return false; }
-                        let path = downloads.join(filename);
-                        // Preserve existing archives (especially multipart volumes).
-                        if path.exists() { return false; }
-                        *destination = path;
-                        true
-                    }
-                    _ => true,
-                }
-            });
+        builder = builder.initialization_script(
+            include_str!("online_fix_autoselect.js").replace("__DUSK_TITLE__", &title_literal)
+        );
     }
 
     builder.build()
