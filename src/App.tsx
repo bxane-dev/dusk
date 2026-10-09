@@ -51,7 +51,7 @@ import { getVersion } from "@tauri-apps/api/app";
 import duskLogo from "./assets/dusk-logo.svg";
 import AccountProfileSettings from "./AccountProfileSettings";
 import { getCurrentWindow } from "@tauri-apps/api/window";
-import { api } from "./lib/api";
+import { api, type ManagedDownload } from "./lib/api";
 import { syncAccountState } from "./lib/accountSync";
 import { currentDuskAccount, logoutDuskAccount, type DuskAccount } from "./lib/auth";
 import { cloudSaveStatus, syncAllBackupsToSupabase, syncBackupToSupabase, syncCloudManifest } from "./lib/cloudSaves";
@@ -961,6 +961,13 @@ export default function App() {
   const [webError, setWebError] = useState("");
   const [downloadSources, setDownloadSources] = useState<Record<string, WebDownloadLink[]>>({});
   const [downloadSourcesBusy, setDownloadSourcesBusy] = useState<string | null>(null);
+  const [downloadManagerOpen, setDownloadManagerOpen] = useState(false);
+  const [downloadUrl, setDownloadUrl] = useState("");
+  const [downloadFileName, setDownloadFileName] = useState("");
+  const [downloadGameTitle, setDownloadGameTitle] = useState("");
+  const [downloadStarting, setDownloadStarting] = useState(false);
+  const [downloadImportingId, setDownloadImportingId] = useState<string | null>(null);
+  const [managedDownloads, setManagedDownloads] = useState<ManagedDownload[]>([]);
   const [activeDownloadWatch, setActiveDownloadWatch] = useState<{ sinceMs: number; title: string; url: string } | null>(null);
   const [downloadWatchMessage, setDownloadWatchMessage] = useState("");
   const downloadStabilityRef = useRef(new Map<string, { size: number; stable: number }>());
@@ -1816,6 +1823,49 @@ export default function App() {
     }
   }
 
+  async function startNativeDownload() {
+    if (downloadStarting) return;
+    setDownloadStarting(true);
+    try {
+      const created = await api.startManagedDownload(downloadUrl.trim(), downloadFileName.trim(), downloadGameTitle.trim());
+      setManagedDownloads((current) => [created, ...current]);
+      setDownloadUrl("");
+      setDownloadFileName("");
+      showToast("Downloading " + created.filename + " in Dusk.");
+    } catch (error) {
+      showToast(readableError(error), "error");
+    } finally {
+      setDownloadStarting(false);
+    }
+  }
+
+  async function importNativeDownload(download: ManagedDownload) {
+    if (downloadImportingId || download.status !== "completed") return;
+    setDownloadImportingId(download.id);
+    try {
+      const imported = await api.importDownloadedGameArchive(download.filePath, download.title);
+      if (activeDownloadWatch?.title === download.title) setActiveDownloadWatch(null);
+      await finishGameImport(imported);
+    } catch (error) {
+      showToast(readableError(error), "error");
+    } finally {
+      setDownloadImportingId(null);
+    }
+  }
+
+  useEffect(() => {
+    let mounted = true;
+    const refresh = async () => {
+      try {
+        const updated = await api.listManagedDownloads();
+        if (mounted) setManagedDownloads(updated);
+      } catch { /* The launcher can still work without a download manager. */ }
+    };
+    void refresh();
+    const poll = window.setInterval(() => void refresh(), 1800);
+    return () => { mounted = false; window.clearInterval(poll); };
+  }, []);
+
   async function importArchive() {
     if (archiveBusy) return;
     setArchiveBusy(true);
@@ -2211,6 +2261,11 @@ export default function App() {
           </div>
 
           <div className="top-actions">
+            <button className="button secondary" onClick={() => setDownloadManagerOpen((open) => !open)}
+              title="Dusk native download manager: direct HTTPS archive URLs, progress, cancellation and import">
+              <Archive size={16} />
+              Downloads{managedDownloads.some((item) => item.status === "downloading") ? " •" : ""}
+            </button>
             <button className="button secondary" onClick={() => void importArchive()} disabled={archiveBusy} title="Extract ZIP, RAR, or 7z archives with Python fallback">
               {archiveBusy ? <RefreshCw className="spin" size={16} /> : <Archive size={16} />}
               {archiveBusy ? "Extracting…" : "Import archive"}
@@ -2227,6 +2282,72 @@ export default function App() {
         </header>
 
         <div className="content">
+          {downloadManagerOpen && (
+            <section className="native-download-manager" aria-label="Native download manager">
+              <div className="native-download-heading">
+                <div>
+                  <strong>Download manager</strong>
+                  <p>Download game archives directly inside Dusk. Paste an actual HTTPS file URL, not a download-host webpage. Game sites requiring login or special download steps still need the embedded browser.</p>
+                </div>
+                <button className="button ghost" onClick={() => setDownloadManagerOpen(false)} aria-label="Close downloads"><X size={16} /></button>
+              </div>
+              <form className="native-download-form" onSubmit={(event) => { event.preventDefault(); void startNativeDownload(); }}>
+                <label>Direct HTTPS archive URL
+                  <input type="url" value={downloadUrl} required placeholder="https://files.example.org/MyGame.zip"
+                    onChange={(event) => {
+                      const value = event.target.value;
+                      setDownloadUrl(value);
+                      try {
+                        const last = decodeURIComponent(new URL(value).pathname.split("/").pop() || "");
+                        if (/\.(zip|rar|7z|7z\.001)$/i.test(last)) setDownloadFileName(last);
+                      } catch { /* A partial URL is allowed while typing. */ }
+                    }} />
+                </label>
+                <label>Archive filename
+                  <input value={downloadFileName} required placeholder="MyGame.zip"
+                    onChange={(event) => setDownloadFileName(event.target.value)} />
+                </label>
+                <label>Game title
+                  <input value={downloadGameTitle} required placeholder="My Game"
+                    onChange={(event) => setDownloadGameTitle(event.target.value)} />
+                </label>
+                <button className="button primary" type="submit" disabled={downloadStarting}>
+                  {downloadStarting ? "Connecting…" : "Start download"}
+                </button>
+              </form>
+              <div className="native-download-list">
+                {managedDownloads.length === 0 && <p className="native-download-empty">No downloads yet.</p>}
+                {managedDownloads.map((item) => (
+                  <div className="native-download-job" key={item.id}>
+                    <div className="native-download-job-header">
+                      <strong>{item.filename}</strong>
+                      <span>{item.status === "downloading" ? "Downloading" : item.status === "completed" ? "Ready to import" : item.status === "cancelled" ? "Cancelled" : "Failed"}</span>
+                    </div>
+                    <div className="native-download-meter">
+                      <progress max={item.totalBytes || 1} value={item.receivedBytes} />
+                      <span>
+                        {formatBytes(item.receivedBytes)}{item.totalBytes ? " / " + formatBytes(item.totalBytes) + " (" + Math.min(100, Math.floor(item.receivedBytes * 100 / item.totalBytes)) + "%)" : ""}
+                      </span>
+                    </div>
+                    {item.error && <p className="native-download-error">{item.error}</p>}
+                    <div className="native-download-job-actions">
+                      {item.status === "downloading" && (
+                        <button className="button ghost" onClick={() => void api.cancelManagedDownload(item.id).catch((error: unknown) => showToast(readableError(error), "error"))}>
+                          Cancel
+                        </button>
+                      )}
+                      {item.status === "completed" && (
+                        <button className="button secondary" disabled={downloadImportingId !== null}
+                          onClick={() => void importNativeDownload(item)}>
+                          {downloadImportingId === item.id ? "Importing…" : "Extract & add to library"}
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </section>
+          )}
           {loading ? (
             <div className="loading-screen">
               <div className="brand-mark">
