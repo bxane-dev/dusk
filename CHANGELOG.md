@@ -2,6 +2,17 @@
 
 All notable Dusk changes are documented here.
 
+## 1.8.1 - 2026-10-09
+
+Correct game download link selection.
+
+- Get game identifies the complete-game Hosters link from each Online-Fix article instead of opening unrelated downloads.
+- Provides Online-Fix Drive as a backup mirror when the primary link is unavailable.
+- Differentiates full-game links from fix-only files, torrents, and advertisements.
+- Restricts link selection to verified official mirror hostnames and secure HTTPS URLs.
+- Associates completed downloads with the game title, preventing unrelated archives from being imported accidentally.
+- Preserves 1.8.0 cloud playtime sync.
+
 ## 1.8.0 - 2026-10-09
 
 Cross-device playtime synchronization and Online-Fix game search repair.
