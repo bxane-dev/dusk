@@ -226,7 +226,8 @@ pub(crate) fn start_managed_download(url: String, filename: String, title: Strin
     }
     map.insert(id.clone(), DownloadJob { info: info.clone(), cancel: false });
     drop(map);
-    thread::spawn(move || download_file(id, parsed, info.filename, target));
+    let worker_filename = info.filename.clone();
+    thread::spawn(move || download_file(id, parsed, worker_filename, target));
     Ok(info)
 }
 
