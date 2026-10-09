@@ -2648,3 +2648,21 @@ button:disabled { cursor: not-allowed; opacity: 0.55; }
 .native-download-meter progress { min-width: 0; flex: 1; height: 7px; accent-color: var(--accent, #8054eb); }
 .native-download-error { font-size: 12px; color: #ff9898; margin: 7px 0; overflow-wrap: anywhere; }
 .native-download-job-actions { display: flex; justify-content: flex-end; gap: 8px; }
+
+/* Actual Hosters game files, displayed without launching an untrusted popup */
+.web-hoster-files {
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+  width: min(100%, 480px);
+  padding: 12px;
+  border: 1px solid var(--border, #35333b);
+  border-radius: 10px;
+  background: var(--surface, #17171d);
+}
+.web-hoster-files > strong { font-size: 12px; }
+.web-hoster-files > p { font-size: 12px; color: var(--muted, #aaa); margin: 0; }
+.web-hoster-file { display: flex; gap: 10px; align-items: center; justify-content: space-between; flex-wrap: wrap; }
+.web-hoster-file-info { display: flex; flex-direction: column; gap: 3px; min-width: 0; max-width: 100%; }
+.web-hoster-file-info span { overflow-wrap: anywhere; font-size: 11px; }
+.web-hoster-file-info small { color: var(--muted, #aaa); font-size: 10px; }
