@@ -2,6 +2,17 @@
 
 All notable Dusk changes are documented here.
 
+## 1.7.10 - 2026-10-09
+
+In-app game discovery, managed archive imports, and a Windows installer refresh.
+
+- Added Online-Fix game listing search and an isolated in-app browser window, with an external-browser fallback.
+- Added download-folder monitoring after opening a listing, for supported completed archives.
+- Added managed ZIP, RAR, 7z, and multipart archive extraction, with 7-Zip and Python fallbacks where available.
+- Added archive-path and symlink checks, extraction size/entry limits, and automatic library registration for single-executable portable games.
+- Extracted installers require explicit approval before execution. Sites with gated downloads may still need manual steps.
+- Builds a Windows NSIS installer for this release.
+
 ## 1.7.9 - 2026-10-09
 
 Account login placeholder cleanup.
