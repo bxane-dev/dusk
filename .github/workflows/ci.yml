@@ -24,6 +24,11 @@ jobs:
           workspaces: ./src-tauri -> target
       - name: Install frontend dependencies
         run: npm install
+      - name: Test embedded browser link handling and ad blocking
+        shell: pwsh
+        run: |
+          node scripts/test-online-fix-navigation.cjs
+          node scripts/test-online-fix-adblock.cjs
       - name: Build frontend
         run: npm run build
       - name: Check Tauri integration
