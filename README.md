@@ -2,7 +2,7 @@
 
 Dusk is a local-first Windows game launcher built with Tauri, Rust, React, TypeScript, and SQLite.
 
-**Current version: 1.8.1**
+**Current version: 1.8.2**
 
 It scans real local game installations, launches games, tracks sessions it can observe, and keeps the library database on the user's PC. Dusk does not ship with fake games or seeded playtime.
 
@@ -66,6 +66,26 @@ returns. Local game executable paths stay on the PC.
 Guest accounts remain local-only. Session duration is counted only when Dusk
 can observe the launched process. Sync runs automatically when refreshing the
 library and periodically while online.
+
+## Automatic archive link selection (v1.8.2)
+
+**Get game** now opens the listed game's Online-Fix Drive source and enables a
+conservative auto-selector in a separate, isolated Dusk window. When the host
+makes ordinary game archive links available, Dusk selects matching ZIP, RAR,
+and 7z parts, and saves supported WebView downloads into the user's standard
+Downloads directory. The existing download watcher imports files after they
+have completed.
+
+Dusk does not click advertisements, complete content-locker tasks, bypass
+authentication, or guess URLs. Some hosts hide downloads behind JavaScript,
+redirects, or unsupported file listings; in those cases finish the site's steps
+or select the download manually. The auto-selector only runs on exact official
+Drive and Hosters domains, and it ignores fixes, updates, unrelated filenames,
+and unsafe files. Auto-selection is best-effort and may require the external
+browser fallback if the site rejects embedded browsing.
+
+**Online-Fix Drive is the default for full games.** Hosters may offer only
+fixes and updates. Use Hosters only when the page clearly offers the full game.
 
 ## Selecting the correct full-game download (v1.8.1)
 
