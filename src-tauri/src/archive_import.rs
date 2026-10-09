@@ -1,6 +1,6 @@
 use super::*;
 use std::process::Stdio;
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::time::UNIX_EPOCH;
 
 const MAX_UNPACKED_BYTES: u64 = 20 * 1024 * 1024 * 1024;
 const MAX_ARCHIVE_FILES: usize = 50_000;
@@ -99,7 +99,8 @@ fn safe_archive_entry(name: &str) -> bool {
 }
 
 fn verify_7zip_listing(output: &str) -> Result<(), String> {
-    let body = output.splitn(2, "----------").nth(1)
+    let normalized = output.replace("\r\n", "\n");
+    let body = normalized.splitn(2, "----------").nth(1)
         .ok_or_else(|| "The archive contains no readable entries.".to_string())?;
     let mut count = 0usize;
     let mut total = 0u64;
@@ -354,6 +355,41 @@ fn downloads_dir() -> Result<PathBuf, String> {
         .map_err(|error| format!("Downloads folder not available: {error}"))
 }
 
+// Sum all currently available multipart volumes. If a later volume arrives, the
+// reported size changes and the frontend retries after the entire group settles.
+fn combined_multipart_size(first: &Path, filename: &str) -> Option<u64> {
+    let lower = filename.to_ascii_lowercase();
+    let (prefix, ending) = if let Some(pos) = lower.rfind(".part") {
+        if lower.ends_with(".rar") && lower[pos + 5..lower.len() - 4].chars().all(|c| c.is_ascii_digit()) {
+            (&lower[..pos + 5], ".rar")
+        } else {
+            return None;
+        }
+    } else if lower.ends_with(".7z.001") {
+        (&lower[..lower.len() - 3], "")
+    } else {
+        return None;
+    };
+    let mut size = 0u64;
+    let mut found = 0usize;
+    for entry in fs::read_dir(first.parent()?).ok()? {
+        let entry = entry.ok()?;
+        let name = entry.file_name().to_string_lossy().to_ascii_lowercase();
+        if !name.starts_with(prefix) { continue; }
+        let rest = &name[prefix.len()..];
+        if name.ends_with(".crdownload") || name.ends_with(".part") || name.ends_with(".tmp") {
+            return None;
+        }
+        let volume = if ending.is_empty() { rest } else { rest.strip_suffix(ending)? };
+        if volume.is_empty() || !volume.chars().all(|c| c.is_ascii_digit()) { continue; }
+        let meta = entry.metadata().ok()?;
+        if !meta.is_file() { continue; }
+        found += 1;
+        size = size.checked_add(meta.len())?;
+    }
+    if found > 0 { Some(size) } else { None }
+}
+
 #[tauri::command]
 pub(crate) async fn list_recent_game_archives(since_ms: u64) -> Result<Vec<RecentGameArchive>, String> {
     tauri::async_runtime::spawn_blocking(move || {
@@ -371,11 +407,12 @@ pub(crate) async fn list_recent_game_archives(since_ms: u64) -> Result<Vec<Recen
             let modified_at_ms = freshest.duration_since(UNIX_EPOCH).unwrap_or_default().as_millis() as u64;
             if modified_at_ms + 1000 < since_ms { continue; }
             if freshest.elapsed().unwrap_or_default() < Duration::from_secs(8) { continue; }
-            let filename = path.file_name().unwrap_or_default().to_string_lossy().into_owned();
+            let filename = path.file_name().and_then(|name| name.to_str()).unwrap_or("archive").to_string();
+            let size_bytes = combined_multipart_size(&path, &filename).unwrap_or(metadata.len());
             archives.push(RecentGameArchive {
                 path: path.to_string_lossy().into_owned(),
                 filename,
-                size_bytes: metadata.len(),
+                size_bytes,
                 modified_at_ms,
             });
         }
@@ -383,4 +420,27 @@ pub(crate) async fn list_recent_game_archives(since_ms: u64) -> Result<Vec<Recen
         archives.truncate(30);
         Ok::<_, String>(archives)
     }).await.map_err(|error| error.to_string())?
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn refuses_unsafe_archive_paths() {
+        assert!(!safe_archive_entry("../game.exe"));
+        assert!(!safe_archive_entry("games/../../bad.exe"));
+        assert!(!safe_archive_entry("C:\\Windows\\file.exe"));
+        assert!(!safe_archive_entry("/etc/passwd"));
+        assert!(!safe_archive_entry("games:file"));
+        assert!(safe_archive_entry("game/bin/launch.exe"));
+    }
+
+    #[test]
+    fn parses_7zip_listings_with_windows_newlines() {
+        let listing = "Listing archive: demo.7z\r\n----------\r\nPath = Game/one.exe\r\nSize = 100\r\n\r\nPath = Game/two.dll\r\nSize = 200\r\n\r\n";
+        assert!(verify_7zip_listing(listing).is_ok());
+        let unsafe_listing = "Listing archive: demo.7z\r\n----------\r\nPath = ../escape.exe\r\nSize = 1\r\n\r\n";
+        assert!(verify_7zip_listing(unsafe_listing).is_err());
+    }
 }
