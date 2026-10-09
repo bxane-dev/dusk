@@ -97,7 +97,11 @@ function matchesGameArchive(filename: string, title: string) {
     .replace(/[^\p{L}\p{N}]+/gu, " ").trim();
   const tokens = clean(title).split(" ").filter((part) => part.length >= 2);
   const file = clean(filename.replace(/\.(zip|rar|7z)(\.\d+)?$/i, ""));
-  return tokens.length > 0 && tokens.every((token) => file.split(" ").includes(token));
+  const fileWords = file.split(" ");
+  // Manually requested fix/repair/update archives are valid downloads, but
+  // they are not complete games and should never be auto-registered.
+  if (fileWords.some((word) => ["fix", "repair", "update", "updates", "patch", "crack", "redist"].includes(word))) return false;
+  return tokens.length > 0 && tokens.every((token) => fileWords.includes(token));
 }
 
 const EMPTY_STATS: Stats = {
