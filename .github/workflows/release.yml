@@ -84,18 +84,19 @@ jobs:
           tagName: dusk-v__VERSION__
           releaseName: Dusk v__VERSION__
           releaseBody: |
-            # Dusk v1.8.1
+            # Dusk v1.8.2
 
-            ## Improved game download links
-            - Get game now detects the full-game Hosters URL from the selected Online-Fix listing.
-            - Offers the Drive mirror as an alternative and ignores fix-only, torrent, and advertising links.
-            - Associates completed archives with the selected game's title before auto-import.
-            - Retains v1.8.0 cloud-synced playtime and Online-Fix native search.
+            ## Automatic archive file selection
+            - Get game opens Online-Fix Drive and automatically selects accessible archive downloads for the chosen title.
+            - Selects matching ZIP, RAR, 7z and multipart file links from supported official host pages.
+            - Downloads handled inside Dusk are directed into the Downloads folder for monitored import.
+            - Fixes, ads, updates, and unrelated archive files are excluded.
+            - Includes the v1.8.0 cloud-playtime synchronization and v1.8.1 source verification improvements.
 
-            ## Notes
-            Download hosts may still need login or manual interaction. Dusk does not bypass gated downloads.
-            Extracting files remains separate from launching an installer, which requires your approval.
-            Windows may show an unrecognized-publisher warning if certificate signing is not configured.
+            ## Limits
+            Login, ad-locker unlocks and some host-controlled file selections may still require manual action.
+            No authentication or download restriction is bypassed. No untrusted installer runs without confirmation.
+            The Windows installer may display a SmartScreen warning if unsigned.
           releaseDraft: false
           prerelease: false
           uploadUpdaterJson: false
