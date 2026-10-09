@@ -47,6 +47,7 @@ import {
   useState,
 } from "react";
 import { convertFileSrc } from "@tauri-apps/api/core";
+import { getVersion } from "@tauri-apps/api/app";
 import duskLogo from "./assets/dusk-logo.svg";
 import AccountProfileSettings from "./AccountProfileSettings";
 import { getCurrentWindow } from "@tauri-apps/api/window";
@@ -919,6 +920,15 @@ function GameDetail(props: {
 }
 
 export default function App() {
+  const [appVersion, setAppVersion] = useState<string | null>(null);
+  useEffect(() => {
+    let cancelled = false;
+    void getVersion()
+      .then((version) => { if (!cancelled) setAppVersion(version); })
+      .catch(() => { if (!cancelled) setAppVersion(null); });
+    return () => { cancelled = true; };
+  }, []);
+
   const [view, setView] = useState<View>("home");
   const [games, setGames] = useState<GameRecord[]>([]);
   const [stats, setStats] = useState<Stats>(EMPTY_STATS);
@@ -3020,7 +3030,7 @@ export default function App() {
                       <img className="brand-logo-image" src={duskLogo} alt="" draggable={false} />
                     </div>
                     <div>
-                      <strong>Dusk 1.6.11 · bxane</strong>
+                      <strong>Dusk{appVersion ? ` ${appVersion}` : ""} · bxane</strong>
                       <span>Open code · github.com/bxanedot/dusk</span>
                       <button className="about-creator-pill" onClick={() => void openExternal("creator")}>
                         bxane · guns.lol/bxane <ExternalLink size={11} />
