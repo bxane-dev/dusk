@@ -2201,7 +2201,7 @@ export default function App() {
                 </div>
               )}
               {!activeDownloadWatch && downloadWatchMessage && <p className="web-results-note" role="status">{downloadWatchMessage}</p>}
-              {webError && <div className="inline-error" role="alert">{webError}</div>
+              {webError && <div className="inline-error" role="alert">{webError}</div>}
               {!webLoading && !webError && webResults.length === 0 && (
                 <p className="web-results-empty">No matching listings found. Try the full game title or another keyword.</p>
               )}
