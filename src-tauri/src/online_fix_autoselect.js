@@ -16,7 +16,7 @@
   const words = normalize(gameTitle).split(/\s+/).filter((word) => word.length >= 2);
   if (!words.length) return;
 
-  const forbidden = /\b(fix|repair|updates?|patch|cracks?|redist|trainer|cheats?)\b/i;
+  const forbidden = new Set(["fix", "repair", "update", "updates", "patch", "crack", "cracks", "redist", "trainer", "cheat", "cheats"]);
   const archiveExt = /(?:\.part\d{1,4}\.rar|\.rar|\.7z(?:\.\d{3})?|\.zip)(?:$|[?#])/i;
   const selected = new Set();
   const navigated = new Set();
@@ -37,8 +37,8 @@
     try { path = decodeURIComponent(path); } catch {}
     const label = String(anchor.textContent || anchor.getAttribute("title") || "").trim();
     const candidate = [path.split("/").pop() || "", downloadName, label].join(" ");
-    if (forbidden.test(candidate)) return null;
     const normalized = normalize(candidate);
+    if (normalized.split(/\s+/).some((word) => forbidden.has(word))) return null;
     if (!words.every((word) => normalized.split(/\s+/).includes(word))) return null;
     return { url, candidate, downloadName };
   }
