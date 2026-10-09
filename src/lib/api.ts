@@ -57,8 +57,10 @@ export const api = {
     invoke<Array<{ url: string; label: string; kind: "game" | "mirror" | "torrent" | "fix"; recommended: boolean }>>(
       "get_online_fix_download_links", { listingUrl },
     ),
-  openOnlineFixResult: (url: string) =>
-    invoke<void>("open_online_fix_result", { url }),
+  openOnlineFixResult: (url: string, gameTitle?: string, autoSelect = false) =>
+    invoke<void>("open_online_fix_result", {
+      url, gameTitle: gameTitle || null, autoSelect,
+    }),
   openOnlineFixBrowser: (url: string) =>
     invoke<void>("open_online_fix_browser", { url }),
   openExternalTarget: (target: "creator" | "steam" | "epic" | "gog" | "itch") =>
