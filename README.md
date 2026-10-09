@@ -2,7 +2,7 @@
 
 Dusk is a local-first Windows game launcher built with Tauri, Rust, React, TypeScript, and SQLite.
 
-**Current version: 1.8.6**
+**Current version: 1.8.7**
 
 It scans real local game installations, launches games, tracks sessions it can observe, and keeps the library database on the user's PC. Dusk does not ship with fake games or seeded playtime.
 
@@ -66,6 +66,28 @@ returns. Local game executable paths stay on the PC.
 Guest accounts remain local-only. Session duration is counted only when Dusk
 can observe the launched process. Sync runs automatically when refreshing the
 library and periodically while online.
+
+## One-click game downloads (v1.8.7)
+
+The **Get game** button now retrieves the actual archive choices displayed by
+the Online-Fix Hosters file listing, instead of just opening a Drive/Hosters
+landing page and waiting for a WebView2 popup. Where Hosters exposes a direct
+full-game archive, Dusk starts the file in its **native Downloads** manager
+immediately and displays its transfer progress. Fix/repair/update archives
+are distinguished from full-game files and are never auto-selected. The other
+file providers remain visible as alternate choices.
+
+Trusted file hosts such as FileDitch, FileKeeper, Pixeldrain, Gofile and
+VikingFile may be opened from the embedded browser rather than silently
+blocked. The site-provided safety confirmation is never auto-accepted.
+Unsupported/ad destinations are blocked with a visible notice.
+
+Direct file transfers no longer fail after a fixed 60-second total timeout:
+the timeout now applies when a connection stops delivering data. Browser-only
+and authenticated downloads still require the site's normal interaction.
+When a provider rejects the native downloader, Dusk displays the transfer
+error and the browser fallback remains available. No downloaded installer is
+executed without separate confirmation.
 
 ## Native downloads inside Dusk (v1.8.6)
 
