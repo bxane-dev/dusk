@@ -2618,3 +2618,33 @@ button:disabled { cursor: not-allowed; opacity: 0.55; }
   font-size: 9px;
   line-height: 1.5;
 }
+
+/* Native Downloads panel */
+.native-download-manager {
+  margin: 0 0 24px;
+  padding: 20px;
+  border-radius: 16px;
+  border: 1px solid var(--border, #35333b);
+  background: var(--surface, #17171d);
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+.native-download-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; }
+.native-download-heading strong { font-size: 17px; }
+.native-download-heading p { color: var(--muted, #a0a0a9); font-size: 12px; line-height: 1.5; max-width: 760px; margin: 6px 0 0; }
+.native-download-form { display: flex; align-items: flex-end; flex-wrap: wrap; gap: 12px; }
+.native-download-form label { display: flex; flex-direction: column; gap: 7px; flex: 1 1 160px; font-size: 12px; font-weight: 600; color: var(--muted, #a0a0a9); }
+.native-download-form label:first-child { flex: 3 1 280px; }
+.native-download-form input { box-sizing: border-box; min-width: 0; width: 100%; color: var(--text, #fff); background: var(--background, #101014); padding: 10px 12px; border: 1px solid var(--border, #35333b); border-radius: 9px; }
+.native-download-form input:focus-visible { outline: 2px solid var(--accent, #8054eb); outline-offset: 1px; }
+.native-download-form > button { flex: 0 0 auto; }
+.native-download-list { display: flex; flex-direction: column; gap: 10px; }
+.native-download-empty { font-size: 12px; color: var(--muted, #a0a0a9); margin: 0; }
+.native-download-job { border: 1px solid var(--border, #35333b); padding: 12px 14px; border-radius: 10px; }
+.native-download-job-header { display: flex; align-items: center; justify-content: space-between; gap: 12px; font-size: 13px; overflow-wrap: anywhere; }
+.native-download-job-header > span { flex-shrink: 0; font-size: 11px; color: var(--muted, #a0a0a9); }
+.native-download-meter { display: flex; align-items: center; gap: 10px; margin: 9px 0; color: var(--muted, #a0a0a9); font-size: 11px; }
+.native-download-meter progress { min-width: 0; flex: 1; height: 7px; accent-color: var(--accent, #8054eb); }
+.native-download-error { font-size: 12px; color: #ff9898; margin: 7px 0; overflow-wrap: anywhere; }
+.native-download-job-actions { display: flex; justify-content: flex-end; gap: 8px; }
