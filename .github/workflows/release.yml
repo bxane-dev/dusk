@@ -96,7 +96,7 @@ jobs:
             - Download progress and errors appear in the native Downloads panel.
             - FileDitch, FileKeeper, Pixeldrain, Gofile and VikingFile are no longer silently blocked.
             - Fix-only/update archives are not auto-selected. Provider safety prompts remain manual.
-            - Downloads no longer stop at 60 seconds while data is arriving.
+            - Downloads no longer stop at a fixed 60-second request deadline.
             - Unsupported download links now produce a visible message instead of doing nothing.
 
             ## Limitations
