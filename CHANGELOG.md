@@ -2,6 +2,16 @@
 
 All notable Dusk changes are documented here.
 
+## 1.8.6 - 2026-10-10
+
+Add a standalone, native in-app download manager.
+
+- Stream ZIP, RAR and 7z game archives from direct public HTTPS links inside Dusk.
+- Show live byte progress, total size where known, transfer failures and cancellation.
+- Download into the user's standard Downloads folder and extract/register completed archives on request.
+- Reject obvious HTML/ad/invalid-file responses, unsafe paths, local/private URLs and executable downloads.
+- Preserve the embedded browser for hosts that require sign-in or session-specific download links.
+
 ## 1.8.5 - 2026-10-10
 
 Fix downloads that fail inside Online-Fix Hosters and Drive pages.
