@@ -129,10 +129,10 @@ fn download_file(id: String, url: reqwest::Url, filename: String, target: std::p
     let output = (|| -> Result<(), String> {
         let client = reqwest::blocking::Client::builder()
             .connect_timeout(Duration::from_secs(15))
-            // Request timeout used to abort EVERY download after 60 seconds,
-            // even if gigabytes were still arriving. Read timeout resets on
-            // each successful chunk and only catches stalled transfers.
-            .read_timeout(Duration::from_secs(90))
+            // Large game downloads may take hours. Reqwest's timeout covers
+            // the WHOLE response, so disable that deadline; connect_timeout
+            // still bounds the initial connection attempt.
+            .timeout(None::<Duration>)
             .redirect(reqwest::redirect::Policy::custom(|attempt| {
                 if attempt.previous().len() > 8 || !valid_public_https(attempt.url()) {
                     attempt.stop()
