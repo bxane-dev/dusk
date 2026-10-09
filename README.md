@@ -83,7 +83,7 @@ blocked. The site-provided safety confirmation is never auto-accepted.
 Unsupported/ad destinations are blocked with a visible notice.
 
 Direct file transfers no longer fail after a fixed 60-second total timeout:
-the timeout now applies when a connection stops delivering data. Browser-only
+the fixed overall request deadline is disabled; connection setup still has a timeout. Browser-only
 and authenticated downloads still require the site's normal interaction.
 When a provider rejects the native downloader, Dusk displays the transfer
 error and the browser fallback remains available. No downloaded installer is
