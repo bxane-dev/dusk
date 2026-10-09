@@ -19,7 +19,19 @@
     if (typeof value !== "string" || !value.trim()) return null;
     try {
       const url = new URL(value, location.href);
-      return url.protocol === "https:" && officialHosts.has(url.hostname)
+      const suffix = url.pathname.toLowerCase();
+      const looksLikeArchive = [".zip", ".rar", ".7z", ".001"]
+        .some((extension) => suffix.endsWith(extension));
+      const blockedAdHost = [
+        "exoclick.com", "exosrv.com", "magsrv.com", "realsrv.com",
+        "juicyads.com", "adsterra.com", "popads.net", "popcash.net",
+        "propellerads.com", "onclickads.net",
+      ].some((name) => url.hostname === name || url.hostname.endsWith("." + name));
+      // Signed archive links can originate from other HTTPS CDN domains.
+      // Do not navigate to arbitrary third-party HTML/ad landing pages.
+      return url.protocol === "https:"
+        && !blockedAdHost
+        && (officialHosts.has(url.hostname) || looksLikeArchive)
         ? url : null;
     } catch {
       return null;
