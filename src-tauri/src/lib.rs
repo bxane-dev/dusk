@@ -1,4 +1,5 @@
 mod archive_import;
+mod download_manager;
 
 use chrono::{DateTime, Utc};
 use discord_rich_presence::{activity, DiscordIpc, DiscordIpcClient};
@@ -6276,6 +6277,9 @@ pub fn run() {
             archive_import::import_game_archive,
             archive_import::import_downloaded_game_archive,
             archive_import::list_recent_game_archives,
+            download_manager::start_managed_download,
+            download_manager::list_managed_downloads,
+            download_manager::cancel_managed_download,
             run_game_installer,
             open_external_target,
             search_online_fix_games,
