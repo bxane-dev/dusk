@@ -329,6 +329,18 @@ button:disabled { cursor: not-allowed; opacity: 0.55; }
   backdrop-filter: blur(16px);
 }
 
+.web-results-page { padding: 28px; max-width: 1050px; }
+.web-results-heading { display: flex; justify-content: space-between; gap: 16px; align-items: center; margin-bottom: 22px; }
+.web-results-heading h1 { margin: 7px 0; font-size: 25px; }
+.web-results-heading p, .web-results-empty, .web-results-note { color: var(--muted); font-size: 13px; }
+.web-results-list { display: grid; gap: 12px; }
+.web-result-card { display: flex; align-items: center; justify-content: space-between; gap: 22px; background: var(--surface); border: 1px solid var(--border); padding: 20px; border-radius: 14px; }
+.web-result-card h3 { margin: 0 0 8px; font-size: 16px; }
+.web-result-card p { color: var(--muted); font-size: 12px; line-height: 1.5; margin: 0 0 8px; }
+.web-result-card span { font-size: 11px; color: var(--accent); }
+.web-result-card .button { flex-shrink: 0; }
+.web-results-note { margin-top: 20px; }
+@media (max-width: 700px) { .web-result-card { align-items: flex-start; flex-direction: column; } }
 .search-controls {
   display: flex;
   align-items: center;
