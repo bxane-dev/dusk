@@ -2,7 +2,7 @@
 
 Dusk is a local-first Windows game launcher built with Tauri, Rust, React, TypeScript, and SQLite.
 
-**Current version: 1.8.2**
+**Current version: 1.8.3**
 
 It scans real local game installations, launches games, tracks sessions it can observe, and keeps the library database on the user's PC. Dusk does not ship with fake games or seeded playtime.
 
@@ -66,6 +66,20 @@ returns. Local game executable paths stay on the PC.
 Guest accounts remain local-only. Session duration is counted only when Dusk
 can observe the launched process. Sync runs automatically when refreshing the
 library and periodically while online.
+
+## Online-Fix browser click repair and ad blocking (v1.8.3)
+
+The isolated in-app Online-Fix browser now opens trusted Hosters and Drive
+`target="_blank"` links in the current Dusk download window. A lightweight
+ad/content filter hides recognizable advertisements, strips known ad embeds and
+blocks known ad-network link clicks. Native navigation and popup handlers deny
+external redirects and new ad windows. It also tries to hide adult-content
+advertising loaded on the game listings, without blocking official game links.
+
+This protects **Dusk's in-app Online-Fix browser only**, not other apps,
+a normal web browser, or every ad request. It is not a full system-wide
+network ad blocker. Third-party download hosts not explicitly allowed in Dusk
+can still be opened using the external browser fallback.
 
 ## Automatic archive link selection (v1.8.2)
 
