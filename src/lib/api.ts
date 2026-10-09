@@ -37,6 +37,12 @@ export const api = {
     invoke<{ attempted: number; updated: number; remaining: number }>("refresh_missing_covers"),
   chooseExecutable: () => invoke<string | null>("choose_executable"),
   importGameArchive: () => invoke<{ directory: string; game: GameRecord | null; installers: string[] } | null>("import_game_archive"),
+  listRecentGameArchives: (sinceMs: number) =>
+    invoke<Array<{ path: string; filename: string; sizeBytes: number; modifiedAtMs: number }>>("list_recent_game_archives", { sinceMs }),
+  importDownloadedGameArchive: (archivePath: string, title: string, password?: string) =>
+    invoke<{ directory: string; game: GameRecord | null; installers: string[] }>("import_downloaded_game_archive", {
+      archivePath, title, password: password || null,
+    }),
   chooseGameInstaller: () => invoke<string | null>("choose_game_installer"),
   runGameInstaller: (installerPath: string) =>
     invoke<void>("run_game_installer", { installerPath }),
