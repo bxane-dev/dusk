@@ -89,16 +89,18 @@ jobs:
           tagName: dusk-v__VERSION__
           releaseName: Dusk v__VERSION__
           releaseBody: |
-            # Dusk v1.8.4
+            # Dusk v1.8.5 — Hosters and Drive download fixes
 
-            ## Version display fix
-            - The About section now reads the real installed app version from Tauri.
-            - Fixes "Dusk 1.6.11" appearing in newer releases.
-            - Includes the v1.8.3 Hosters/Drive click repair and embedded ad filtering.
+            - Fixes downloads blocked when Online-Fix files are delivered from third-party HTTPS CDNs or official-site blobs.
+            - Handles WebView2 ZIP, RAR and 7z downloads in manual and automatic download windows.
+            - Keeps genuine download controls accessible on Hosters and Drive pages.
+            - Allows manually downloaded fix/repair archives without importing them as full games.
+            - Adds an external browser fallback for each Drive/Hosters download link.
 
             ## Notes
-            This installer is for Windows x64. Windows may show a SmartScreen
-            warning if code signing is not configured.
+            Some hosters still require login or downloads in the system browser.
+            Dusk does not bypass login gates, hidden download links or malware prompts.
+            Unsigned installers may trigger Windows SmartScreen.
           releaseDraft: false
           prerelease: false
           uploadUpdaterJson: false
