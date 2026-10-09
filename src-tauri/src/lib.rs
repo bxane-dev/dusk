@@ -2964,6 +2964,139 @@ mod online_fix_search_tests {
     }
 }
 
+
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+struct OnlineFixDownloadLink {
+    url: String,
+    label: String,
+    kind: String,
+    recommended: bool,
+}
+
+fn parse_online_fix_download_links(html: &str) -> Result<Vec<OnlineFixDownloadLink>, String> {
+    // The game's article contains the real download mirrors. Navigation,
+    // comments and sidebar ads are outside this section and are not inspected.
+    let article = html
+        .split("class=\"full-story-content\"")
+        .nth(1)
+        .ok_or_else(|| "This listing does not contain a game download section.".to_string())?;
+    let article = article.split("<!--QuoteEEnd-->").next().unwrap_or(article);
+    let anchor = Regex::new(r#"(?s)<a\b[^>]*\bhref="([^"]+)"[^>]*>(.*?)</a>"#)
+        .map_err(|error| error.to_string())?;
+    let tags = Regex::new(r"<[^>]*>").map_err(|error| error.to_string())?;
+    let mut found: Vec<OnlineFixDownloadLink> = Vec::new();
+    for hit in anchor.captures_iter(article) {
+        let url = xml_unescape(hit.get(1).unwrap().as_str());
+        let label = xml_unescape(
+            &tags.replace_all(hit.get(2).unwrap().as_str(), "")
+        ).trim().to_string();
+        let Ok(parsed) = reqwest::Url::parse(&url) else { continue; };
+        if parsed.scheme() != "https" || !matches!(parsed.port(), None | Some(2053)) {
+            continue;
+        }
+        let kind = match parsed.host_str() {
+            Some("hosters.online-fix.me") if label.contains("Hosters") => "game",
+            Some("drive.online-fix.me") if label.contains("Drive") => "mirror",
+            Some("uploads.online-fix.me") if parsed.path().starts_with("/torrents/") && label.to_lowercase().contains("torrent") => "torrent",
+            Some("uploads.online-fix.me") if parsed.path().starts_with("/uploads/") && label.to_lowercase().contains("фикс") => "fix",
+            _ => continue,
+        };
+        if !found.iter().any(|entry| entry.url == url) {
+            found.push(OnlineFixDownloadLink {
+                url,
+                label: match kind {
+                    "game" => "Full game · Hosters",
+                    "mirror" => "Full game · Drive mirror",
+                    "torrent" => "Torrent · manual download",
+                    _ => "Fix-only files · not the full game",
+                }.into(),
+                kind: kind.into(),
+                recommended: kind == "game",
+            });
+        }
+    }
+    found.sort_by_key(|entry| match entry.kind.as_str() {
+        "game" => 0, "mirror" => 1, "torrent" => 2, _ => 3
+    });
+    Ok(found)
+}
+
+#[tauri::command]
+async fn get_online_fix_download_links(listing_url: String) -> Result<Vec<OnlineFixDownloadLink>, String> {
+    let parsed = verified_online_fix_listing_url(&listing_url)?;
+    tauri::async_runtime::spawn_blocking(move || {
+        let client = reqwest::blocking::Client::builder()
+            .connect_timeout(Duration::from_secs(8))
+            .timeout(Duration::from_secs(20))
+            .user_agent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) Dusk/1.8")
+            .build()
+            .map_err(|error| error.to_string())?;
+        let response = client.get(parsed)
+            .send()
+            .map_err(|error| format!("Could not load game download sources: {error}"))?
+            .error_for_status()
+            .map_err(|error| format!("The game listing was not available: {error}"))?;
+        let body = response.text().map_err(|error| error.to_string())?;
+        if body.len() > 4_000_000 {
+            return Err("The game listing is too large to inspect safely.".into());
+        }
+        parse_online_fix_download_links(&body)
+    }).await.map_err(|error| error.to_string())?
+}
+
+fn verified_online_fix_listing_url(url: &str) -> Result<reqwest::Url, String> {
+    let parsed = reqwest::Url::parse(url).map_err(|_| "Invalid game listing URL.")?;
+    if parsed.scheme() != "https"
+        || !matches!(parsed.host_str(), Some(
+            "online-fix.me" | "www.online-fix.me"
+            | "hosters.online-fix.me" | "drive.online-fix.me"
+            | "uploads.online-fix.me"
+        ))
+        || !matches!(parsed.port(), None | Some(2053))
+        || !parsed.path().starts_with("/games/")
+        || !parsed.path().ends_with(".html")
+    {
+        return Err("Only Online-Fix game listing pages are accepted.".into());
+    }
+    Ok(parsed)
+}
+
+#[cfg(test)]
+mod online_fix_download_tests {
+    use super::*;
+
+    #[test]
+    fn ranks_full_game_before_fix_and_torrent() {
+        let sample = r#"<div class="full-story-content"><div itemprop="articleBody">
+           <a href="https://uploads.online-fix.me:2053/uploads/How%20to%20Fish/">Скачать фикс с сервера</a>
+           <a href="https://uploads.online-fix.me:2053/torrents/How%20to%20Fish/">Скачать Torrent</a>
+           <a target="_blank" href="https://drive.online-fix.me:2053/How%20to%20Fish">Скачать с Online-Fix Drive</a>
+           <a target="_blank" href="https://hosters.online-fix.me:2053/How%20to%20Fish">Скачать с Online-Fix Hosters</a>
+           <!--QuoteEEnd--></div>"#;
+        let sources = parse_online_fix_download_links(sample).unwrap();
+        assert_eq!(sources.len(), 4);
+        assert_eq!(sources[0].kind, "game");
+        assert!(sources[0].recommended);
+        assert_eq!(sources[1].kind, "mirror");
+        assert_eq!(sources[2].kind, "torrent");
+        assert_eq!(sources[3].kind, "fix");
+    }
+
+    #[test]
+    fn ignores_ad_hosts_unrelated_links_and_bad_urls() {
+        let sample = r#"<a href="https://hosters.online-fix.me:2053/AD">Скачать с Online-Fix Hosters</a>
+           <div class="full-story-content">
+           <a href="https://advertising.example/download">Скачать с Online-Fix Hosters</a>
+           <a href="http://hosters.online-fix.me:2053/Game">Скачать с Online-Fix Hosters</a>
+           <a href="https://evilhosters.online-fix.me.evil.org/Game">Скачать с Online-Fix Hosters</a>
+           <!--QuoteEEnd--></div>"#;
+        assert!(parse_online_fix_download_links(sample).unwrap().is_empty());
+        assert!(verified_online_fix_listing_url("https://online-fix.me/guides/faq").is_err());
+        assert!(verified_online_fix_listing_url("https://online-fix.me.evil.com/games/g.html").is_err());
+    }
+}
+
 fn verified_online_fix_url(url: &str) -> Result<reqwest::Url, String> {
     let parsed = reqwest::Url::parse(url).map_err(|_| "Invalid listing URL.")?;
     if parsed.scheme() != "https"
@@ -5984,6 +6117,7 @@ pub fn run() {
             run_game_installer,
             open_external_target,
             search_online_fix_games,
+            get_online_fix_download_links,
             open_online_fix_result,
             open_online_fix_browser,
             choose_executable,
