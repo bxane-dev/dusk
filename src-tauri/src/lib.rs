@@ -1,3 +1,5 @@
+mod archive_import;
+
 use chrono::{DateTime, Utc};
 use discord_rich_presence::{activity, DiscordIpc, DiscordIpcClient};
 use regex::Regex;
@@ -2819,123 +2821,6 @@ fn delete_profile(app: AppHandle, profile_id: String) -> Result<ProfileRecord, S
     get_active_profile(app)
 }
 
-
-#[derive(Debug, Serialize)]
-#[serde(rename_all = "camelCase")]
-struct ImportedGameArchive {
-    directory: String,
-    game: Option<GameRecord>,
-    installers: Vec<String>,
-}
-
-#[tauri::command]
-async fn import_game_archive(app: AppHandle) -> Result<Option<ImportedGameArchive>, String> {
-    let archive = tauri::async_runtime::spawn_blocking(|| {
-        rfd::FileDialog::new()
-            .add_filter("Game archive", &["zip"])
-            .pick_file()
-    }).await.map_err(|error| error.to_string())?;
-    let Some(archive) = archive else { return Ok(None) };
-
-    tauri::async_runtime::spawn_blocking(move || {
-        let root = app_data_dir(&app)?.join("managed-games");
-        fs::create_dir_all(&root).map_err(|error| error.to_string())?;
-        let name = archive.file_stem()
-            .and_then(|value| value.to_str())
-            .unwrap_or("Imported game");
-        let clean_name: String = name.chars().map(|c| if c.is_ascii_alphanumeric() || c == ' ' || c == '-' || c == '_' { c } else { '_' }).collect();
-        let directory = root.join(format!("{}-{}", clean_name.trim(), Uuid::new_v4().simple()));
-        fs::create_dir(&directory).map_err(|error| error.to_string())?;
-
-        // PowerShell/.NET performs standard ZIP extraction; Python 3 provides a fallback.
-        // Both paths validate archive paths before extraction to avoid traversal.
-        let script = r#"
-param([string]$Archive, [string]$Destination)
-Add-Type -AssemblyName System.IO.Compression
-$zip = [System.IO.Compression.ZipFile]::OpenRead($Archive)
-try {
-    $root = [IO.Path]::GetFullPath($Destination + [IO.Path]::DirectorySeparatorChar)
-    $total = 0L
-    foreach ($entry in $zip.Entries) {
-        $full = [IO.Path]::GetFullPath([IO.Path]::Combine($root, $entry.FullName.Replace('/', [IO.Path]::DirectorySeparatorChar)))
-        if (!$full.StartsWith($root, [StringComparison]::OrdinalIgnoreCase)) { throw 'Unsafe archive path' }
-        $total += $entry.Length
-        if ($total -gt 21474836480L) { throw 'Archive exceeds 20 GiB limit' }
-    }
-} finally { $zip.Dispose() }
-[System.IO.Compression.ZipFile]::ExtractToDirectory($Archive, $Destination)
-"#;
-        #[cfg(target_os = "windows")]
-        let primary = hidden_windows_command("powershell")
-            .args(["-NoProfile", "-NonInteractive", "-Command", script, "-Archive"])
-            .arg(&archive)
-            .arg("-Destination")
-            .arg(&directory)
-            .status();
-        #[cfg(not(target_os = "windows"))]
-        let primary: Result<std::process::ExitStatus, std::io::Error> =
-            Err(std::io::Error::new(std::io::ErrorKind::Unsupported, "PowerShell unavailable"));
-
-        if !matches!(primary, Ok(status) if status.success()) {
-            let python_code = r#"import pathlib,sys,zipfile
-a,d=sys.argv[1:]
-root=pathlib.Path(d).resolve()
-with zipfile.ZipFile(a) as z:
-    entries=z.infolist()
-    if sum(i.file_size for i in entries)>20*1024**3: raise ValueError('Archive exceeds 20 GiB limit')
-    for i in entries:
-        p=(root/i.filename).resolve()
-        if not p.is_relative_to(root): raise ValueError('Unsafe archive path')
-        if (i.external_attr >> 16) & 0o170000 == 0o120000: raise ValueError('Symlink entries not allowed')
-    z.extractall(root)
-"#;
-            let mut succeeded = false;
-            for executable in ["python", "py"] {
-                let status = Command::new(executable).arg("-c").arg(python_code)
-                    .arg(&archive).arg(&directory).status();
-                if matches!(status, Ok(value) if value.success()) {
-                    succeeded = true;
-                    break;
-                }
-            }
-            if !succeeded {
-                let _ = fs::remove_dir_all(&directory);
-                return Err("Extraction failed. Install Python 3 or ensure PowerShell can extract ZIP files.".into());
-            }
-        }
-
-        let mut candidates = Vec::new();
-        let mut installers = Vec::new();
-        for entry in WalkDir::new(&directory).max_depth(6).into_iter().filter_map(Result::ok) {
-            if !entry.file_type().is_file() { continue; }
-            let path = entry.path();
-            let ext = path.extension().and_then(|s| s.to_str()).unwrap_or("").to_lowercase();
-            if ext != "exe" && ext != "msi" { continue; }
-            let basename = path.file_stem().and_then(|s| s.to_str()).unwrap_or("").to_lowercase();
-            if ext == "msi" || ["setup", "install", "unins", "redist", "crash", "vc_redist"].iter().any(|prefix| basename.contains(prefix)) {
-                installers.push(path.to_string_lossy().into_owned());
-            } else {
-                candidates.push(path.to_path_buf());
-            }
-        }
-
-        let game = if candidates.len() == 1 {
-            let executable = &candidates[0];
-            let game = DiscoveredGame {
-                id: format!("manual:{}", Uuid::new_v4()),
-                title: clean_name,
-                exe_path: Some(executable.to_string_lossy().into_owned()),
-                install_path: directory.to_string_lossy().into_owned(),
-                source: "manual".into(),
-                source_id: None,
-            };
-            let connection = open_database(&app)?;
-            upsert_discovered(&connection, &game)?;
-            Some(get_game(&connection, &game.id)?)
-        } else { None };
-        Ok(Some(ImportedGameArchive { directory: directory.to_string_lossy().into_owned(), game, installers }))
-    }).await.map_err(|error| error.to_string())?
-}
 
 #[tauri::command]
 fn choose_game_installer() -> Option<String> {
@@ -5996,7 +5881,9 @@ pub fn run() {
             set_active_profile,
             delete_profile,
             choose_game_installer,
-            import_game_archive,
+            archive_import::import_game_archive,
+            archive_import::import_downloaded_game_archive,
+            archive_import::list_recent_game_archives,
             run_game_installer,
             open_external_target,
             search_online_fix_games,
