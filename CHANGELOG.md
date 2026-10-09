@@ -11,7 +11,7 @@ Fix game download buttons that do nothing.
 - Unblocks FileDitch, FileKeeper, Pixeldrain, Gofile and VikingFile inside the isolated download browser.
 - Keeps suspicious pop-ups blocked and respects the file host's own dangerous-download confirmation.
 - Shows a visible notice for blocked links instead of silently ignoring clicks.
-- Replaces the native downloader's 60-second total timeout with a per-read timeout, allowing large transfers to finish.
+- Removes the native downloader's 60-second total request deadline, allowing large transfers to finish.
 
 ## 1.8.6 - 2026-10-10
 
