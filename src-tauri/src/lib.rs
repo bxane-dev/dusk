@@ -2890,56 +2890,78 @@ fn xml_unescape(text: &str) -> String {
         .replace("&amp;", "&")
 }
 
+fn parse_online_fix_search_results(html: &str) -> Result<Vec<OnlineFixSearchResult>, String> {
+    // DLE renders search hits inside <div class="news news-search">, distinct
+    // from the unrelated sidebar recommendations and popular-game carousel.
+    let listing = html
+        .split("class=\"news news-search\"")
+        .nth(1)
+        .unwrap_or("");
+    let hits = Regex::new(
+        r#"(?s)<a class="big-link" href="(https://online-fix\.me/games/[^"]+\.html)"></a>.*?<h2 class="title">\s*(.*?)\s*</h2>"#
+    ).map_err(|error| error.to_string())?;
+    let tags = Regex::new(r"<[^>]+>").map_err(|error| error.to_string())?;
+    let mut results = Vec::new();
+    for hit in hits.captures_iter(listing) {
+        let url = xml_unescape(hit.get(1).unwrap().as_str());
+        let title = xml_unescape(&tags.replace_all(hit.get(2).unwrap().as_str(), ""))
+            .trim().to_string();
+        if title.is_empty() || results.iter().any(|entry: &OnlineFixSearchResult| entry.url == url) {
+            continue;
+        }
+        results.push(OnlineFixSearchResult { title, url, description: String::new() });
+        if results.len() >= 21 { break; }
+    }
+    Ok(results)
+}
+
 #[tauri::command]
 async fn search_online_fix_games(query: String) -> Result<Vec<OnlineFixSearchResult>, String> {
     let search_term = query.trim().to_string();
-    if search_term.is_empty() || search_term.chars().count() > 120 {
-        return Err("Enter a game title (up to 120 characters).".into());
+    if search_term.chars().count() < 3 || search_term.chars().count() > 120 {
+        return Err("Enter a game title (3–120 characters).".into());
     }
 
     tauri::async_runtime::spawn_blocking(move || {
         let client = reqwest::blocking::Client::builder()
-            .timeout(Duration::from_secs(12))
-            .user_agent("DuskGameLauncher/1.7")
+            .connect_timeout(Duration::from_secs(8))
+            .timeout(Duration::from_secs(18))
+            .user_agent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) Dusk/1.8")
             .build()
             .map_err(|error| error.to_string())?;
         let response = client
-            .get("https://www.bing.com/search")
-            .query(&[("format", "rss"), ("q", &format!("site:online-fix.me {}", search_term))])
+            .get("https://online-fix.me/index.php")
+            .query(&[
+                ("do", "search"),
+                ("subaction", "search"),
+                ("story", search_term.as_str()),
+            ])
             .send()
-            .map_err(|error| format!("Could not search online: {error}"))?
+            .map_err(|error| format!("Online-Fix search is unreachable: {error}"))?
             .error_for_status()
-            .map_err(|error| format!("Search provider error: {error}"))?;
-        let xml = response.text().map_err(|error| error.to_string())?;
-        let item_pattern = Regex::new(r"(?s)<item>(.*?)</item>").map_err(|error| error.to_string())?;
-        let title_pattern = Regex::new(r"(?s)<title>(.*?)</title>").map_err(|error| error.to_string())?;
-        let link_pattern = Regex::new(r"(?s)<link>(.*?)</link>").map_err(|error| error.to_string())?;
-        let description_pattern = Regex::new(r"(?s)<description>(.*?)</description>").map_err(|error| error.to_string())?;
-        let html_tags = Regex::new(r"<[^>]*>").map_err(|error| error.to_string())?;
-        let mut results = Vec::new();
-        for item in item_pattern.captures_iter(&xml) {
-            let body = &item[1];
-            let Some(link) = link_pattern.captures(body) else { continue };
-            let url = xml_unescape(link[1].trim());
-            let Ok(parsed_url) = reqwest::Url::parse(&url) else { continue };
-            if parsed_url.scheme() != "https"
-                || !matches!(parsed_url.host_str(), Some("online-fix.me" | "www.online-fix.me"))
-            {
-                continue;
-            }
-            let Some(title) = title_pattern.captures(body) else { continue };
-            let title = xml_unescape(&html_tags.replace_all(&title[1], "")).trim().to_string();
-            if title.is_empty() { continue; }
-            let description = description_pattern.captures(body)
-                .map(|value| xml_unescape(&html_tags.replace_all(&value[1], "")).trim().to_string())
-                .unwrap_or_default();
-            if !results.iter().any(|existing: &OnlineFixSearchResult| existing.url == url) {
-                results.push(OnlineFixSearchResult { title, url, description });
-            }
-            if results.len() >= 20 { break; }
+            .map_err(|error| format!("Online-Fix search could not be loaded: {error}"))?;
+        let html = response.text().map_err(|error| error.to_string())?;
+        if !html.contains("news-search") && !html.contains("fullsearch") {
+            return Err("Online-Fix did not return a search page. Try opening the site in Dusk instead.".into());
         }
-        Ok::<_, String>(results)
+        parse_online_fix_search_results(&html)
     }).await.map_err(|error| error.to_string())?
+}
+
+#[cfg(test)]
+mod online_fix_search_tests {
+    use super::*;
+    #[test]
+    fn extracts_real_result_cards_without_sidebar_entries() {
+        let html = r#"<div class="news news-search"><div class="article clr">
+            <a class="big-link" href="https://online-fix.me/games/adventures/18205-how-to-fish-po-seti.html"></a>
+            <div class="article-content"><a href="https://online-fix.me/games/adventures/18205-how-to-fish-po-seti.html"><h2 class="title">
+            How to Fish по сети
+            </h2></a></div></div></div>"#;
+        let hits = parse_online_fix_search_results(html).unwrap();
+        assert_eq!(hits.len(), 1);
+        assert!(hits[0].title.starts_with("How to Fish"));
+    }
 }
 
 fn verified_online_fix_url(url: &str) -> Result<reqwest::Url, String> {
