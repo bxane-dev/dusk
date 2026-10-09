@@ -82,6 +82,22 @@ type SortMode = "name" | "recent" | "playtime";
 type ThemeName = "night" | "oled" | "slate";
 type AccentName = "violet" | "ember" | "cyan";
 type WebGameResult = { title: string; url: string; description: string };
+type WebDownloadLink = {
+  url: string;
+  label: string;
+  kind: "game" | "mirror" | "torrent" | "fix";
+  recommended: boolean;
+};
+
+function matchesGameArchive(filename: string, title: string) {
+  const clean = (text: string) => text.toLocaleLowerCase()
+    .replace(/\b(online|multiplayer|co-op|coop)\b/g, " ")
+    .replace(/[\u043f\u043e]\s*[\u0441\u0435\u0442\u0438]/g, " ")
+    .replace(/[^\p{L}\p{N}]+/gu, " ").trim();
+  const tokens = clean(title).split(" ").filter((part) => part.length >= 2);
+  const file = clean(filename.replace(/\.(zip|rar|7z)(\.\d+)?$/i, ""));
+  return tokens.length > 0 && tokens.every((token) => file.split(" ").includes(token));
+}
 
 const EMPTY_STATS: Stats = {
   gameCount: 0,
@@ -929,6 +945,8 @@ export default function App() {
   const [webSearched, setWebSearched] = useState(false);
   const [webLoading, setWebLoading] = useState(false);
   const [webError, setWebError] = useState("");
+  const [downloadSources, setDownloadSources] = useState<Record<string, WebDownloadLink[]>>({});
+  const [downloadSourcesBusy, setDownloadSourcesBusy] = useState<string | null>(null);
   const [activeDownloadWatch, setActiveDownloadWatch] = useState<{ sinceMs: number; title: string; url: string } | null>(null);
   const [downloadWatchMessage, setDownloadWatchMessage] = useState("");
   const downloadStabilityRef = useRef(new Map<string, { size: number; stable: number }>());
@@ -1797,19 +1815,40 @@ export default function App() {
     }
   }
 
-  async function trackOnlineFixDownload(result: WebGameResult, externalBrowser = false) {
+  async function trackOnlineFixDownload(result: WebGameResult, externalBrowser = false, destination = result.url) {
     downloadStabilityRef.current.clear();
     watchAttemptedRef.current.clear();
-    setDownloadWatchMessage("Waiting for a completed ZIP, RAR, or 7z archive in Downloads…");
-    // Start monitoring before opening the page so fast downloads are not missed.
-    setActiveDownloadWatch({ sinceMs: Date.now() - 2000, title: result.title, url: result.url });
+    setDownloadWatchMessage("Waiting for a completed archive matching " + result.title + " in Downloads…");
+    // Start monitoring before opening the selected verified download page.
+    setActiveDownloadWatch({ sinceMs: Date.now() - 2000, title: result.title, url: destination });
     try {
-      if (externalBrowser) await api.openOnlineFixBrowser(result.url);
-      else await api.openOnlineFixResult(result.url);
+      if (externalBrowser) await api.openOnlineFixBrowser(destination);
+      else await api.openOnlineFixResult(destination);
     } catch (error) {
       setActiveDownloadWatch(null);
       setDownloadWatchMessage("");
       showToast(readableError(error), "error");
+    }
+  }
+
+  async function selectGameDownload(result: WebGameResult) {
+    if (downloadSourcesBusy) return;
+    setDownloadSourcesBusy(result.url);
+    try {
+      const links = await api.getOnlineFixDownloadLinks(result.url);
+      setDownloadSources((current) => ({ ...current, [result.url]: links }));
+      const chosen = links.find((link) => link.kind === "game") ||
+        links.find((link) => link.kind === "mirror");
+      if (chosen) {
+        showToast("Selected " + chosen.label + ". You can use the other mirror below.");
+        await trackOnlineFixDownload(result, false, chosen.url);
+      } else {
+        showToast("No verified full-game download link found. Open the listing to choose manually.", "error");
+      }
+    } catch (error) {
+      showToast("Could not identify download links: " + readableError(error), "error");
+    } finally {
+      setDownloadSourcesBusy(null);
     }
   }
 
@@ -1902,6 +1941,7 @@ export default function App() {
         const archives = await api.listRecentGameArchives(watch.sinceMs);
         if (cancelled) return;
         for (const candidate of archives) {
+          if (!matchesGameArchive(candidate.filename, watch.title)) continue;
           const prior = downloadStabilityRef.current.get(candidate.path);
           const stable = prior && prior.size === candidate.sizeBytes ? prior.stable + 1 : 0;
           downloadStabilityRef.current.set(candidate.path, { size: candidate.sizeBytes, stable });
@@ -2213,18 +2253,36 @@ export default function App() {
                       {result.description && <p>{result.description}</p>}
                       <span>online-fix.me</span>
                     </div>
-                    <div className="web-result-actions">
-                      <button className="button secondary" onClick={() => void trackOnlineFixDownload(result)} title="Browse the listing in a separate Dusk window and detect downloaded archives">
-                        <Globe2 size={15} /> Open in Dusk
-                      </button>
-                      <button className="button ghost" onClick={() => void trackOnlineFixDownload(result, true)} title="Use the external browser if the in-app site cannot complete a download">
-                        <ExternalLink size={15} /> Browser fallback
-                      </button>
+                    <div className="web-download-action-group">
+                      <div className="web-result-actions">
+                        <button className="button primary" disabled={downloadSourcesBusy !== null} onClick={() => void selectGameDownload(result)} title="Select the verified full-game link, not the fix or torrent">
+                          {downloadSourcesBusy === result.url ? <RefreshCw className="spin" size={15} /> : <Archive size={15} />}
+                          {downloadSourcesBusy === result.url ? "Finding game link…" : "Get game"}
+                        </button>
+                        <button className="button secondary" onClick={() => void trackOnlineFixDownload(result)} title="Open the original game listing inside Dusk">
+                          <Globe2 size={15} /> Listing
+                        </button>
+                        <button className="button ghost" onClick={() => void trackOnlineFixDownload(result, true)} title="Open the original listing in your regular browser">
+                          <ExternalLink size={15} /> Browser
+                        </button>
+                      </div>
+                      {downloadSources[result.url] && (
+                        <div className="web-download-sources">
+                          {downloadSources[result.url].filter((link) => link.kind === "game" || link.kind === "mirror").map((link) => (
+                            <button key={link.url} className="web-download-source" onClick={() => void trackOnlineFixDownload(result, false, link.url)}>
+                              <ExternalLink size={12} /> {link.label}
+                            </button>
+                          ))}
+                          {!downloadSources[result.url].some((link) => link.kind === "game" || link.kind === "mirror") && (
+                            <span>No verified full-game download sources found.</span>
+                          )}
+                        </div>
+                      )}
                     </div>
                   </article>
                 ))}
               </div>
-              <p className="web-results-note">Open a listing and complete its download normally. Dusk monitors new archives in Downloads and automatically extracts them into managed storage. ZIP is built in; RAR/7z require 7-Zip or Python libraries. Executing installers always requires approval.</p>
+              <p className="web-results-note">Get game automatically selects the verified full-game Hosters link (or Drive when unavailable). Fix-only and torrent links are excluded. Complete any required host steps normally; Dusk imports a matching archive after download. Windows installers require your confirmation.</p>
             </section>
           ) : (
             <>
