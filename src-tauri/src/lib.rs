@@ -3128,7 +3128,23 @@ async fn open_online_fix_result(
         // in external webviews. Route trusted host links to this same window.
         // Apply to normal listing windows as well as auto-selection windows.
         .initialization_script(include_str!("online_fix_navigation.js"))
-        .on_navigation(|url| url.scheme() == "https");
+        .initialization_script(include_str!("online_fix_adblock.js"))
+        // Do not let an ad silently replace the game listing with an adult
+        // or other third-party website. External download hosts can still
+        // be opened through the explicit browser fallback.
+        .on_navigation(|url| {
+            url.scheme() == "https"
+                && matches!(url.host_str(), Some(
+                    "online-fix.me" | "www.online-fix.me"
+                    | "hosters.online-fix.me" | "drive.online-fix.me"
+                    | "uploads.online-fix.me"
+                ))
+        })
+        .on_new_window(|_url, _features| {
+            // Trusted target=_blank links are handled by the navigation
+            // script in this same window. Reject all separate popups.
+            tauri::webview::NewWindowResponse::Deny
+        });
 
     if auto_select.unwrap_or(false) {
         let game_title = game_title.unwrap_or_default();
