@@ -51,7 +51,7 @@ import { getVersion } from "@tauri-apps/api/app";
 import duskLogo from "./assets/dusk-logo.svg";
 import AccountProfileSettings from "./AccountProfileSettings";
 import { getCurrentWindow } from "@tauri-apps/api/window";
-import { api, type ManagedDownload } from "./lib/api";
+import { api, type ManagedDownload, type OnlineFixHosterFile } from "./lib/api";
 import { syncAccountState } from "./lib/accountSync";
 import { currentDuskAccount, logoutDuskAccount, type DuskAccount } from "./lib/auth";
 import { cloudSaveStatus, syncAllBackupsToSupabase, syncBackupToSupabase, syncCloudManifest } from "./lib/cloudSaves";
@@ -960,6 +960,7 @@ export default function App() {
   const [webLoading, setWebLoading] = useState(false);
   const [webError, setWebError] = useState("");
   const [downloadSources, setDownloadSources] = useState<Record<string, WebDownloadLink[]>>({});
+  const [hosterFiles, setHosterFiles] = useState<Record<string, OnlineFixHosterFile[]>>({});
   const [downloadSourcesBusy, setDownloadSourcesBusy] = useState<string | null>(null);
   const [downloadManagerOpen, setDownloadManagerOpen] = useState(false);
   const [downloadUrl, setDownloadUrl] = useState("");
@@ -1895,23 +1896,50 @@ export default function App() {
     }
   }
 
+  async function startHosterFileDownload(result: WebGameResult, file: OnlineFixHosterFile) {
+    if (file.isFix) {
+      showToast("This is a fix/update archive, not the full game.", "error");
+      return;
+    }
+    if (file.requiresCaution && !window.confirm("This provider is marked as potentially risky by the site. Continue to the host?")) return;
+    if (!file.directArchive) {
+      await trackOnlineFixDownload(result, true, file.url);
+      return;
+    }
+    try {
+      const created = await api.startManagedDownload(file.url, file.filename, result.title);
+      setManagedDownloads((current) => [created, ...current.filter((entry) => entry.id !== created.id)]);
+      setDownloadManagerOpen(true);
+      showToast("Downloading " + file.filename + " from " + file.provider + ".");
+    } catch (error) {
+      setDownloadManagerOpen(true);
+      showToast("Download could not start: " + readableError(error), "error");
+    }
+  }
+
   async function selectGameDownload(result: WebGameResult) {
     if (downloadSourcesBusy) return;
     setDownloadSourcesBusy(result.url);
     try {
       const links = await api.getOnlineFixDownloadLinks(result.url);
       setDownloadSources((current) => ({ ...current, [result.url]: links }));
-      // Drive provides full-game archives. Hosters often exposes only updates/fixes,
-      // so do not silently substitute Hosters when no Drive source is available.
-      const chosen = links.find((link) => link.kind === "game");
-      if (chosen) {
-        showToast("Dusk will select matching game archives when the download host makes them available.");
-        await trackOnlineFixDownload(result, false, chosen.url, true);
-      } else {
-        showToast("No full-game Drive link is available. You can inspect the listing or Hosters manually.", "error");
+      // Hosters exposes the actual files, not just a folder page. In contrast,
+      // Drive can require authorization, so do not silently open a 401 page.
+      const hosters = links.find((link) => link.url.startsWith("https://hosters.online-fix.me"));
+      if (hosters) {
+        const files = await api.getOnlineFixHosterFiles(hosters.url);
+        setHosterFiles((current) => ({ ...current, [result.url]: files }));
+        const primary = files.find((file) => file.directArchive && !file.isFix && !file.requiresCaution);
+        if (primary) {
+          await startHosterFileDownload(result, primary);
+          return;
+        }
+        showToast("Choose a game archive from the Hosters files below.");
+        return;
       }
+      showToast("No Hosters files were found. Try an available Drive or browser source.", "error");
     } catch (error) {
-      showToast("Could not identify download links: " + readableError(error), "error");
+      showToast("Could not load game files: " + readableError(error), "error");
     } finally {
       setDownloadSourcesBusy(null);
     }
@@ -2391,9 +2419,9 @@ export default function App() {
                     </div>
                     <div className="web-download-action-group">
                       <div className="web-result-actions">
-                        <button className="button primary" disabled={downloadSourcesBusy !== null} onClick={() => void selectGameDownload(result)} title="Select the verified full-game link, not the fix or torrent">
+                        <button className="button primary" disabled={downloadSourcesBusy !== null} onClick={() => void selectGameDownload(result)} title="Find the actual game archive on Hosters and start downloading in Dusk">
                           {downloadSourcesBusy === result.url ? <RefreshCw className="spin" size={15} /> : <Archive size={15} />}
-                          {downloadSourcesBusy === result.url ? "Finding game link…" : "Get game"}
+                          {downloadSourcesBusy === result.url ? "Finding game file…" : "Get game"}
                         </button>
                         <button className="button secondary" onClick={() => void trackOnlineFixDownload(result)} title="Open the original game listing inside Dusk">
                           <Globe2 size={15} /> Listing
@@ -2402,6 +2430,27 @@ export default function App() {
                           <ExternalLink size={15} /> Browser
                         </button>
                       </div>
+                      {hosterFiles[result.url] && (
+                        <div className="web-hoster-files" aria-label="Actual game archives">
+                          <strong>Game files on Hosters</strong>
+                          {hosterFiles[result.url].filter((file) => !file.isFix).map((file) => (
+                            <div className="web-hoster-file" key={file.url}>
+                              <div className="web-hoster-file-info">
+                                <span>{file.filename}</span>
+                                <small>{file.provider}{file.requiresCaution ? " · Caution" : ""}</small>
+                              </div>
+                              <button className="button secondary"
+                                onClick={() => void startHosterFileDownload(result, file)}
+                                title={file.directArchive ? "Download this archive using Dusk's native download manager" : "This provider requires opening the file-host page"}>
+                                {file.directArchive ? "Download in Dusk" : "Open file host"}
+                              </button>
+                            </div>
+                          ))}
+                          {!hosterFiles[result.url].some((file) => !file.isFix) && (
+                            <p>No complete game archives found; only fix/update files are listed.</p>
+                          )}
+                        </div>
+                      )}
                       {downloadSources[result.url] && (
                         <div className="web-download-sources">
                           {downloadSources[result.url].filter((link) => link.kind === "game" || link.kind === "mirror").map((link) => (
@@ -2427,7 +2476,7 @@ export default function App() {
                   </article>
                 ))}
               </div>
-              <p className="web-results-note">Get game opens Online-Fix Drive and detects supported archive downloads, including files served by HTTPS CDNs. If Hosters or Drive blocks an in-app download, use Browser fallback beside that exact source. Some download-host steps still require manual interaction. Dusk only runs installers after confirmation.</p>
+              <p className="web-results-note">Get game now uses the actual Hosters file list and starts a verified full-game archive in Dusk's Downloads manager when a direct link exists. It never selects fix-only files. If a provider requires a web session, use Open file host or Browser fallback. The download manager reports transfer errors instead of silently doing nothing.</p>
             </section>
           ) : (
             <>
