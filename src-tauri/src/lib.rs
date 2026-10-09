@@ -3046,6 +3046,115 @@ async fn get_online_fix_download_links(listing_url: String) -> Result<Vec<Online
     }).await.map_err(|error| error.to_string())?
 }
 
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct OnlineFixHosterFile {
+    provider: String,
+    filename: String,
+    url: String,
+    is_fix: bool,
+    direct_archive: bool,
+    requires_caution: bool,
+}
+
+fn parse_online_fix_hoster_files(html: &str) -> Result<Vec<OnlineFixHosterFile>, String> {
+    // Hosters publishes the human-visible file list in the selected-provider
+    // controls. This is not the HTML search results or any advertisement.
+    let option_re = Regex::new(r#"(?s)<div\s+class="option[^"]*"[^>]*data-links="([^"]+)"[^>]*>([^<]+)</div>"#)
+        .map_err(|e| e.to_string())?;
+    let mut files = Vec::new();
+    for option in option_re.captures_iter(html) {
+        let provider = option.get(2).unwrap().as_str().trim();
+        let raw = xml_unescape(option.get(1).unwrap().as_str());
+        let Ok(entries) = serde_json::from_str::<Vec<serde_json::Value>>(&raw) else { continue };
+        for item in entries {
+            let Some(url) = item.get("direct_link").and_then(|value| value.as_str()) else { continue };
+            let Some(filename) = item.get("file_name").and_then(|value| value.as_str()) else { continue };
+            let Ok(parsed) = reqwest::Url::parse(url) else { continue };
+            let expected = match provider {
+                "FileDitch" => "fileditchfiles.st",
+                "FileKeeper" => "filekeeper.net",
+                "Pixeldrain" => "pixeldrain.com",
+                "Gofile" => "gofile.io",
+                "VikingFile" => "vikingfile.com",
+                _ => continue,
+            };
+            if parsed.scheme() != "https" || parsed.host_str() != Some(expected)
+                || parsed.username() != "" || parsed.password().is_some()
+                || filename.len() > 230
+                || filename.chars().any(|c| c.is_control() || matches!(c, '/' | '\\' | ':' | '<' | '>' | '|' | '?' | '*'))
+                || ![".zip", ".rar", ".7z", ".7z.001"].iter().any(|ext| filename.to_ascii_lowercase().ends_with(ext))
+            {
+                continue;
+            }
+            let lower = filename.to_ascii_lowercase();
+            let is_fix = lower.split(|c: char| !c.is_ascii_alphanumeric())
+                .any(|word| matches!(word, "fix" | "repair" | "update" | "updates" | "patch" | "crack" | "redist"));
+            let direct_archive = [".zip", ".rar", ".7z", ".001"]
+                .iter().any(|ext| parsed.path().to_ascii_lowercase().ends_with(ext));
+            if files.iter().any(|entry: &OnlineFixHosterFile| entry.url == url) { continue; }
+            files.push(OnlineFixHosterFile {
+                provider: provider.into(), filename: filename.into(), url: url.into(),
+                is_fix, direct_archive,
+                requires_caution: item.get("is_dangerous").and_then(|value| value.as_bool()).unwrap_or(false),
+            });
+        }
+    }
+    files.sort_by_key(|entry| (
+        entry.is_fix,
+        entry.requires_caution,
+        !entry.direct_archive,
+        entry.provider != "FileDitch",
+    ));
+    files.truncate(80);
+    Ok(files)
+}
+
+#[tauri::command]
+async fn get_online_fix_hoster_files(hosters_url: String) -> Result<Vec<OnlineFixHosterFile>, String> {
+    let url = reqwest::Url::parse(&hosters_url).map_err(|_| "Invalid Hosters URL.")?;
+    if url.scheme() != "https" || url.host_str() != Some("hosters.online-fix.me")
+        || !matches!(url.port(), None | Some(2053))
+        || url.username() != "" || url.password().is_some() {
+        return Err("Only official Online-Fix Hosters listings are supported.".into());
+    }
+    tauri::async_runtime::spawn_blocking(move || {
+        let client = reqwest::blocking::Client::builder()
+            .connect_timeout(Duration::from_secs(10))
+            .timeout(Duration::from_secs(20))
+            .redirect(reqwest::redirect::Policy::none())
+            .user_agent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) Dusk/1.8")
+            .build().map_err(|e| e.to_string())?;
+        let response = client.get(url).send()
+            .map_err(|e| format!("Cannot load Hosters file list: {e}"))?
+            .error_for_status().map_err(|e| format!("Hosters refused the file list: {e}"))?;
+        if response.content_length().unwrap_or(0) > 2_000_000 { return Err("Hosters page is too large.".into()); }
+        let html = response.text().map_err(|e| e.to_string())?;
+        if html.len() > 2_000_000 { return Err("Hosters page is too large.".into()); }
+        let files = parse_online_fix_hoster_files(&html)?;
+        if files.is_empty() { return Err("No recognizable archive files found on Hosters.".into()); }
+        Ok(files)
+    }).await.map_err(|e| e.to_string())?
+}
+
+#[cfg(test)]
+mod hosters_file_tests {
+    use super::*;
+
+    #[test]
+    fn finds_archive_not_fix_and_ignores_fake_host() {
+        let html = r#"<div class="option selected" data-links="[{&quot;direct_link&quot;:&quot;https://fileditchfiles.st/f/My.Game.rar&quot;,&quot;file_name&quot;:&quot;My.Game.rar&quot;,&quot;is_dangerous&quot;:false},{&quot;direct_link&quot;:&quot;https://fileditchfiles.st/f/MyGame_Fix_Repair.rar&quot;,&quot;file_name&quot;:&quot;MyGame_Fix_Repair.rar&quot;,&quot;is_dangerous&quot;:false}]" data-id="1">FileDitch</div>
+        <div class="option" data-links="[{&quot;direct_link&quot;:&quot;https://fileditchfiles.st.evil.org/ads/Bad.rar&quot;,&quot;file_name&quot;:&quot;Bad.rar&quot;}]" data-id="2">FileDitch</div>"#;
+        let files = parse_online_fix_hoster_files(html).unwrap();
+        assert_eq!(files.len(), 2);
+        assert_eq!(files[0].filename, "My.Game.rar");
+        assert!(files[0].direct_archive);
+        assert!(!files[0].is_fix);
+        assert!(files[1].is_fix);
+    }
+}
+
 fn verified_online_fix_listing_url(url: &str) -> Result<reqwest::Url, String> {
     let parsed = reqwest::Url::parse(url).map_err(|_| "Invalid game listing URL.")?;
     if parsed.scheme() != "https"
@@ -3120,6 +3229,14 @@ fn is_online_fix_site(url: &reqwest::Url) -> bool {
         | "hosters.online-fix.me" | "drive.online-fix.me"
         | "uploads.online-fix.me"
     ))
+}
+
+fn is_verified_file_host(url: &reqwest::Url) -> bool {
+    url.scheme() == "https" && url.username() == "" && url.password().is_none()
+        && matches!(url.host_str(), Some(
+            "fileditchfiles.st" | "filekeeper.net" | "pixeldrain.com"
+            | "gofile.io" | "vikingfile.com"
+        ))
 }
 
 fn is_https_archive_url(url: &reqwest::Url) -> bool {
@@ -3215,6 +3332,7 @@ async fn open_online_fix_result(
             // archive URLs from a storage CDN may navigate directly to a file;
             // the download handler separately validates the filename.
             is_online_fix_site(url)
+                || is_verified_file_host(url)
                 || is_https_archive_url(url)
         })
         .on_new_window(|_url, _features| {
@@ -6284,6 +6402,7 @@ pub fn run() {
             open_external_target,
             search_online_fix_games,
             get_online_fix_download_links,
+            get_online_fix_hoster_files,
             open_online_fix_result,
             open_online_fix_browser,
             choose_executable,
