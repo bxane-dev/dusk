@@ -939,6 +939,7 @@ export default function App() {
   const [toast, setToast] = useState<{ message: string; type: "ok" | "error" } | null>(null);
   const [updateBusy, setUpdateBusy] = useState(false);
   const [installerBusy, setInstallerBusy] = useState(false);
+  const [archiveBusy, setArchiveBusy] = useState(false);
   const [cloudSyncBusy, setCloudSyncBusy] = useState(false);
   const [availableUpdate, setAvailableUpdate] = useState<string | null>(null);
   const [autoScanEnabled, setAutoScanEnabled] = useState(
@@ -1759,6 +1760,30 @@ export default function App() {
     }
   }
 
+  async function importArchive() {
+    if (archiveBusy) return;
+    setArchiveBusy(true);
+    try {
+      const result = await api.importGameArchive();
+      if (!result) return;
+      if (result.game) {
+        await refreshCore(false);
+        showToast("Extracted and added " + result.game.title + " to Dusk.");
+      } else if (result.installers.length) {
+        showToast("Files extracted to " + result.directory + ". Installer requires manual confirmation.");
+        if (result.installers.length === 1 && window.confirm("Run extracted installer? Only proceed if you trust this game's source.")) {
+          await api.runGameInstaller(result.installers[0]);
+        }
+      } else {
+        showToast("Files extracted to " + result.directory + ". Select the game's executable with Add game.");
+      }
+    } catch (error) {
+      showToast(readableError(error), "error");
+    } finally {
+      setArchiveBusy(false);
+    }
+  }
+
   async function runLocalInstaller() {
     if (installerLockRef.current) return;
 
@@ -2057,6 +2082,10 @@ export default function App() {
           </div>
 
           <div className="top-actions">
+            <button className="button secondary" onClick={() => void importArchive()} disabled={archiveBusy} title="Extract a downloaded ZIP, register portable games, or confirm an installer">
+              {archiveBusy ? <RefreshCw className="spin" size={16} /> : <Archive size={16} />}
+              {archiveBusy ? "Extracting…" : "Import ZIP"}
+            </button>
             <button className="button secondary" onClick={() => setAddOpen(true)}>
               <Plus size={16} />
               Add game
