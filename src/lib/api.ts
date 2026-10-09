@@ -20,6 +20,11 @@ import type {
 export const api = {
   setAccountScope: (userId: string | null) => invoke<void>("set_account_scope", { accountUserId: userId }),
   exportAccountState: () => invoke<Record<string, unknown>>("export_account_state"),
+  exportPlaytimeUpdates: () => invoke<{
+    baselines: Array<{ game_id: string; total_seconds: number; launch_count: number; last_played: string | null }>;
+    sessions: Array<{ device_id: string; session_id: number; game_id: string; duration_seconds: number; ended_at: string }>;
+  }>("export_playtime_updates"),
+  mergeCloudPlaytime: (totals: unknown[]) => invoke<void>("merge_cloud_playtime", { totals }),
   importAccountState: (state: Record<string, unknown>) => invoke<void>("import_account_state", { state }),
   listProfiles: () => invoke<ProfileRecord[]>("list_profiles"),
   getActiveProfile: () => invoke<ProfileRecord>("get_active_profile"),
