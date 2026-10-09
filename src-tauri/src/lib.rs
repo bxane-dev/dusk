@@ -3156,9 +3156,13 @@ async fn open_online_fix_result(
                             || lower.ends_with(".7z")
                             || lower.ends_with(".7z.001")
                             || lower.ends_with(".rar");
-                        if !is_archive || lower.contains("fix_repair")
-                            || lower.contains("fix-repair") || lower.contains("update")
-                        {
+                        let is_fix_or_update = lower
+                            .split(|c: char| !c.is_ascii_alphanumeric())
+                            .any(|word| matches!(word,
+                                "fix" | "repair" | "update" | "updates"
+                                | "patch" | "crack" | "cracks" | "trainer" | "redist"
+                            ));
+                        if !is_archive || is_fix_or_update {
                             return false;
                         }
                         let Some(home) = env::var_os("USERPROFILE") else { return false; };
