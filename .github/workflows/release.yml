@@ -89,19 +89,16 @@ jobs:
           tagName: dusk-v__VERSION__
           releaseName: Dusk v__VERSION__
           releaseBody: |
-            # Dusk v1.8.3
+            # Dusk v1.8.4
 
-            ## Fixed and improved embedded Online-Fix browser
-            - Hosters and Drive links using target=_blank now open in Dusk's current download window.
-            - Added a lightweight, built-in ad blocker targeting known adult and pop-up ad networks.
-            - Restricted the in-app browser against unsolicited off-site redirects and new advertising windows.
-            - Kept game downloads and automatic archive selection working through official host links.
+            ## Version display fix
+            - The About section now reads the real installed app version from Tauri.
+            - Fixes "Dusk 1.6.11" appearing in newer releases.
+            - Includes the v1.8.3 Hosters/Drive click repair and embedded ad filtering.
 
             ## Notes
-            The ad blocker protects Dusk's embedded Online-Fix windows only.
-            Some ads can evade DOM filtering, and external browser fallback uses your own browser's filtering.
-            Download-host authentication and unlock steps may still require manual action.
-            Windows can show an unrecognized-publisher warning if no signing certificate is configured.
+            This installer is for Windows x64. Windows may show a SmartScreen
+            warning if code signing is not configured.
           releaseDraft: false
           prerelease: false
           uploadUpdaterJson: false
