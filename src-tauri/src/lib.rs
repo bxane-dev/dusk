@@ -3123,6 +3123,11 @@ async fn open_online_fix_result(
     let mut builder = tauri::WebviewWindowBuilder::new(&app, label, tauri::WebviewUrl::External(parsed))
         .title("Dusk — Online-Fix downloads")
         .inner_size(1100.0, 760.0)
+        .accept_first_mouse(true)
+        // Some Windows WebView2 versions silently drop target="_blank" clicks
+        // in external webviews. Route trusted host links to this same window.
+        // Apply to normal listing windows as well as auto-selection windows.
+        .initialization_script(include_str!("online_fix_navigation.js"))
         .on_navigation(|url| url.scheme() == "https");
 
     if auto_select.unwrap_or(false) {
