@@ -2872,6 +2872,29 @@ fn run_game_installer(_installer_path: String) -> Result<(), String> {
 
 #[cfg(target_os = "windows")]
 #[tauri::command]
+fn open_web_search(encoded_query: String) -> Result<(), String> {
+    if encoded_query.is_empty()
+        || encoded_query.len() > 2048
+        || !encoded_query.bytes().all(|byte| byte.is_ascii_alphanumeric() || b"-_.~%!'()*".contains(&byte))
+    {
+        return Err("Invalid web search query.".into());
+    }
+    let url = format!("https://www.google.com/search?q={encoded_query}");
+    hidden_windows_command("rundll32")
+        .args(["url.dll,FileProtocolHandler", &url])
+        .spawn()
+        .map_err(|error| format!("Could not open web search: {error}"))?;
+    Ok(())
+}
+
+#[cfg(not(target_os = "windows"))]
+#[tauri::command]
+fn open_web_search(_encoded_query: String) -> Result<(), String> {
+    Err("Web search is currently implemented for Windows.".into())
+}
+
+#[cfg(target_os = "windows")]
+#[tauri::command]
 fn open_external_target(target: String) -> Result<(), String> {
     let url = match target.as_str() {
         "creator" => "https://guns.lol/bxane",
@@ -5789,6 +5812,7 @@ pub fn run() {
             choose_game_installer,
             run_game_installer,
             open_external_target,
+            open_web_search,
             choose_executable,
             add_manual_game,
             set_favorite,
