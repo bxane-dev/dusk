@@ -17,7 +17,12 @@
   if (!words.length) return;
 
   const forbidden = new Set(["fix", "repair", "update", "updates", "patch", "crack", "cracks", "redist", "trainer", "cheat", "cheats"]);
-  const archiveExt = /(?:\.part\d{1,4}\.rar|\.rar|\.7z(?:\.\d{3})?|\.zip)(?:$|[?#])/i;
+  const archiveExt = /(?:\.part\d{1,4}\.rar|\.rar|\.7z(?:\.\d{3})?|\.zip)$/i;
+  const advertisingHosts = [
+    "exoclick.com", "exosrv.com", "magsrv.com", "realsrv.com",
+    "juicyads.com", "adsterra.com", "popcash.net", "popads.net",
+    "onclickads.net", "propellerads.com",
+  ];
   const selected = new Set();
   const navigated = new Set();
   const maxFiles = 24;
@@ -31,16 +36,35 @@
     } catch {
       return null;
     }
-    if (url.protocol !== "https:" || !permittedHosts.has(url.hostname)) return null;
+    if (url.protocol !== "https:") return null;
+    const blocked = advertisingHosts.some((name) =>
+      url.hostname === name || url.hostname.endsWith("." + name));
+    if (blocked) return null;
+
     const downloadName = anchor.getAttribute("download") || "";
     let path = url.pathname;
     try { path = decodeURIComponent(path); } catch {}
+    const leaf = path.split("/").filter(Boolean).at(-1) || "";
     const label = String(anchor.textContent || anchor.getAttribute("title") || "").trim();
-    const candidate = [path.split("/").pop() || "", downloadName, label].join(" ");
+    const hintedName = url.searchParams.get("filename") || url.searchParams.get("file") || "";
+    // Check each candidate independently; appending button text ("Download")
+    // to ".rar" used to make extension checks incorrectly reject valid files.
+    const isArchive = [leaf, downloadName, hintedName, label]
+      .some((part) => archiveExt.test(part.trim()));
+    const officialHost = permittedHosts.has(url.hostname);
+    // Only direct archives can be followed onto unknown HTTPS CDN domains.
+    if (!officialHost && !isArchive) return null;
+
+    const candidate = [leaf, downloadName, hintedName, label].join(" ");
     const normalized = normalize(candidate);
-    if (normalized.split(/\s+/).some((word) => forbidden.has(word))) return null;
-    if (!words.every((word) => normalized.split(/\s+/).includes(word))) return null;
-    return { url, candidate, downloadName };
+    const pathnameWords = normalize(path).split(/\s+/);
+    if (pathnameWords.some((word) => forbidden.has(word))) return null;
+    const titleMatch = words.every((word) => normalized.split(/\s+/).includes(word));
+    // Inside a verified game folder, split archives may have generic part
+    // names; still require a file with an actual archive extension.
+    const folderMatch = normalize(location.pathname).includes(normalize(gameTitle));
+    if (!titleMatch && !(isArchive && folderMatch)) return null;
+    return { url, candidate, downloadName, isArchive };
   }
 
   function scan() {
@@ -54,7 +78,7 @@
       const found = safeLink(anchor);
       if (!found) continue;
       if (anchor.closest('[class*="advert"],[id*="advert"],[class*="sponsor"]')) continue;
-      if (archiveExt.test(found.candidate)) {
+      if (found.isArchive) {
         if (!selected.has(found.url.href)) files.push({ anchor, ...found });
       } else {
         const text = String(anchor.textContent || "").toLowerCase();
