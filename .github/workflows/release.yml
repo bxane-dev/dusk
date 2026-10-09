@@ -90,20 +90,18 @@ jobs:
           tagName: dusk-v__VERSION__
           releaseName: Dusk v__VERSION__
           releaseBody: |
-            # Dusk v1.8.6 — Native download manager
+            # Dusk v1.8.7 — Working Hosters downloads
 
-            - Native HTTPS archive downloader in Dusk's top toolbar.
-            - Live download progress, cancellation, and error reporting.
-            - Safe Downloads-folder storage and explicit Extract & add to library action.
-            - ZIP, 7z and RAR support, including some multipart archive formats.
-            - Security checks for public HTTPS URLs, archive signatures, and maximum transfer size.
-            - Preserves the in-app browser for Hosters/Drive login-based downloads.
+            - Get game now reads actual Hosters archive choices and starts the first safe full-game direct download in Dusk.
+            - Download progress and errors appear in the native Downloads panel.
+            - FileDitch, FileKeeper, Pixeldrain, Gofile and VikingFile are no longer silently blocked.
+            - Fix-only/update archives are not auto-selected. Provider safety prompts remain manual.
+            - Downloads no longer stop at 60 seconds while data is arriving.
+            - Unsupported download links now produce a visible message instead of doing nothing.
 
-            ## Important
-            Paste direct downloadable archive URLs, not download-host landing pages.
-            Browser-only downloads that require authentication or third-party gates
-            must still be completed through the relevant host.
-            Windows may show an unrecognized publisher warning if unsigned.
+            ## Limitations
+            Sites requiring authentication, anti-bot challenges or browser-only download steps still require manual interaction.
+            Dusk does not bypass access restrictions. No installer runs without your approval.
           releaseDraft: false
           prerelease: false
           uploadUpdaterJson: false
