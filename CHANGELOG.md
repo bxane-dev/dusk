@@ -2,6 +2,17 @@
 
 All notable Dusk changes are documented here.
 
+## 1.8.2 - 2026-10-09
+
+Automate selection of actual archive file links on supported Online-Fix hosts.
+
+- Get game defaults to the Online-Fix Drive link for full-game archives.
+- An isolated in-app browser automatically selects matching ZIP, RAR, 7z and multipart file links when accessible, including delayed page contents.
+- Download handling saves accepted archive files into the standard Downloads folder that Dusk monitors.
+- Prevents automatic selection of fix-only, update, advertising, and unrelated downloads.
+- Login and host-gating steps remain manual; link selection does not bypass third-party restrictions.
+- Keeps cloud playtime syncing introduced in v1.8.0.
+
 ## 1.8.1 - 2026-10-09
 
 Correct game download link selection.
