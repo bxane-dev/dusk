@@ -2,7 +2,7 @@
 
 Dusk is a local-first Windows game launcher built with Tauri, Rust, React, TypeScript, and SQLite.
 
-**Current version: 1.8.5**
+**Current version: 1.8.6**
 
 It scans real local game installations, launches games, tracks sessions it can observe, and keeps the library database on the user's PC. Dusk does not ship with fake games or seeded playtime.
 
@@ -66,6 +66,28 @@ returns. Local game executable paths stay on the PC.
 Guest accounts remain local-only. Session duration is counted only when Dusk
 can observe the launched process. Sync runs automatically when refreshing the
 library and periodically while online.
+
+## Native downloads inside Dusk (v1.8.6)
+
+Select **Downloads** in Dusk's top toolbar to open its built-in native download
+manager. Paste a *direct* public HTTPS archive URL, enter an archive filename
+and a game title, and choose **Start download**. Dusk streams ZIP, RAR and 7z
+files to the standard Downloads folder and displays bytes/progress,
+cancellation, and transfer errors. Select **Extract & add to library** after
+the download completes to use Dusk's existing archive importer. Installer
+execution still requires explicit confirmation.
+
+The transfer engine verifies secure public HTTPS links, blocks known
+advertising networks and local-network destinations, enforces a 100 GiB limit
+and checks the file's archive signature when applicable. Downloads are
+never executed automatically. Three downloads can run simultaneously, and
+unfinished transfers are removed when cancelled or if they fail.
+
+This native downloader works with **direct downloadable archive URLs**.
+A Drive/Hosters landing page, a page requiring login, or a request that depends
+on WebView2 cookies is not an actual direct archive link; complete the host's
+steps in the embedded/external browser first. Dusk retains WebView2 downloading
+for authenticated site downloads.
 
 ## Working downloads from Hosters, Drive and HTTPS CDNs (v1.8.5)
 
