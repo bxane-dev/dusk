@@ -3141,7 +3141,11 @@ async fn open_online_fix_result(
             .on_download(move |_webview, event| {
                 match event {
                     tauri::webview::DownloadEvent::Requested { url, destination } => {
-                        if url.scheme() != "https" {
+                        if url.scheme() != "https"
+                            || !matches!(url.host_str(), Some(
+                                "drive.online-fix.me" | "hosters.online-fix.me"
+                            ))
+                        {
                             return false;
                         }
                         let filename = destination.file_name()
