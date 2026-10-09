@@ -2,6 +2,16 @@
 
 All notable Dusk changes are documented here.
 
+## 1.8.0 - 2026-10-09
+
+Cross-device playtime synchronization and Online-Fix game search repair.
+
+- Record game hours and launch counts as distinct per-device cloud sessions, preventing progress loss when several PCs share an account.
+- Preserve existing cloud playtime as a one-time historical baseline; new sessions merge across computers without double counting.
+- Upload offline sessions upon reconnection and merge cloud hours back into local game stats.
+- Replace unreliable Bing search with Online-Fix's native game-search results so existing listings such as How to Fish appear.
+- Continue using the private, authenticated Supabase account.
+
 ## 1.7.10 - 2026-10-09
 
 In-app game discovery, managed archive imports, and a Windows installer refresh.
