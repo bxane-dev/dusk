@@ -62,7 +62,9 @@
     const titleMatch = words.every((word) => normalized.split(/\s+/).includes(word));
     // Inside a verified game folder, split archives may have generic part
     // names; still require a file with an actual archive extension.
-    const folderMatch = normalize(location.pathname).includes(normalize(gameTitle));
+    let currentPath = location.pathname;
+    try { currentPath = decodeURIComponent(currentPath); } catch {}
+    const folderMatch = normalize(currentPath).includes(normalize(gameTitle));
     if (!titleMatch && !(isArchive && folderMatch)) return null;
     return { url, candidate, downloadName, isArchive };
   }
