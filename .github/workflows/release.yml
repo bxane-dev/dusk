@@ -42,6 +42,9 @@ jobs:
           node scripts/test-game-source-browser.cjs
           node scripts/test-browser-copy-link.cjs
 
+      - name: Verify main Dusk buttons are clickable in Windows Edge
+        run: node scripts/test-main-window-interaction.mjs
+
       - name: Test native archive recognition and mirror handling
         run: cargo test --manifest-path src-tauri/Cargo.toml --lib
 
