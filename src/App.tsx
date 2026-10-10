@@ -2523,8 +2523,14 @@ export default function App() {
                         <button className="button primary" onClick={() => {
                           void api.openGameSourceListing(result.url)
                             .catch((error: unknown) => showToast(readableError(error), "error"));
-                        }} title="Open this game's original listing in your default browser">
-                          <ExternalLink size={15} /> View listing
+                        }} title="Open the listing inside Dusk with ad blocking enabled by default">
+                          <Globe2 size={15} /> Open in Dusk
+                        </button>
+                        <button className="button ghost" onClick={() => {
+                          void api.openGameSourceBrowser(result.url)
+                            .catch((error: unknown) => showToast(readableError(error), "error"));
+                        }} title="Open in your default browser if the site needs an external download host">
+                          <ExternalLink size={15} /> Browser fallback
                         </button>
                       </div>
                     )}
@@ -2535,8 +2541,8 @@ export default function App() {
                 {webSource === "online-fix"
                   ? "Get game selects a Hosters archive and starts a native download when a direct file URL is available. Fix-only files are excluded. Some hosts require browser interaction."
                   : webSource === "fitgirl"
-                    ? "FitGirl is listed as an offline-only discovery option in Dusk. Open a listing to inspect its requirements and download choices; Dusk does not assume the site provides a direct-download API."
-                    : "Browse Game3rb listings here and open the selected page in your default browser. Download options depend on the individual host; Dusk does not bypass logins or download gates."}
+                    ? "FitGirl is an offline-only discovery source. Listings open inside Dusk with ad and pop-up blocking on by default. For download-host pages outside FitGirl, use Browser fallback."
+                    : "Game3rb listings open in Dusk with ad and pop-up blocking on by default. For third-party download hosts or sites that require external browsing, use Browser fallback."}
               </p>
             </section>
           ) : (
