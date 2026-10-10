@@ -88,6 +88,7 @@ export const api = {
   discoverGameSourceArchives: (source: "game3rb" | "fitgirl", listingUrl: string) =>
     invoke<GameArchiveBundle[]>("discover_game_source_archives", { source, listingUrl }),
   openWindowsVpnSettings: () => invoke<void>("open_windows_vpn_settings"),
+  openCloudflareWarpSetup: () => invoke<void>("open_cloudflare_warp_setup"),
   listWindowsVpnProfiles: () =>
     invoke<WindowsVpnProfile[]>("list_windows_vpn_profiles"),
   prepareWindowsVpn: (profile?: string) =>
