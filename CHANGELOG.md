@@ -2,6 +2,17 @@
 
 All notable Dusk changes are documented here.
 
+## 1.8.13 - 2026-10-10
+
+Add a current-website Copy link button and Automatic Windows VPN integration.
+
+- Inject Copy link into isolated game-listing and download-host browser windows.
+- Copy the current URL using a user-gesture clipboard API fallback.
+- Add Settings > VPN with Automatic (default) and Off connection modes.
+- Discover existing Windows VPN profiles, select one, connect on startup/browser open, and show truthful connection status.
+- Open native Windows VPN configuration directly from Dusk.
+- Keep credentials with Windows; no built-in VPN service/server is provided.
+
 ## 1.8.12 - 2026-10-10
 
 Fix misleading one-click downloads caused by mirrors redirecting to 404 download endpoints.
