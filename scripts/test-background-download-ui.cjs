@@ -21,10 +21,10 @@ function browse(host) {
   const location = new URL("https://" + host + "/game/");
   location.assign = (url) => destinations.push(url);
   class Element {
-    constructor(link) { this.link = link; }
+    constructor(link) { this.link = link; this.target = "_blank"; }
     closest() { return this; }
     hasAttribute(name) { return name === "download" ? false : false; }
-    getAttribute(name) { return name === "href" ? this.link : null; }
+    getAttribute(name) { return name === "href" ? this.link : name === "target" ? this.target : null; }
   }
   const window = {
     open() { return null; },
