@@ -27,6 +27,7 @@ pub(crate) struct DownloadStatus {
     total_bytes: Option<u64>,
     error: Option<String>,
     bundle_ready: bool,
+    listing_url: Option<String>,
 }
 
 struct DownloadJob {
@@ -286,7 +287,14 @@ pub(crate) fn multipart_volume(filename: &str) -> Option<(String, usize)> {
 }
 
 #[tauri::command]
-pub(crate) fn start_archive_bundle(title: String, parts: Vec<ArchiveBundlePart>) -> Result<DownloadStatus, String> {
+pub(crate) fn start_archive_bundle(
+    title: String,
+    parts: Vec<ArchiveBundlePart>,
+    listing_url: Option<String>,
+) -> Result<DownloadStatus, String> {
+    let listing_url = listing_url
+        .map(|value| super::game_sources::verified_listing(&value).map(|url| url.to_string()))
+        .transpose()?;
     if title.trim().is_empty() || title.chars().count() > 140 {
         return Err("Enter a valid game title.".into());
     }
@@ -340,7 +348,7 @@ pub(crate) fn start_archive_bundle(title: String, parts: Vec<ArchiveBundlePart>)
         id: id.clone(), title: title.trim().to_string(),
         filename: first.clone(), file_path: folder.join(&first).to_string_lossy().into_owned(),
         status: "downloading".into(), received_bytes: 0, total_bytes: None,
-        error: None, bundle_ready: true,
+        error: None, bundle_ready: true, listing_url,
     };
     let mut map = jobs().lock().map_err(|e| e.to_string())?;
     if map.values().filter(|job| job.info.status == "downloading").count() >= 3 {
@@ -371,7 +379,8 @@ pub(crate) fn start_managed_download(url: String, filename: String, title: Strin
     let info = DownloadStatus {
         id: id.clone(), title: title.trim().chars().take(140).collect(),
         filename, file_path: target.to_string_lossy().into_owned(),
-        status: "downloading".into(), received_bytes: 0, total_bytes: None, error: None, bundle_ready: false,
+        status: "downloading".into(), received_bytes: 0, total_bytes: None,
+        error: None, bundle_ready: false, listing_url: None,
     };
     let mut map = jobs().lock().map_err(|e| e.to_string())?;
     if map.values().filter(|job| job.info.status == "downloading").count() >= 3 {
