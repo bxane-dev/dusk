@@ -1183,19 +1183,27 @@ export default function App() {
 
   useEffect(() => {
     let mounted = true;
-    void api.listWindowsVpnProfiles().then((profiles) => {
-      if (!mounted) return;
-      setVpnProfiles(profiles);
-      setVpnMessage(profiles.some(profile => profile.connected)
-        ? "Windows VPN is connected."
-        : profiles.length === 0
-          ? "No Windows VPN profile is configured. Dusk cannot provide a VPN server."
-          : "A Windows VPN profile is available. Automatic mode connects it before opening websites.");
-    }).catch((error: unknown) => {
-      if (mounted) setVpnMessage("Could not read Windows VPN profiles: " + readableError(error));
-    });
+    void (async () => {
+      try {
+        const profiles = await api.listWindowsVpnProfiles();
+        if (!mounted) return;
+        setVpnProfiles(profiles);
+        if (vpnMode === "off") {
+          setVpnMessage("Automatic VPN connection is disabled.");
+          return;
+        }
+        // Automatic mode is active from first launch. Windows manages the
+        // real tunnel; Dusk cannot connect without a configured profile.
+        const result = await api.prepareWindowsVpn(vpnProfile || undefined);
+        if (!mounted) return;
+        setVpnMessage(result.message);
+        setVpnProfiles(await api.listWindowsVpnProfiles());
+      } catch (error) {
+        if (mounted) setVpnMessage("Could not prepare Windows VPN: " + readableError(error));
+      }
+    })();
     return () => { mounted = false; };
-  }, []);
+  }, [vpnMode, vpnProfile]);
 
   async function prepareBrowserVpn() {
     if (vpnMode === "off") return;
