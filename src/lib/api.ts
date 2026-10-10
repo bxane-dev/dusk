@@ -42,6 +42,7 @@ export type ManagedDownload = {
   error: string | null;
   bundleReady: boolean;
   listingUrl: string | null;
+  source: "online-fix" | null;
 };
 
 export const api = {
@@ -68,10 +69,12 @@ export const api = {
   refreshMissingCovers: () =>
     invoke<{ attempted: number; updated: number; remaining: number }>("refresh_missing_covers"),
   chooseExecutable: () => invoke<string | null>("choose_executable"),
-  startArchiveBundle: (title: string, parts: GameArchiveBundle["parts"], listingUrl?: string) =>
-    invoke<ManagedDownload>("start_archive_bundle", { title, parts, listingUrl: listingUrl || null }),
-  startManagedDownload: (url: string, filename: string, title: string) =>
-    invoke<ManagedDownload>("start_managed_download", { url, filename, title }),
+  startArchiveBundle: (title: string, parts: GameArchiveBundle["parts"], listingUrl?: string, source?: "online-fix") =>
+    invoke<ManagedDownload>("start_archive_bundle", {
+      title, parts, listingUrl: listingUrl || null, source: source || null,
+    }),
+  startManagedDownload: (url: string, filename: string, title: string, source?: "online-fix") =>
+    invoke<ManagedDownload>("start_managed_download", { url, filename, title, source: source || null }),
   listManagedDownloads: () => invoke<ManagedDownload[]>("list_managed_downloads"),
   cancelManagedDownload: (downloadId: string) =>
     invoke<void>("cancel_managed_download", { downloadId }),
