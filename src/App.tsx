@@ -977,7 +977,7 @@ export default function App() {
   const failedDownloadIdsRef = useRef(new Set<string>());
   const importingInBackgroundRef = useRef(false);
   const managedDownloadPathsRef = useRef(new Set<string>());
-  const [activeDownloadWatch, setActiveDownloadWatch] = useState<{ sinceMs: number; title: string; url: string } | null>(null);
+  const [activeDownloadWatch, setActiveDownloadWatch] = useState<{ sinceMs: number; title: string; url: string; source: WebGameSource } | null>(null);
   const [downloadWatchMessage, setDownloadWatchMessage] = useState("");
   const downloadStabilityRef = useRef(new Map<string, { size: number; stable: number }>());
   const watchBusyRef = useRef(false);
@@ -1813,7 +1813,7 @@ export default function App() {
     }
   }
 
-  async function finishGameImport(result: { directory: string; game: GameRecord | null; installers: string[] }) {
+  async function finishGameImport(result: { directory: string; game: GameRecord | null; installers: string[] }, background = false) {
     if (result.game) {
       await refreshCore(false);
       showToast("Extracted and added " + result.game.title + " to your Dusk library.");
@@ -1821,7 +1821,7 @@ export default function App() {
     }
     if (result.installers.length === 1) {
       showToast("Files extracted to " + result.directory + ". Installer awaiting confirmation.");
-      if (window.confirm("Run the extracted installer? Only proceed if you trust the downloaded files. Dusk will not bypass Windows security warnings.")) {
+      if (!background && window.confirm("Run the extracted installer? Only proceed if you trust the downloaded files. Dusk will not bypass Windows security warnings.")) {
         await api.runGameInstaller(result.installers[0]);
         showToast("Installer launched. Scan your PC when setup finishes.");
       }
@@ -1905,10 +1905,32 @@ export default function App() {
     watchAttemptedRef.current.clear();
     setDownloadWatchMessage("Waiting for a completed archive matching " + result.title + " in Downloads…");
     // Start monitoring before opening the selected verified download page.
-    setActiveDownloadWatch({ sinceMs: Date.now() - 2000, title: result.title, url: destination });
+    setActiveDownloadWatch({ sinceMs: Date.now() - 2000, title: result.title, url: destination, source: "online-fix" });
     try {
       if (externalBrowser) await api.openOnlineFixBrowser(destination);
       else await api.openOnlineFixResult(destination, result.title, autoSelect);
+    } catch (error) {
+      setActiveDownloadWatch(null);
+      setDownloadWatchMessage("");
+      showToast(readableError(error), "error");
+    }
+  }
+
+  async function openOtherGameSource(result: WebGameResult, external = false) {
+    // Browsing still happens on the real host. A completed, title-matching
+    // archive is picked up and imported without a manual URL-paste form.
+    downloadStabilityRef.current.clear();
+    watchAttemptedRef.current.clear();
+    setDownloadWatchMessage("Watching for a download of " + result.title + " in the background…");
+    setActiveDownloadWatch({
+      sinceMs: Date.now() - 2000,
+      title: result.title,
+      url: result.url,
+      source: webSource,
+    });
+    try {
+      if (external) await api.openGameSourceBrowser(result.url);
+      else await api.openGameSourceListing(result.url);
     } catch (error) {
       setActiveDownloadWatch(null);
       setDownloadWatchMessage("");
@@ -2077,11 +2099,11 @@ export default function App() {
           watchAttemptedRef.current.add(candidate.path + ":" + candidate.sizeBytes);
           setDownloadWatchMessage("Download complete: " + candidate.filename + ". Extracting into Dusk…");
           try {
-            const imported = await api.importDownloadedGameArchive(candidate.path, watch.title, "online-fix.me");
+            const imported = await api.importDownloadedGameArchive(candidate.path, watch.title, watch.source === "online-fix" ? "online-fix.me" : undefined);
             if (cancelled) return;
             setActiveDownloadWatch(null);
             setDownloadWatchMessage("Imported " + candidate.filename + ".");
-            await finishGameImport(imported);
+            await finishGameImport(imported, true);
           } catch (error) {
             if (!cancelled) setDownloadWatchMessage("Import failed: " + readableError(error) + " — monitoring continues.");
           }
@@ -2469,16 +2491,12 @@ export default function App() {
                     </div>
                     ) : (
                       <div className="web-result-actions">
-                        <button className="button primary" onClick={() => {
-                          void api.openGameSourceListing(result.url)
-                            .catch((error: unknown) => showToast(readableError(error), "error"));
-                        }} title="Open the listing inside Dusk with ad blocking enabled by default">
+                        <button className="button primary" onClick={() => void openOtherGameSource(result)}
+                          title="Open inside Dusk and watch for completed matching archives in the background">
                           <Globe2 size={15} /> Open in Dusk
                         </button>
-                        <button className="button ghost" onClick={() => {
-                          void api.openGameSourceBrowser(result.url)
-                            .catch((error: unknown) => showToast(readableError(error), "error"));
-                        }} title="Open in your default browser if the site needs an external download host">
+                        <button className="button ghost" onClick={() => void openOtherGameSource(result, true)}
+                          title="Use system browser when needed; Dusk still watches for a matching downloaded archive">
                           <ExternalLink size={15} /> Browser fallback
                         </button>
                       </div>
