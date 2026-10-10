@@ -15,9 +15,9 @@ function browser(url) {
   location.assign = (url) => navigated.push(url);
 
   class Element {
-    constructor(href) { this.href = href; }
+    constructor(href) { this.href = href; this.target = "_blank"; }
     closest() { return this; }
-    getAttribute(key) { return key === "href" ? this.href : null; }
+    getAttribute(key) { return key === "href" ? this.href : key === "target" ? this.target : null; }
     hasAttribute(key) { return key === "download" ? false : false; }
   }
   const window = { location, setTimeout() {}, clearTimeout() {} };
