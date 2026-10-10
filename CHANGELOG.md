@@ -2,6 +2,18 @@
 
 All notable Dusk changes are documented here.
 
+## 1.8.14 - 2026-10-10
+
+Improve multi-volume downloads and stop wasting time on dead file-host links.
+
+- Verify each archive volume and its public HTTPS mirror response before starting the managed bundle.
+- Reject redirected 404 responses, HTML pages, and invalid archive data rather than mislabeling them as downloadable files.
+- Fix archive signatures for numbered RAR/7z continuation volumes and first-volume naming variants.
+- Open the original game listing inside Dusk if a download host fails after discovery.
+- Run native archive regression tests during Windows CI and release builds.
+
+Host authentication, CAPTCHA and premium-only download APIs are not bypassed.
+
 ## 1.8.13 - 2026-10-10
 
 Add a current-website Copy link button and Automatic Windows VPN integration.
