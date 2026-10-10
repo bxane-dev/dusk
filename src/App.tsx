@@ -1970,7 +1970,10 @@ export default function App() {
         await refreshCore(false);
         showToast(ready.title + " was downloaded and added to your library.");
       } else if (imported.installers.length === 1) {
-        await finishGameImport(imported);
+        // Background completion must never open a blocking native confirm().
+        // A hidden WebView2 dialog can make the entire main Dusk UI appear
+        // unclickable while the separate browser popups keep working.
+        await finishGameImport(imported, true);
       } else if (imported.installers.length > 1) {
         showToast(ready.title + " extracted. Multiple installers found; choose the correct one with Install game.");
       } else {
@@ -2282,7 +2285,9 @@ export default function App() {
             if (cancelled) return;
             setActiveDownloadWatch(null);
             setDownloadWatchMessage("Imported " + candidate.filename + ".");
-            await finishGameImport(imported);
+            // The watcher runs without a direct user click; never show a
+            // modal confirmation here or block interaction with the main UI.
+            await finishGameImport(imported, true);
           } catch (error) {
             // A transient extraction error (disk space, a changing volume,
             // locked file) should not permanently suppress retrying this file.
