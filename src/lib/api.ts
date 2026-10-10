@@ -76,6 +76,10 @@ export const api = {
   cancelManagedDownload: (downloadId: string) =>
     invoke<void>("cancel_managed_download", { downloadId }),
   importGameArchive: () => invoke<{ directory: string; game: GameRecord | null; installers: string[] } | null>("import_game_archive"),
+  verifyDownloadedMultipartArchive: (archivePath: string, password?: string) =>
+    invoke<{ ready: boolean; message: string }>("verify_downloaded_multipart_archive", {
+      archivePath, password: password || null,
+    }),
   listRecentGameArchives: (sinceMs: number) =>
     invoke<Array<{ path: string; filename: string; sizeBytes: number; modifiedAtMs: number }>>("list_recent_game_archives", { sinceMs }),
   importDownloadedGameArchive: (archivePath: string, title: string, password?: string) =>
