@@ -3085,15 +3085,16 @@ fn parse_online_fix_hoster_files(html: &str) -> Result<Vec<OnlineFixHosterFile>,
                 || parsed.username() != "" || parsed.password().is_some()
                 || filename.len() > 230
                 || filename.chars().any(|c| c.is_control() || matches!(c, '/' | '\\' | ':' | '<' | '>' | '|' | '?' | '*'))
-                || ![".zip", ".rar", ".7z", ".7z.001"].iter().any(|ext| filename.to_ascii_lowercase().ends_with(ext))
+                || !download_manager::archive_name(filename)
             {
                 continue;
             }
             let lower = filename.to_ascii_lowercase();
             let is_fix = lower.split(|c: char| !c.is_ascii_alphanumeric())
                 .any(|word| matches!(word, "fix" | "repair" | "update" | "updates" | "patch" | "crack" | "redist"));
-            let direct_archive = [".zip", ".rar", ".7z", ".001"]
-                .iter().any(|ext| parsed.path().to_ascii_lowercase().ends_with(ext));
+            let direct_archive = parsed.path_segments()
+                .and_then(|mut segments| segments.next_back())
+                .is_some_and(download_manager::archive_name);
             if files.iter().any(|entry: &OnlineFixHosterFile| entry.url == url) { continue; }
             files.push(OnlineFixHosterFile {
                 provider: provider.into(), filename: filename.into(), url: url.into(),
