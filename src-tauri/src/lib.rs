@@ -1,6 +1,7 @@
 mod archive_import;
 mod download_manager;
 mod game_sources;
+mod windows_vpn;
 
 use chrono::{DateTime, Utc};
 use discord_rich_presence::{activity, DiscordIpc, DiscordIpcClient};
@@ -6453,6 +6454,8 @@ pub fn run() {
             export_playtime_updates,
             merge_cloud_playtime,
             import_account_state,
+            windows_vpn::list_windows_vpn_profiles,
+            windows_vpn::prepare_windows_vpn,
             check_github_update,
             install_github_update,
             discord_rpc_enable,
