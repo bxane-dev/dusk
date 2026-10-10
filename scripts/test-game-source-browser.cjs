@@ -7,7 +7,7 @@ const script = fs.readFileSync(
   path.join(__dirname, "..", "src-tauri", "src", "game_source_navigation.js"), "utf8",
 );
 
-function browser(url) {
+function browser(url, userActivated = false) {
   const navigated = [];
   const events = new Map();
   const notes = [];
@@ -29,7 +29,7 @@ function browser(url) {
     getElementById() { return notes.find(node => node.id === "dusk-source-note") || null; },
     createElement() { return { style: {}, setAttribute() {}, remove() {} }; },
   };
-  vm.runInNewContext(script, { URL, location, window, document, Element });
+  vm.runInNewContext(script, { URL, location, window, document, Element, navigator: { userActivation: { isActive: userActivated } } });
   const click = (href) => {
     let prevented = false;
     events.get("click")?.({
@@ -56,6 +56,12 @@ assert.equal(game3rb.click("https://www.game3rb.com/next-game/"), true);
 assert.equal(game3rb.navigated[0], "https://www.game3rb.com/next-game/");
 assert.equal(game3rb.click("https://game3rb.com.evil.example/ad"), true);
 assert.equal(game3rb.navigated.length, 1);
+
+const approvedHost = browser("https://fitgirl-repacks.site/game/", true);
+assert.equal(approvedHost.window.open("https://pixeldrain.com/u/abc", "_blank"), approvedHost.window);
+assert.equal(approvedHost.navigated[0], "https://pixeldrain.com/u/abc");
+approvedHost.window.open("https://ads.exoclick.com/pop", "_blank");
+assert.equal(approvedHost.navigated.length, 1);
 
 const unrelated = browser("https://unrelated.example/game/");
 assert.equal(unrelated.click("https://game3rb.com/game/"), false);
