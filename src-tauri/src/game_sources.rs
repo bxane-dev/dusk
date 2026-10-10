@@ -19,7 +19,7 @@ fn source_host(source: &str) -> Result<&'static str, String> {
     }
 }
 
-fn verified_listing(url: &str) -> Result<reqwest::Url, String> {
+pub(crate) fn verified_listing(url: &str) -> Result<reqwest::Url, String> {
     let parsed = reqwest::Url::parse(url).map_err(|_| "Invalid game listing URL.".to_string())?;
     if parsed.scheme() != "https" || parsed.port().is_some()
         || parsed.username() != "" || parsed.password().is_some()
