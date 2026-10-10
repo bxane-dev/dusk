@@ -434,12 +434,12 @@ fn multipart_archive_readiness(archive: &Path, password: Option<&str>) -> Archiv
             ready: false, message: "Select the first volume of a multipart archive.".into()
         };
     }
-    if combined_multipart_size(archive, filename).is_none() {
+    let Some(initial_size) = combined_multipart_size(archive, filename) else {
         return ArchiveReadiness {
             ready: false,
             message: "Waiting for at least two contiguous, nonempty archive volumes.".into(),
         };
-    }
+    };
 
     let mut available_extractor = false;
     for executable in extractor_candidates() {
@@ -451,6 +451,13 @@ fn multipart_archive_readiness(archive: &Path, password: Option<&str>) -> Archiv
             Ok(status) => {
                 available_extractor = true;
                 if status.success() {
+                    // Files can still be changing in Downloads while 7-Zip reads
+                    // them. Never authorize extraction if any volume size moved.
+                    if combined_multipart_size(archive, filename) != Some(initial_size) {
+                        return ArchiveReadiness {
+                            ready: false, message: "Archive parts changed during validation; waiting until transfers finish.".into(),
+                        };
+                    }
                     return ArchiveReadiness {
                         ready: true, message: "All multipart volumes passed archive integrity testing.".into(),
                     };
