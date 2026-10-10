@@ -82,6 +82,8 @@ export const api = {
     ),
   openGameSourceListing: (url: string) =>
     invoke<void>("open_game_source_listing", { url }),
+  openGameSourceBrowser: (url: string) =>
+    invoke<void>("open_game_source_browser", { url }),
   searchOnlineFixGames: (query: string) =>
     invoke<Array<{ title: string; url: string; description: string }>>("search_online_fix_games", { query }),
   getOnlineFixHosterFiles: (hostersUrl: string) =>
