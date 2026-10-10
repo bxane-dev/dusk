@@ -216,8 +216,6 @@ try {
   if ($drive.AvailableFreeSpace -lt ($total + 536870912L)) {
     throw 'Not enough disk space to safely extract this archive'
   }
-  if ($false) {
-  }
 } finally { $zip.Dispose() }
 [IO.Compression.ZipFile]::ExtractToDirectory($env:DUSK_ARCHIVE, $env:DUSK_DESTINATION)
 "#;
@@ -404,7 +402,10 @@ fn combined_multipart_size(first: &Path, filename: &str) -> Option<u64> {
         if index > 120 { return None; }
         let meta = entry.metadata().ok()?;
         if !meta.is_file() || meta.len() == 0 { return None; }
-        volumes.insert(index, meta.len());
+        if volumes.insert(index, meta.len()).is_some() {
+            // Different padded filenames for the same volume number are ambiguous.
+            return None;
+        }
     }
     if volumes.len() < 2 || !volumes.contains_key(&1) { return None; }
     if volumes.iter().enumerate().any(|(index, (number, _))| *number != index + 1) {
@@ -582,6 +583,8 @@ mod multipart_scan_tests {
         assert_eq!(combined_multipart_size(&first, "test.part001.rar"), None);
         fs::write(dir.join("test.part002.rar"), b"abcdef").unwrap();
         assert_eq!(combined_multipart_size(&first, "test.part001.rar"), Some(18));
+        fs::write(dir.join("test.part2.rar"), b"abcdef").unwrap();
+        assert_eq!(combined_multipart_size(&first, "test.part001.rar"), None);
         let _ = fs::remove_dir_all(dir);
     }
 
