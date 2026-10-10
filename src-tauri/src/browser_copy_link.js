@@ -24,24 +24,25 @@
     async function copyCurrentUrl() {
       const href = location.href;
       if (!/^https:\/\//i.test(href)) return;
+      // First try the synchronous clipboard command while the click gesture
+      // is still active. Then use the asynchronous Clipboard API if needed.
       let success = false;
-      try {
-        if (navigator.clipboard && typeof navigator.clipboard.writeText === "function") {
-          await navigator.clipboard.writeText(href);
-          success = true;
-        }
-      } catch { /* Clipboard permission can be denied in embedded WebView2. */ }
+      const input = document.createElement("textarea");
+      input.value = href;
+      input.setAttribute("aria-hidden", "true");
+      input.style.cssText = "position:fixed;opacity:0;pointer-events:none;left:-9999px;";
+      document.body.appendChild(input);
+      input.focus();
+      input.select();
+      try { success = !!document.execCommand("copy"); } catch { success = false; }
+      input.remove();
       if (!success) {
-        // Older WebView2 builds may only support the user-gesture execCommand path.
-        const input = document.createElement("textarea");
-        input.value = href;
-        input.setAttribute("aria-hidden", "true");
-        input.style.cssText = "position:fixed;opacity:0;pointer-events:none;left:-9999px;";
-        document.body.appendChild(input);
-        input.focus();
-        input.select();
-        try { success = document.execCommand("copy"); } catch { success = false; }
-        input.remove();
+        try {
+          if (navigator.clipboard && typeof navigator.clipboard.writeText === "function") {
+            await navigator.clipboard.writeText(href);
+            success = true;
+          }
+        } catch { success = false; }
       }
       button.textContent = success ? "Copied!" : "Copy failed";
       button.setAttribute("aria-label", success ? "Link copied" : "Could not copy link");
