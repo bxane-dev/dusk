@@ -339,7 +339,7 @@ pub(crate) async fn import_downloaded_game_archive(
         let directory = downloads_dir()?;
         let file = PathBuf::from(archive_path)
             .canonicalize().map_err(|error| error.to_string())?;
-        if file.parent() != Some(directory.as_path()) {
+        if !file.starts_with(&directory) || file == directory {
             return Err("Automatic imports can only access your Downloads folder.".into());
         }
         extract_game_archive(app, file, Some(title), password)
@@ -395,9 +395,10 @@ pub(crate) async fn list_recent_game_archives(since_ms: u64) -> Result<Vec<Recen
     tauri::async_runtime::spawn_blocking(move || {
         let download_dir = downloads_dir()?;
         let mut archives = Vec::new();
-        for entry in fs::read_dir(download_dir).map_err(|error| error.to_string())? {
-            let entry = entry.map_err(|error| error.to_string())?;
-            let path = entry.path();
+        for entry in WalkDir::new(download_dir).max_depth(3).follow_links(false)
+            .into_iter().filter_map(Result::ok).take(3000) {
+            if !entry.file_type().is_file() { continue; }
+            let path = entry.path().to_path_buf();
             if archive_type(&path).is_none() { continue; }
             let metadata = entry.metadata().map_err(|error| error.to_string())?;
             if !metadata.is_file() || metadata.len() == 0 { continue; }
