@@ -1963,7 +1963,9 @@ export default function App() {
 
     importingInBackgroundRef.current = true;
     void (async () => {
-      const imported = await api.importDownloadedGameArchive(ready.filePath, ready.title);
+      const imported = await api.importDownloadedGameArchive(
+        ready.filePath, ready.title, ready.source === "online-fix" ? "online-fix.me" : undefined
+      );
       if (imported.game) {
         await refreshCore(false);
         showToast(ready.title + " was downloaded and added to your library.");
@@ -2048,7 +2050,7 @@ export default function App() {
     }
     if (!(await prepareBrowserVpn())) return;
     try {
-      const created = await api.startManagedDownload(file.url, file.filename, result.title);
+      const created = await api.startManagedDownload(file.url, file.filename, result.title, "online-fix");
       setManagedDownloads((current) => [created, ...current.filter((entry) => entry.id !== created.id)]);
       showToast("Downloading " + file.filename + " from " + file.provider + " in the background.");
     } catch (error) {
@@ -2096,7 +2098,7 @@ export default function App() {
           setHosterFiles((current) => ({ ...current, [result.url]: files }));
           const multipart = findHosterMultipartBundle(files);
           if (multipart) {
-            const created = await api.startArchiveBundle(result.title, multipart);
+            const created = await api.startArchiveBundle(result.title, multipart, undefined, "online-fix");
             setManagedDownloads(current => [created, ...current.filter(item => item.id !== created.id)]);
             showToast("Downloading " + multipart.length + " archive volumes with automatic mirror fallback.");
             return;
