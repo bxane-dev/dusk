@@ -1929,7 +1929,15 @@ export default function App() {
     for (const item of managedDownloads) {
       if (item.status === "failed" && !failedDownloadIdsRef.current.has(item.id)) {
         failedDownloadIdsRef.current.add(item.id);
-        showToast("Download failed for " + item.title + ": " + (item.error || "File host refused the transfer."), "error");
+        const detail = item.error || "File host refused the transfer.";
+        const hostBlocked = /404|403|file host|web page|access denied|download mirror|archive/i.test(detail);
+        if (item.listingUrl && hostBlocked) {
+          showToast("No usable download mirror for " + item.title + ". Opening the original listing in Dusk. " + detail, "error");
+          void api.openGameSourceListing(item.listingUrl)
+            .catch(error => showToast("Could not open listing: " + readableError(error), "error"));
+        } else {
+          showToast("Download failed for " + item.title + ": " + detail, "error");
+        }
       }
     }
     if (importingInBackgroundRef.current) return;
@@ -2125,7 +2133,7 @@ export default function App() {
       // Prefer the most complete contiguous volume set. Alternatives/mirrors
       // are never mistaken for extra volumes of the same archive.
       const selected = bundles[0];
-      const created = await api.startArchiveBundle(result.title, selected.parts);
+      const created = await api.startArchiveBundle(result.title, selected.parts, result.url);
       setManagedDownloads(current => [created, ...current.filter(item => item.id !== created.id)]);
       showToast("Downloading " + selected.parts.length + " archive volume(s) with automatic mirror fallback.");
     } catch (error) {
