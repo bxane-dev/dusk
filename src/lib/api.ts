@@ -80,6 +80,8 @@ export const api = {
     invoke<Array<{ title: string; url: string; description: string }>>(
       "search_game_source", { source, query },
     ),
+  openGameSourceSearch: (source: "game3rb" | "fitgirl", query: string) =>
+    invoke<void>("open_game_source_search", { source, query }),
   openGameSourceListing: (url: string) =>
     invoke<void>("open_game_source_listing", { url }),
   openGameSourceBrowser: (url: string) =>
