@@ -2,9 +2,33 @@
 
 Dusk is a local-first Windows game launcher built with Tauri, Rust, React, TypeScript, and SQLite.
 
-**Current version: 1.8.9**
+**Current version: 1.8.10**
 
 It scans real local game installations, launches games, tracks sessions it can observe, and keeps the library database on the user's PC. Dusk does not ship with fake games or seeded playtime.
+
+## Games-first Home and background downloads (v1.8.10)
+
+Home and Library now focus on game content. Dusk's old **Downloads** toolbar
+button, dashboard, and manual HTTPS URL-paste form have been removed.
+
+Select **Get game** from Online-Fix search to start a supported full-game
+archive in the native downloader automatically. The transfer runs while Dusk
+is open, even when you navigate to Home or Library. Dusk tracks completion,
+reports failures through notifications, and safely extracts complete,
+single-volume archives into the managed game library. Game cards appear
+after the importer detects a launchable game. Downloads are still restricted
+to secure file sources; access-gated or login-dependent hosts need their normal
+browser interaction.
+
+For Game3rb and FitGirl (offline discovery), use **Open in Dusk** to browse
+with ad blocking already enabled. Dusk watches for an appropriately named
+completed archive in Downloads and imports it when possible. Browser fallback
+is still available. Filenames that don't identify the selected game reliably
+cannot be auto-imported; choose **Import archive** in that case.
+
+Multipart archives (RAR/7z split volumes) require all matching volumes before
+import. Dusk does not run untrusted installers automatically; executable-only
+archives require your confirmation and possibly manual game registration.
 
 ## In-app game browser and default ad blocking (v1.8.9)
 
@@ -128,27 +152,17 @@ When a provider rejects the native downloader, Dusk displays the transfer
 error and the browser fallback remains available. No downloaded installer is
 executed without separate confirmation.
 
-## Native downloads inside Dusk (v1.8.6)
+## Native download engine (introduced in v1.8.6)
 
-Select **Downloads** in Dusk's top toolbar to open its built-in native download
-manager. Paste a *direct* public HTTPS archive URL, enter an archive filename
-and a game title, and choose **Start download**. Dusk streams ZIP, RAR and 7z
-files to the standard Downloads folder and displays bytes/progress,
-cancellation, and transfer errors. Select **Extract & add to library** after
-the download completes to use Dusk's existing archive importer. Installer
-execution still requires explicit confirmation.
+The native HTTPS archive transfer engine remains available in the background,
+without a separate Download Manager screen. It validates public HTTPS URLs,
+rejects known advertising networks, local-network addresses and invalid
+archive signatures, and limits each file to 100 GiB. Transfers run while the
+launcher is open. Failed or cancelled transfers remove incomplete files.
 
-The transfer engine verifies secure public HTTPS links, blocks known
-advertising networks and local-network destinations, enforces a 100 GiB limit
-and checks the file's archive signature when applicable. Downloads are
-never executed automatically. Three downloads can run simultaneously, and
-unfinished transfers are removed when cancelled or if they fail.
-
-This native downloader works with **direct downloadable archive URLs**.
-A Drive/Hosters landing page, a page requiring login, or a request that depends
-on WebView2 cookies is not an actual direct archive link; complete the host's
-steps in the embedded/external browser first. Dusk retains WebView2 downloading
-for authenticated site downloads.
+Only direct file URLs are supported by the native transfer engine. Hosts
+requiring login, browser cookies, or user confirmation still need those
+steps in Dusk's isolated browser or its external-browser fallback.
 
 ## Working downloads from Hosters, Drive and HTTPS CDNs (v1.8.5)
 
