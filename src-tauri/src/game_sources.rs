@@ -386,7 +386,7 @@ mod tests {
 
     #[test]
     fn refuses_dead_or_html_mirror_responses_even_with_archive_filename() {
-        let real_rar = b"Rar!\\x1a\\x07\\x01\\x00";
+        let real_rar = b"Rar!\x1a\x07\x01\x00";
         assert!(!archive_probe_response_ok("game.part01.rar", reqwest::StatusCode::NOT_FOUND,
             "application/octet-stream", real_rar));
         assert!(!archive_probe_response_ok("game.part01.rar", reqwest::StatusCode::OK,
