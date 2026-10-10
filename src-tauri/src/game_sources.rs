@@ -86,9 +86,9 @@ pub(crate) async fn search_game_source(source: String, query: String) -> Result<
         let client = reqwest::blocking::Client::builder()
             .connect_timeout(Duration::from_secs(10))
             .timeout(Duration::from_secs(24))
-            .redirect(reqwest::redirect::Policy::custom(|attempt| {
+            .redirect(reqwest::redirect::Policy::custom(move |attempt| {
                 let safe = attempt.url().scheme() == "https"
-                    && attempt.url().host_str().map(|host| host == host || host == "www.game3rb.com" || host == "www.fitgirl-repacks.site").unwrap_or(false);
+                    && attempt.url().host_str().map(|name| name == host || name == format!("www.{host}")).unwrap_or(false);
                 if attempt.previous().len() >= 4 || !safe { attempt.stop() } else { attempt.follow() }
             }))
             .user_agent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/131.0.0.0 Safari/537.36")
