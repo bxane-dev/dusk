@@ -99,19 +99,23 @@ jobs:
           tagName: dusk-v__VERSION__
           releaseName: Dusk v__VERSION__
           releaseBody: |
-            # Dusk v1.8.17 — Verified one-click multipart downloads and import retry
+            # Dusk v1.8.18 — Fix unresponsive main-window controls
             
-            ## Fixes
-            - **Managed one-click multipart downloads now verify archive integrity** after all numbered volumes finish downloading. An intact filename sequence alone no longer marks a bundle complete.
-            - **Automatic imports retry after failure** with a one-minute cooldown instead of permanently ignoring a downloaded file. This helps when disk space is freed, a file lock clears, or an interrupted download finishes.
-            - **Online-Fix managed archives retain their source** so Dusk supplies the required site password when performing integrity checks and background extraction.
-            - Added a native **end-to-end multipart 7z test**: create real volumes, verify success, delete the last part and require verification to fail.
-            - Keep the **150 GiB extraction cap**, archive path/link protections, and available-disk-space preflight introduced in earlier releases.
+            ## Main-window interaction fixes
+            - Fixed a background game-import path that could open a blocking native confirmation dialog without a click. Downloaded installers are now reported as awaiting user approval instead of freezing the main UI.
+            - Removed blocking cloud account hydration from startup. The local app becomes usable while cloud data synchronizes.
+            - Added **Continue as guest** to the startup screen, even if an account check is slow or offline.
+            - Give a stalled library query a bounded timeout rather than leave the app permanently on a loading state.
+            - Added a **real Windows Edge click-through regression test** that exercises Home, Library, Favorites, Screenshots, Achievements and Settings and checks physical hit-testing against overlays.
+            - Corrected a stale background-download UI regression test.
+            
+            ## Download and extraction
+            - Keep the one-click multipart integrity checks, 150 GiB extraction preflight and archive-password handling from v1.8.17.
+            - Automatic imports continue to require user approval before running extracted installers.
             
             ## Limitations
-            - An installed 7-Zip-compatible tool is required for native multipart integrity verification and normal RAR/7z extraction.
-            - Dusk cannot recover files from host URLs that return 404 or require authentication, CAPTCHA, or additional download-host interaction.
-            - Archives are not run silently; extracted installers still require confirmation.
+            - The browser interaction smoke test and packaged startup test cannot reproduce every WebView2/Windows driver configuration. Further reports should include the exact unresponsive screen and whether buttons respond to keyboard Tab/Enter.
+            - Direct file hosts returning 404 or requiring login/CAPTCHA still require a valid accessible download link or manual host interaction.
           releaseDraft: false
           prerelease: false
           uploadUpdaterJson: false
