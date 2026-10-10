@@ -8,7 +8,12 @@ const app = fs.readFileSync(path.join(root, "src", "App.tsx"), "utf8");
 assert.ok(!app.includes("Download game archives directly inside Dusk. Paste an actual HTTPS file URL"));
 assert.ok(!app.includes('className="native-download-manager"'));
 assert.ok(!app.includes("downloadManagerOpen"));
-assert.ok(app.includes('api.importDownloadedGameArchive(ready.filePath, ready.title)'));
+// The import now forwards source-specific extraction passwords on a separate line.
+assert.match(app, /api\.importDownloadedGameArchive\(\s*ready\.filePath,\s*ready\.title,/);
+const promptCalls = [...app.matchAll(/await finishGameImport\(imported(?:,\s*(true|false))?\)/g)];
+assert.equal(promptCalls.length, 2, "Expected both background auto-import paths");
+assert.ok(promptCalls.every((match) => match[1] === "true"),
+  "Background imports must NEVER invoke a blocking native installer confirmation dialog");
 assert.ok(app.includes('importingInBackgroundRef.current = true'));
 assert.ok(app.includes('managedDownloadPathsRef.current.has(candidate.path.toLowerCase())'));
 assert.ok(app.includes('api.openGameSourceListing(result.url)'));
