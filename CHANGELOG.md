@@ -2,6 +2,18 @@
 
 All notable Dusk changes are documented here.
 
+## 1.8.16 - 2026-10-10
+
+Strengthen large-game extraction preflight and verify actual multipart archives before import.
+
+- Test browser-downloaded multipart RAR/7z archives with 7-Zip before automatic extraction.
+- Detect missing, changing or duplicate volumes; retry verification when Downloads changes instead of assuming numbered parts are complete.
+- Check free disk space before extraction on 7-Zip, native Windows ZIP and Python fallback paths (512 MiB reserve).
+- Maintain the 150 GiB extracted-content cap, 50,000 file cap and unsafe-path protections.
+- Test the archive listing's uncompressed size and reject incomplete archive fixtures.
+
+Requires 7-Zip for automatic verification of browser-downloaded multipart archives. Host-side 404, authentication and CAPTCHA restrictions are unaffected.
+
 ## 1.8.15 - 2026-10-10
 
 Automatic Cloudflare WARP connectivity and large-game extraction debugging.
