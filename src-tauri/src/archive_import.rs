@@ -418,13 +418,13 @@ fn combined_multipart_size(first: &Path, filename: &str) -> Option<u64> {
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct ArchiveReadiness {
-    ready: bool,
-    message: String,
+    pub(crate) ready: bool,
+    pub(crate) message: String,
 }
 
 // Consecutive filenames are insufficient: a set with .001 and .002 may still
 // be missing .003. Test the actual archive BEFORE telling the UI it is ready.
-fn multipart_archive_readiness(archive: &Path, password: Option<&str>) -> ArchiveReadiness {
+pub(crate) fn multipart_archive_readiness(archive: &Path, password: Option<&str>) -> ArchiveReadiness {
     let Some(filename) = archive.file_name().and_then(|value| value.to_str()) else {
         return ArchiveReadiness { ready: false, message: "Archive filename is unreadable.".into() };
     };
