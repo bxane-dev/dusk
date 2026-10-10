@@ -77,7 +77,7 @@ pub(crate) fn archive_name(name: &str) -> bool {
         || multipart_volume(&name).is_some_and(|(_, volume)| (1..=120).contains(&volume))
 }
 
-fn validate_archive_header(name: &str, bytes: &[u8]) -> bool {
+pub(crate) fn validate_archive_header(name: &str, bytes: &[u8]) -> bool {
     let lower = name.to_ascii_lowercase();
     if lower.ends_with(".zip") {
         bytes.starts_with(b"PK\x03\x04") || bytes.starts_with(b"PK\x05\x06")
