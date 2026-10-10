@@ -1,4 +1,4 @@
-// A lightweight content filter scoped to Dusk's isolated Online-Fix webview.
+// A lightweight content filter always enabled in Dusk's isolated game browsing windows.
 // It is NOT a global browser extension or a replacement for a network filter.
 // The containing Rust webview also blocks navigation and unsolicited pop-ups.
 (() => {
@@ -9,6 +9,8 @@
     "drive.online-fix.me", "uploads.online-fix.me",
     "fileditchfiles.st", "filekeeper.net", "pixeldrain.com",
     "gofile.io", "vikingfile.com",
+    "game3rb.com", "www.game3rb.com",
+    "fitgirl-repacks.site", "www.fitgirl-repacks.site",
   ]);
   if (!allowedPages.has(location.hostname)) return;
 
@@ -40,11 +42,14 @@
     ".in-page-ad", ".adsbygoogle", "iframe[src*='acscdn.com']",
     "iframe[src*='themoneytizer.com']",
   ];
-  // File hosts may put download controls inside generic `ad-container`
-  // wrappers. Do not hide entire UI sections on Drive/Hosters pages.
+  // File hosts and listing sites may put legitimate download controls
+  // inside generic ad-styled containers. Keep explicit ad-network filtering
+  // enabled, but avoid hiding entire download sections.
   if (["drive.online-fix.me", "hosters.online-fix.me",
       "fileditchfiles.st", "filekeeper.net", "pixeldrain.com",
-      "gofile.io", "vikingfile.com"].includes(location.hostname)) {
+      "gofile.io", "vikingfile.com",
+      "game3rb.com", "www.game3rb.com",
+      "fitgirl-repacks.site", "www.fitgirl-repacks.site"].includes(location.hostname)) {
     for (const name of [".ad-banner", ".ad-container", ".ad-wrapper",
         ".ad-slot", ".advertisement", ".advertising-block", ".in-page-ad"]) {
       const index = adSelectors.indexOf(name);
