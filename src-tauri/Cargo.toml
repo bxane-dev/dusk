@@ -20,6 +20,7 @@ rusqlite = { version = "0.32", features = ["bundled"] }
 chrono = { version = "0.4", features = ["serde"] }
 regex = "1"
 walkdir = "2"
+fs2 = "0.4"
 rfd = "0.15"
 uuid = { version = "1", features = ["v4"] }
 sha2 = "0.10"
