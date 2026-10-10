@@ -2,6 +2,17 @@
 
 All notable Dusk changes are documented here.
 
+## 1.8.8 - 2026-10-10
+
+Add multiple selectable game discovery websites to Dusk.
+
+- Add Game3rb as a searchable listing source alongside Online-Fix.
+- Add FitGirl Repacks as a separate offline-focused search source.
+- Search public WordPress listing pages and display results in the Dusk UI.
+- Route Game3rb and FitGirl listings to the default browser with strict source URL validation.
+- Keep existing Online-Fix direct archive download functionality unchanged.
+- Preserve the native downloader, webview ad blocker, and cloud playtime sync.
+
 ## 1.8.7 - 2026-10-10
 
 Fix game download buttons that do nothing.
