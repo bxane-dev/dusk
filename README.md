@@ -2,9 +2,29 @@
 
 Dusk is a local-first Windows game launcher built with Tauri, Rust, React, TypeScript, and SQLite.
 
-**Current version: 1.8.8**
+**Current version: 1.8.9**
 
 It scans real local game installations, launches games, tracks sessions it can observe, and keeps the library database on the user's PC. Dusk does not ship with fake games or seeded playtime.
+
+## In-app game browser and default ad blocking (v1.8.9)
+
+Choose **Web search** in Dusk, then select **Online-Fix**, **Game3rb**,
+or **FitGirl · Offline only**. Search results appear inside Dusk.
+**Open in Dusk** on a Game3rb/FitGirl result opens a separate, isolated
+in-app browser window; **Browser fallback** is available for pages needing
+another website or service.
+
+The embedded browser's lightweight ad filter is **on by default** for
+all three sources and for supported Online-Fix file-host pages. Known
+advertising embeds, advertising links and pop-up windows are blocked.
+The site browser only navigates within its selected original website
+to reduce malicious ad redirects. Third-party file hosts can be
+opened separately with Browser fallback. The filter cannot guarantee
+that every ad is blocked, and it does not protect the system browser.
+
+FitGirl is labeled an **offline-only discovery source**; this does not
+imply every game requires or supports offline operation. The downloader
+does not bypass source login, authorization, or download-host restrictions.
 
 ## Features
 
