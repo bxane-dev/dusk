@@ -145,6 +145,7 @@ fn open_game_source_page(app: tauri::AppHandle, listing: reqwest::Url) -> Result
     // browser sessions for Game3rb and offline FitGirl listings.
     .initialization_script(include_str!("online_fix_adblock.js"))
     .initialization_script(include_str!("game_source_navigation.js"))
+        .initialization_script(include_str!("browser_copy_link.js"))
     .on_navigation(move |target| source_page_allowed(target, &host))
     .on_new_window(|_, _| tauri::webview::NewWindowResponse::Deny)
     .on_download(|_window, event| match event {
