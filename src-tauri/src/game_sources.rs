@@ -241,7 +241,7 @@ fn parse_direct_archives(html: &str, page: &reqwest::Url) -> Vec<DiscoveredArchi
             filename: filename.to_string(), mirrors: Vec::new()
         });
         if part.mirrors.len() < 8 && !part.mirrors.iter().any(|url| url == link.as_str()) {
-            part.mirrors.push(link.into());
+            part.mirrors.push(link.to_string());
         }
     }
     let mut bundles = Vec::new();
