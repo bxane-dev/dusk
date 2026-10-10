@@ -1823,7 +1823,7 @@ export default function App() {
       showToast("Files extracted to " + result.directory + ". Installer awaiting confirmation.");
       if (!background && window.confirm("Run the extracted installer? Only proceed if you trust the downloaded files. Dusk will not bypass Windows security warnings.")) {
         await api.runGameInstaller(result.installers[0]);
-        showToast("Installer launched. Scan your PC when setup finishes.");
+        showToast("Installer launched. Dusk will detect the game on the next library scan after setup finishes.");
       }
     } else if (result.installers.length > 1) {
       showToast("Multiple installers found in " + result.directory + ". Choose the correct installer manually.", "error");
@@ -1877,8 +1877,10 @@ export default function App() {
       if (imported.game) {
         await refreshCore(false);
         showToast(ready.title + " was downloaded and added to your library.");
-      } else if (imported.installers.length > 0) {
-        showToast(ready.title + " extracted. An installer was found and needs your approval; use Install game to run it.");
+      } else if (imported.installers.length === 1) {
+        await finishGameImport(imported);
+      } else if (imported.installers.length > 1) {
+        showToast(ready.title + " extracted. Multiple installers found; choose the correct one with Install game.");
       } else {
         showToast(ready.title + " extracted. No executable was detected; use Add game to select one.");
       }
@@ -2103,7 +2105,7 @@ export default function App() {
             if (cancelled) return;
             setActiveDownloadWatch(null);
             setDownloadWatchMessage("Imported " + candidate.filename + ".");
-            await finishGameImport(imported, true);
+            await finishGameImport(imported);
           } catch (error) {
             if (!cancelled) setDownloadWatchMessage("Import failed: " + readableError(error) + " — monitoring continues.");
           }
