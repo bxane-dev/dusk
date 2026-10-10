@@ -76,6 +76,12 @@ export const api = {
   chooseGameInstaller: () => invoke<string | null>("choose_game_installer"),
   runGameInstaller: (installerPath: string) =>
     invoke<void>("run_game_installer", { installerPath }),
+  searchGameSource: (source: "game3rb" | "fitgirl", query: string) =>
+    invoke<Array<{ title: string; url: string; description: string }>>(
+      "search_game_source", { source, query },
+    ),
+  openGameSourceListing: (url: string) =>
+    invoke<void>("open_game_source_listing", { url }),
   searchOnlineFixGames: (query: string) =>
     invoke<Array<{ title: string; url: string; description: string }>>("search_online_fix_games", { query }),
   getOnlineFixHosterFiles: (hostersUrl: string) =>
