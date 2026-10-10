@@ -982,6 +982,7 @@ export default function App() {
   const downloadStabilityRef = useRef(new Map<string, { size: number; stable: number }>());
   const watchBusyRef = useRef(false);
   const watchAttemptedRef = useRef(new Set<string>());
+  const watchVerificationCheckedRef = useRef(new Map<string, number>());
   const [sourceFilter, setSourceFilter] = useState("all");
   const [sortMode, setSortMode] = useState<SortMode>("name");
   const [addOpen, setAddOpen] = useState(false);
@@ -1994,6 +1995,7 @@ export default function App() {
     if (!(await prepareBrowserVpn())) return;
     downloadStabilityRef.current.clear();
     watchAttemptedRef.current.clear();
+    watchVerificationCheckedRef.current.clear();
     setDownloadWatchMessage("Waiting for a completed archive matching " + result.title + " in Downloads…");
     // Start monitoring before opening the selected verified download page.
     setActiveDownloadWatch({ sinceMs: Date.now() - 2000, title: result.title, url: destination, source: "online-fix" });
@@ -2013,6 +2015,7 @@ export default function App() {
     // archive is picked up and imported without a manual URL-paste form.
     downloadStabilityRef.current.clear();
     watchAttemptedRef.current.clear();
+    watchVerificationCheckedRef.current.clear();
     setDownloadWatchMessage("Watching for a download of " + result.title + " in the background…");
     setActiveDownloadWatch({
       sinceMs: Date.now() - 2000,
@@ -2249,9 +2252,25 @@ export default function App() {
           const prior = downloadStabilityRef.current.get(candidate.path);
           const stable = prior && prior.size === candidate.sizeBytes ? prior.stable + 1 : 0;
           downloadStabilityRef.current.set(candidate.path, { size: candidate.sizeBytes, stable });
-          if (stable < 2 || watchAttemptedRef.current.has(candidate.path + ":" + candidate.sizeBytes)) continue;
-          watchAttemptedRef.current.add(candidate.path + ":" + candidate.sizeBytes);
-          setDownloadWatchMessage("Download complete: " + candidate.filename + ". Extracting into Dusk…");
+          const key = candidate.path + ":" + candidate.sizeBytes;
+          if (stable < 2 || watchAttemptedRef.current.has(key)) continue;
+          const isMultipart = /\.7z\.001$|\.part0*1\.rar$/i.test(candidate.filename);
+          if (isMultipart) {
+            const lastChecked = watchVerificationCheckedRef.current.get(key) || 0;
+            if (Date.now() - lastChecked < 60_000) continue;
+            watchVerificationCheckedRef.current.set(key, Date.now());
+            setDownloadWatchMessage("Checking archive integrity before extraction: " + candidate.filename + "…");
+            const verified = await api.verifyDownloadedMultipartArchive(
+              candidate.path, watch.source === "online-fix" ? "online-fix.me" : undefined,
+            );
+            if (cancelled) return;
+            if (!verified.ready) {
+              setDownloadWatchMessage(verified.message + " Monitoring Downloads for more parts.");
+              continue;
+            }
+          }
+          watchAttemptedRef.current.add(key);
+          setDownloadWatchMessage("Archive ready: " + candidate.filename + ". Extracting into Dusk…");
           try {
             const imported = await api.importDownloadedGameArchive(candidate.path, watch.title, watch.source === "online-fix" ? "online-fix.me" : undefined);
             if (cancelled) return;
