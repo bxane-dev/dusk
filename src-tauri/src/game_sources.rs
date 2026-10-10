@@ -121,9 +121,7 @@ fn source_page_allowed(url: &reqwest::Url, expected_host: &str) -> bool {
     url.host_str().map(|host| host == expected_host || host == format!("www.{expected_host}")).unwrap_or(false)
 }
 
-#[tauri::command]
-pub(crate) async fn open_game_source_listing(app: tauri::AppHandle, url: String) -> Result<(), String> {
-    let listing = verified_listing(&url)?;
+fn open_game_source_page(app: tauri::AppHandle, listing: reqwest::Url) -> Result<(), String> {
     let host = listing.host_str().unwrap_or_default().trim_start_matches("www.").to_string();
     let title = if host == "fitgirl-repacks.site" {
         "Dusk — FitGirl (offline game listings)"
@@ -174,6 +172,26 @@ pub(crate) async fn open_game_source_listing(app: tauri::AppHandle, url: String)
     .build()
     .map_err(|error| format!("Could not open game listing inside Dusk: {error}"))?;
     Ok(())
+}
+
+#[tauri::command]
+pub(crate) async fn open_game_source_listing(app: tauri::AppHandle, url: String) -> Result<(), String> {
+    open_game_source_page(app, verified_listing(&url)?)
+}
+
+// A native WebView search fallback for sites that reject the reqwest client.
+// Search stays on the selected site's HTTPS origin with the same ad blocker.
+#[tauri::command]
+pub(crate) async fn open_game_source_search(app: tauri::AppHandle, source: String, query: String) -> Result<(), String> {
+    let host = source_host(&source)?;
+    let query = query.trim();
+    if !(3..=120).contains(&query.chars().count()) {
+        return Err("Enter a game title between 3 and 120 characters.".into());
+    }
+    let mut url = reqwest::Url::parse(&format!("https://{host}/"))
+        .map_err(|e| e.to_string())?;
+    url.query_pairs_mut().append_pair("s", query);
+    open_game_source_page(app, url)
 }
 
 #[cfg(target_os = "windows")]
