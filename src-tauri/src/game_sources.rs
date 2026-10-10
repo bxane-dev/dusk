@@ -292,29 +292,66 @@ fn probe_direct_archive(client: &reqwest::blocking::Client, filename: &str, href
     archive_probe_response_ok(filename, status, &content_type, &header)
 }
 
+// A bundle is only a valid one-click candidate when EVERY required volume
+// can be served directly. Host landing pages and /download gate redirects are
+// never treated as mirror URLs without a real archive response.
+fn validate_direct_part(
+    mut part: DiscoveredArchivePart,
+    client: &reqwest::blocking::Client,
+) -> Option<DiscoveredArchivePart> {
+    let verified: Vec<_> = part.mirrors.iter().take(4)
+        .filter(|url| probe_direct_archive(client, &part.filename, url))
+        .cloned().collect();
+    if verified.is_empty() { return None; }
+    // Unverified URLs must not be reintroduced as "fallback mirrors".
+    part.mirrors = verified;
+    Some(part)
+}
+
 fn verify_direct_archive_bundles(
     bundles: Vec<DiscoveredArchiveBundle>,
-    client: &reqwest::blocking::Client
+    client: &reqwest::blocking::Client,
 ) -> Vec<DiscoveredArchiveBundle> {
     let mut verified = Vec::new();
     for mut bundle in bundles.into_iter().take(5) {
-        let last_index = bundle.parts.len() - 1;
-        let checks = if last_index > 0 { vec![0, last_index] } else { vec![0] };
-        let mut usable = true;
-        for index in checks {
-            let part = &mut bundle.parts[index];
-            // Cap probes per candidate so a dead host doesn't stall search.
-            let working = part.mirrors.iter().take(4).find(|url|
-                probe_direct_archive(client, &part.filename, url)).cloned();
-            if let Some(mirror) = working {
-                part.mirrors.retain(|value| value != &mirror);
-                part.mirrors.insert(0, mirror);
+        if bundle.parts.is_empty() { continue; }
+        let count = bundle.parts.len();
+        let mut checked: Vec<Option<DiscoveredArchivePart>> = vec![None; count];
+        let mut complete = true;
+        // Fail fast on broken opening/closing volumes before checking the rest.
+        for index in [0, count - 1] {
+            if checked[index].is_some() { continue; }
+            let part = bundle.parts[index].clone();
+            if let Some(valid) = validate_direct_part(part, client) {
+                checked[index] = Some(valid);
             } else {
-                usable = false;
+                complete = false;
                 break;
             }
         }
-        if usable { verified.push(bundle); }
+        if !complete { continue; }
+        let pending = (0..count).filter(|index| checked[*index].is_none())
+            .collect::<Vec<_>>();
+        // Bounded concurrency avoids a long sequential hang when an otherwise
+        // complete 100-part bundle has one inaccessible middle volume.
+        for indexes in pending.chunks(6) {
+            let completed = std::thread::scope(|scope| {
+                let workers = indexes.iter().map(|index| {
+                    let candidate = bundle.parts[*index].clone();
+                    scope.spawn(move || validate_direct_part(candidate, client))
+                }).collect::<Vec<_>>();
+                workers.into_iter().map(|worker| worker.join().ok().flatten())
+                    .collect::<Vec<_>>()
+            });
+            for (&index, part) in indexes.iter().zip(completed) {
+                if part.is_none() { complete = false; }
+                checked[index] = part;
+            }
+            if !complete { break; }
+        }
+        if !complete { continue; }
+        bundle.parts = checked.into_iter().flatten().collect();
+        if bundle.parts.len() == count { verified.push(bundle); }
     }
     verified
 }
@@ -384,6 +421,15 @@ pub(crate) fn open_game_source_browser(url: String) -> Result<(), String> {
 mod tests {
     use super::*;
 
+
+    #[test]
+    fn empty_bundle_can_never_pass_verification() {
+        let client = reqwest::blocking::Client::new();
+        let candidate = DiscoveredArchiveBundle {
+            label: "empty".into(), parts: vec![],
+        };
+        assert!(verify_direct_archive_bundles(vec![candidate], &client).is_empty());
+    }
 
     #[test]
     fn refuses_dead_or_html_mirror_responses_even_with_archive_filename() {
