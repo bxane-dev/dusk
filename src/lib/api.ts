@@ -26,6 +26,8 @@ export type OnlineFixHosterFile = {
   requiresCaution: boolean;
 };
 
+export type GameArchiveBundle = { label: string; parts: Array<{ filename: string; mirrors: string[] }> };
+
 export type ManagedDownload = {
   id: string;
   title: string;
@@ -35,6 +37,7 @@ export type ManagedDownload = {
   receivedBytes: number;
   totalBytes: number | null;
   error: string | null;
+  bundleReady: boolean;
 };
 
 export const api = {
@@ -61,6 +64,8 @@ export const api = {
   refreshMissingCovers: () =>
     invoke<{ attempted: number; updated: number; remaining: number }>("refresh_missing_covers"),
   chooseExecutable: () => invoke<string | null>("choose_executable"),
+  startArchiveBundle: (title: string, parts: GameArchiveBundle["parts"]) =>
+    invoke<ManagedDownload>("start_archive_bundle", { title, parts }),
   startManagedDownload: (url: string, filename: string, title: string) =>
     invoke<ManagedDownload>("start_managed_download", { url, filename, title }),
   listManagedDownloads: () => invoke<ManagedDownload[]>("list_managed_downloads"),
@@ -76,6 +81,8 @@ export const api = {
   chooseGameInstaller: () => invoke<string | null>("choose_game_installer"),
   runGameInstaller: (installerPath: string) =>
     invoke<void>("run_game_installer", { installerPath }),
+  discoverGameSourceArchives: (source: "game3rb" | "fitgirl", listingUrl: string) =>
+    invoke<GameArchiveBundle[]>("discover_game_source_archives", { source, listingUrl }),
   searchGameSource: (source: "game3rb" | "fitgirl", query: string) =>
     invoke<Array<{ title: string; url: string; description: string }>>(
       "search_game_source", { source, query },
