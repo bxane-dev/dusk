@@ -2,6 +2,22 @@
 
 All notable Dusk changes are documented here.
 
+## 1.8.11 - 2026-10-10
+
+One-click downloads across multiple game listing sources, with mirror fallback and release notes visible in the update notice.
+
+- Add Get game on Game3rb and FitGirl results to discover direct archive links.
+- Retry alternate HTTPS mirrors for a file when a source fails.
+- Download contiguous multipart RAR and 7z archive volumes as one background job; do not import incomplete sets.
+- Extend Online-Fix Hosters file detection to multipart archives and mirror groups.
+- Add native-WebView fallback when Game3rb or FitGirl HTTP search fails.
+- Keep pop-up/ad blocking on while allowing user-activated navigation to recognized download hosts.
+- Detect downloaded archives in Downloads subfolders and automatically extract/register supported games.
+- Ask for explicit approval before running extracted game installers.
+- Display release changelogs directly in Settings > Updates when a new Dusk version is available.
+
+Limitations: Host authentication, CAPTCHA, torrent links and missing multipart volumes can prevent one-click downloads. Some archives need an installed extractor.
+
 ## 1.8.10 - 2026-10-10
 
 Keep Home and Library game-focused and automate safe downloads in the background.
