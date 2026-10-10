@@ -1,5 +1,6 @@
 mod archive_import;
 mod download_manager;
+mod game_sources;
 
 use chrono::{DateTime, Utc};
 use discord_rich_presence::{activity, DiscordIpc, DiscordIpcClient};
@@ -6403,6 +6404,8 @@ pub fn run() {
             run_game_installer,
             open_external_target,
             search_online_fix_games,
+            game_sources::search_game_source,
+            game_sources::open_game_source_listing,
             get_online_fix_download_links,
             get_online_fix_hoster_files,
             open_online_fix_result,
