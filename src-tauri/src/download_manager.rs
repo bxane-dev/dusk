@@ -26,6 +26,7 @@ pub(crate) struct DownloadStatus {
     received_bytes: u64,
     total_bytes: Option<u64>,
     error: Option<String>,
+    bundle_ready: bool,
 }
 
 struct DownloadJob {
@@ -122,7 +123,16 @@ fn update_complete(id: &str, state: &str, error: Option<String>) {
     });
 }
 
-fn download_file(id: String, url: reqwest::Url, filename: String, target: std::path::PathBuf) {
+#[derive(Clone, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct ArchiveBundlePart {
+    filename: String,
+    mirrors: Vec<String>,
+}
+
+// Download one validated archive, keeping partial files separate from completed
+// files. The same transfer routine is used for single files and multipart bundles.
+fn transfer_file(id: &str, url: reqwest::Url, filename: &str, target: &std::path::Path) -> Result<(), String> {
     let temp = target.with_extension(format!(
         "{}.dusk-part", target.extension().and_then(|ext| ext.to_str()).unwrap_or("archive")
     ));
@@ -151,7 +161,7 @@ fn download_file(id: String, url: reqwest::Url, filename: String, target: std::p
             if size > MAX_DOWNLOAD_BYTES {
                 return Err("Archive exceeds 100 GiB download limit.".into());
             }
-            with_job(&id, |job| job.info.total_bytes = Some(size));
+            with_job(id, |job| job.info.total_bytes = Some(size));
         }
         let content_type = response.headers()
             .get(reqwest::header::CONTENT_TYPE)
@@ -167,7 +177,7 @@ fn download_file(id: String, url: reqwest::Url, filename: String, target: std::p
         let mut chunk = [0u8; 64 * 1024];
         loop {
             if jobs().lock().map_err(|e| e.to_string())?
-                .get(&id).map(|job| job.cancel).unwrap_or(true) {
+                .get(id).map(|job| job.cancel).unwrap_or(true) {
                 return Err("Cancelled".into());
             }
             let size = response.read(&mut chunk)
@@ -184,7 +194,7 @@ fn download_file(id: String, url: reqwest::Url, filename: String, target: std::p
                 return Err("Archive exceeds 100 GiB download limit.".into());
             }
             output.write_all(&chunk[..size]).map_err(|e| e.to_string())?;
-            with_job(&id, |job| job.info.received_bytes = received);
+            with_job(id, |job| job.info.received_bytes = received);
         }
         if received == 0 { return Err("The server returned an empty download.".into()); }
         if let Some(expected) = response.content_length() {
@@ -196,15 +206,140 @@ fn download_file(id: String, url: reqwest::Url, filename: String, target: std::p
         Ok(())
     })();
 
-    match output {
-        Ok(()) => update_complete(&id, "completed", None),
-        Err(message) => {
-            let cancelled = message == "Cancelled";
-            let _ = fs::remove_file(&temp);
-            update_complete(&id, if cancelled { "cancelled" } else { "failed" },
-                if cancelled { None } else { Some(message) });
+    if output.is_err() { let _ = fs::remove_file(&temp); }
+    output
+}
+
+fn download_file(id: String, urls: Vec<reqwest::Url>, filename: String, target: std::path::PathBuf) {
+    let mut failures = Vec::new();
+    for url in urls {
+        match transfer_file(&id, url, &filename, &target) {
+            Ok(()) => { update_complete(&id, "completed", None); return; }
+            Err(message) if message == "Cancelled" => {
+                update_complete(&id, "cancelled", None);
+                return;
+            }
+            Err(message) => failures.push(message),
         }
     }
+    update_complete(&id, "failed", Some(format!(
+        "All download mirrors failed: {}", failures.join(" | ")
+    )));
+}
+
+fn download_bundle(id: String, parts: Vec<(String, Vec<reqwest::Url>)>, folder: std::path::PathBuf) {
+    for (filename, mirrors) in &parts {
+        with_job(&id, |job| {
+            job.info.filename = filename.clone();
+            job.info.received_bytes = 0;
+            job.info.total_bytes = None;
+        });
+        let mut errors = Vec::new();
+        let mut completed = false;
+        for url in mirrors {
+            match transfer_file(&id, url.clone(), filename, &folder.join(filename)) {
+                Ok(()) => { completed = true; break; }
+                Err(message) if message == "Cancelled" => {
+                    update_complete(&id, "cancelled", None);
+                    return;
+                }
+                Err(message) => errors.push(message),
+            }
+        }
+        if !completed {
+            update_complete(&id, "failed", Some(format!(
+                "Could not fetch {} from any mirror: {}", filename, errors.join(" | ")
+            )));
+            return;
+        }
+    }
+    update_complete(&id, "completed", None);
+}
+
+fn multipart_volume(filename: &str) -> Option<(String, usize)> {
+    let lower = filename.to_ascii_lowercase();
+    if let Some(prefix) = lower.strip_suffix(".rar") {
+        if let Some((stem, digits)) = prefix.rsplit_once(".part") {
+            if !stem.is_empty() && !digits.is_empty() && digits.chars().all(|c| c.is_ascii_digit()) {
+                return Some((format!("{stem}.rar"), digits.parse().ok()?));
+            }
+        }
+    }
+    if let Some((stem, digits)) = lower.rsplit_once(".7z.") {
+        if !stem.is_empty() && digits.len() == 3 && digits.chars().all(|c| c.is_ascii_digit()) {
+            return Some((format!("{stem}.7z"), digits.parse().ok()?));
+        }
+    }
+    None
+}
+
+#[tauri::command]
+pub(crate) fn start_archive_bundle(title: String, parts: Vec<ArchiveBundlePart>) -> Result<DownloadStatus, String> {
+    if title.trim().is_empty() || title.chars().count() > 140 {
+        return Err("Enter a valid game title.".into());
+    }
+    if parts.is_empty() || parts.len() > 120 {
+        return Err("Select between 1 and 120 archive volumes.".into());
+    }
+    let mut seen = std::collections::HashSet::new();
+    let mut ready = Vec::new();
+    let mut group: Option<String> = None;
+    for (index, part) in parts.into_iter().enumerate() {
+        if !archive_name(&part.filename) || !seen.insert(part.filename.to_ascii_lowercase()) {
+            return Err("Archive volume has an unsafe or duplicate filename.".into());
+        }
+        if part.mirrors.is_empty() || part.mirrors.len() > 8 {
+            return Err("Each archive volume needs between 1 and 8 download mirrors.".into());
+        }
+        if parts_len_is_multipart(&part.filename) || index > 0 {
+            let Some((stem, volume)) = multipart_volume(&part.filename) else {
+                return Err("Cannot mix independent archives in one download.".into());
+            };
+            if index == 0 && volume != 1 {
+                return Err("Multipart archive must begin at volume 1.".into());
+            }
+            if volume != index + 1 {
+                return Err("Multipart archive volumes must be contiguous and sorted.".into());
+            }
+            if let Some(current) = &group {
+                if current != &stem { return Err("All volumes must be from one archive set.".into()); }
+            } else { group = Some(stem); }
+        }
+        let mut mirrors = Vec::new();
+        for link in part.mirrors {
+            let url = reqwest::Url::parse(&link).map_err(|_| "Invalid download URL.".to_string())?;
+            if !valid_public_https(&url) {
+                return Err("A download mirror is not a permitted public HTTPS URL.".into());
+            }
+            if !mirrors.contains(&url) { mirrors.push(url); }
+        }
+        ready.push((part.filename, mirrors));
+    }
+    let id = Uuid::new_v4().to_string();
+    let home = std::env::var_os("USERPROFILE").or_else(|| std::env::var_os("HOME"))
+        .ok_or("Home folder not found")?;
+    let folder = std::path::PathBuf::from(home).join("Downloads").join("Dusk").join(&id);
+    fs::create_dir_all(&folder).map_err(|e| e.to_string())?;
+    let first = ready[0].0.clone();
+    let info = DownloadStatus {
+        id: id.clone(), title: title.trim().to_string(),
+        filename: first.clone(), file_path: folder.join(&first).to_string_lossy().into_owned(),
+        status: "downloading".into(), received_bytes: 0, total_bytes: None,
+        error: None, bundle_ready: true,
+    };
+    let mut map = jobs().lock().map_err(|e| e.to_string())?;
+    if map.values().filter(|job| job.info.status == "downloading").count() >= 3 {
+        let _ = fs::remove_dir(&folder);
+        return Err("Maximum three simultaneous downloads.".into());
+    }
+    map.insert(id.clone(), DownloadJob { info: info.clone(), cancel: false });
+    drop(map);
+    thread::spawn(move || download_bundle(id, ready, folder));
+    Ok(info)
+}
+
+fn parts_len_is_multipart(filename: &str) -> bool {
+    multipart_volume(filename).is_some()
 }
 
 #[tauri::command]
@@ -221,7 +356,7 @@ pub(crate) fn start_managed_download(url: String, filename: String, title: Strin
     let info = DownloadStatus {
         id: id.clone(), title: title.trim().chars().take(140).collect(),
         filename, file_path: target.to_string_lossy().into_owned(),
-        status: "downloading".into(), received_bytes: 0, total_bytes: None, error: None,
+        status: "downloading".into(), received_bytes: 0, total_bytes: None, error: None, bundle_ready: false,
     };
     let mut map = jobs().lock().map_err(|e| e.to_string())?;
     if map.values().filter(|job| job.info.status == "downloading").count() >= 3 {
@@ -230,7 +365,7 @@ pub(crate) fn start_managed_download(url: String, filename: String, title: Strin
     map.insert(id.clone(), DownloadJob { info: info.clone(), cancel: false });
     drop(map);
     let worker_filename = info.filename.clone();
-    thread::spawn(move || download_file(id, parsed, worker_filename, target));
+    thread::spawn(move || download_file(id, vec![parsed], worker_filename, target));
     Ok(info)
 }
 
