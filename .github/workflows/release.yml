@@ -96,20 +96,19 @@ jobs:
           tagName: dusk-v__VERSION__
           releaseName: Dusk v__VERSION__
           releaseBody: |
-            # Dusk v1.8.16 — Safer large-game extraction and multipart readiness
+            # Dusk v1.8.17 — Verified one-click multipart downloads and import retry
             
-            ## Fixed
-            - Browser-downloaded multi-volume RAR and 7z archives must **pass an actual 7-Zip integrity test** before Dusk treats them as complete; consecutive filenames alone no longer count.
-            - Reject archives with duplicate volume numbers, noncontiguous parts, or parts that change while being tested.
-            - Check available disk space **before** extraction through 7-Zip, the Windows ZIP extractor, or the Python fallback. Keep a 512 MiB free-space reserve.
-            - Preserve the **150 GiB unpacked-size limit** introduced in v1.8.15, with 50,000-file and path/link safety limits.
-            - Show specific progress when a multipart download is incomplete or needs an installed 7-Zip tool instead of repeatedly attempting a failing extraction.
-            - Add regression tests for bogus multipart files, duplicate volumes, unpacked-size calculation and disk-space limits.
+            ## Fixes
+            - **Managed one-click multipart downloads now verify archive integrity** after all numbered volumes finish downloading. An intact filename sequence alone no longer marks a bundle complete.
+            - **Automatic imports retry after failure** with a one-minute cooldown instead of permanently ignoring a downloaded file. This helps when disk space is freed, a file lock clears, or an interrupted download finishes.
+            - **Online-Fix managed archives retain their source** so Dusk supplies the required site password when performing integrity checks and background extraction.
+            - Added a native **end-to-end multipart 7z test**: create real volumes, verify success, delete the last part and require verification to fail.
+            - Keep the **150 GiB extraction cap**, archive path/link protections, and available-disk-space preflight introduced in earlier releases.
             
-            ## Notes
-            - Managed one-click bundles know their download completion status; browser-downloaded archives now require integrity verification before automatic import.
-            - On Windows, automatic verification of browser-downloaded multipart archives needs 7-Zip available on the system.
-            - Dusk cannot recover archive volumes that are missing or inaccessible from the file host, and continues to require approval before executing installers.
+            ## Limitations
+            - An installed 7-Zip-compatible tool is required for native multipart integrity verification and normal RAR/7z extraction.
+            - Dusk cannot recover files from host URLs that return 404 or require authentication, CAPTCHA, or additional download-host interaction.
+            - Archives are not run silently; extracted installers still require confirmation.
           releaseDraft: false
           prerelease: false
           uploadUpdaterJson: false
