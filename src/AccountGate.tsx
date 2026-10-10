@@ -96,8 +96,13 @@ export default function AccountGate(props: { children: ReactNode }) {
         const existing = await currentDuskAccount();
         if (existing) {
           await api.setAccountScope(existing.user.id);
-          await hydrateAccountState().catch(() => false);
+          // Cloud hydration can be slow or never resolve on offline/filtered
+          // networks. Do not make the entire main application unclickable
+          // while waiting for an external service.
           setAccount(existing);
+          void hydrateAccountState().catch((error: unknown) => {
+            console.warn("Dusk cloud account hydration unavailable:", error);
+          });
         } else {
           await api.setAccountScope(null);
         }
