@@ -2666,3 +2666,32 @@ button:disabled { cursor: not-allowed; opacity: 0.55; }
 .web-hoster-file-info { display: flex; flex-direction: column; gap: 3px; min-width: 0; max-width: 100%; }
 .web-hoster-file-info span { overflow-wrap: anywhere; font-size: 11px; }
 .web-hoster-file-info small { color: var(--muted, #aaa); font-size: 10px; }
+
+/* Public listing source chooser */
+.web-source-control {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 11px;
+  color: var(--muted, #b3b0ba);
+  white-space: nowrap;
+}
+.web-source-select {
+  max-width: 188px;
+  padding: 8px 30px 8px 10px;
+  border-radius: 9px;
+  border: 1px solid var(--border, #39343f);
+  background: var(--surface, #1b1822);
+  color: var(--text, #f4f0fa);
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+.web-source-select:focus-visible {
+  outline: 2px solid var(--accent, #9062dc);
+  outline-offset: 2px;
+}
+@media (max-width: 800px) {
+  .web-source-control { width: 100%; }
+  .web-source-select { max-width: min(100%, 230px); }
+}
