@@ -1117,7 +1117,9 @@ export default function App() {
       try {
         do {
           refreshCorePendingRef.current = false;
-          const values = await Promise.all([
+          // A hung local database query should show a recoverable error
+          // rather than leave the main Dusk content on a perpetual loader.
+          const load = Promise.all([
             api.listGames(),
             api.getStats(),
             api.listAchievements(),
@@ -1126,6 +1128,16 @@ export default function App() {
             api.listProfiles(),
             api.getActiveProfile(),
           ]);
+          let timeoutId: number | undefined;
+          const deadline = new Promise<never>((_, reject) => {
+            timeoutId = window.setTimeout(
+              () => reject(new Error("Dusk's library did not respond. You can still use Settings or retry the scan.")),
+              12_000,
+            );
+          });
+          const values = await Promise.race([load, deadline]).finally(() => {
+            if (timeoutId !== undefined) window.clearTimeout(timeoutId);
+          });
           setGames(values[0]);
           setStats(values[1]);
           setAchievements(values[2]);
