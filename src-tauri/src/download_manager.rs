@@ -28,6 +28,7 @@ pub(crate) struct DownloadStatus {
     error: Option<String>,
     bundle_ready: bool,
     listing_url: Option<String>,
+    source: Option<String>,
 }
 
 struct DownloadJob {
@@ -240,7 +241,14 @@ fn download_file(id: String, urls: Vec<reqwest::Url>, filename: String, target: 
     )));
 }
 
-fn download_bundle(id: String, parts: Vec<(String, Vec<reqwest::Url>)>, folder: std::path::PathBuf) {
+fn archive_password_for_source(source: Option<&str>) -> Option<&'static str> {
+    match source {
+        Some("online-fix") => Some("online-fix.me"),
+        _ => None,
+    }
+}
+
+fn download_bundle(id: String, parts: Vec<(String, Vec<reqwest::Url>)>, folder: std::path::PathBuf, source: Option<String>) {
     for (filename, mirrors) in &parts {
         with_job(&id, |job| {
             job.info.filename = filename.clone();
@@ -271,7 +279,9 @@ fn download_bundle(id: String, parts: Vec<(String, Vec<reqwest::Url>)>, folder: 
         // that the archive is intact. Validate the assembled set with 7-Zip
         // before reporting a completed managed bundle to the import watcher.
         let first_path = folder.join(&parts[0].0);
-        let readiness = super::archive_import::multipart_archive_readiness(&first_path, None);
+        let readiness = super::archive_import::multipart_archive_readiness(
+            &first_path, archive_password_for_source(source.as_deref())
+        );
         if !readiness.ready {
             update_complete(&id, "failed", Some(format!(
                 "Downloaded all archive parts, but integrity verification failed: {}",
@@ -305,7 +315,11 @@ pub(crate) fn start_archive_bundle(
     title: String,
     parts: Vec<ArchiveBundlePart>,
     listing_url: Option<String>,
+    source: Option<String>,
 ) -> Result<DownloadStatus, String> {
+    if source.as_deref().is_some_and(|value| value != "online-fix") {
+        return Err("Unsupported download source.".into());
+    }
     let listing_url = listing_url
         .map(|value| super::game_sources::verified_listing(&value).map(|url| url.to_string()))
         .transpose()?;
@@ -362,7 +376,7 @@ pub(crate) fn start_archive_bundle(
         id: id.clone(), title: title.trim().to_string(),
         filename: first.clone(), file_path: folder.join(&first).to_string_lossy().into_owned(),
         status: "downloading".into(), received_bytes: 0, total_bytes: None,
-        error: None, bundle_ready: true, listing_url,
+        error: None, bundle_ready: true, listing_url, source: source.clone(),
     };
     let mut map = jobs().lock().map_err(|e| e.to_string())?;
     if map.values().filter(|job| job.info.status == "downloading").count() >= 3 {
@@ -371,7 +385,7 @@ pub(crate) fn start_archive_bundle(
     }
     map.insert(id.clone(), DownloadJob { info: info.clone(), cancel: false });
     drop(map);
-    thread::spawn(move || download_bundle(id, ready, folder));
+    thread::spawn(move || download_bundle(id, ready, folder, source));
     Ok(info)
 }
 
@@ -380,7 +394,10 @@ fn parts_len_is_multipart(filename: &str) -> bool {
 }
 
 #[tauri::command]
-pub(crate) fn start_managed_download(url: String, filename: String, title: String) -> Result<DownloadStatus, String> {
+pub(crate) fn start_managed_download(url: String, filename: String, title: String, source: Option<String>) -> Result<DownloadStatus, String> {
+    if source.as_deref().is_some_and(|value| value != "online-fix") {
+        return Err("Unsupported download source.".into());
+    }
     let parsed = reqwest::Url::parse(url.trim()).map_err(|_| "Invalid download URL".to_string())?;
     if !valid_public_https(&parsed) { return Err("Only public HTTPS download URLs are allowed.".into()); }
     let filename = filename.trim().to_string();
@@ -394,7 +411,7 @@ pub(crate) fn start_managed_download(url: String, filename: String, title: Strin
         id: id.clone(), title: title.trim().chars().take(140).collect(),
         filename, file_path: target.to_string_lossy().into_owned(),
         status: "downloading".into(), received_bytes: 0, total_bytes: None,
-        error: None, bundle_ready: false, listing_url: None,
+        error: None, bundle_ready: false, listing_url: None, source,
     };
     let mut map = jobs().lock().map_err(|e| e.to_string())?;
     if map.values().filter(|job| job.info.status == "downloading").count() >= 3 {
@@ -427,6 +444,13 @@ pub(crate) fn cancel_managed_download(download_id: String) -> Result<(), String>
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn preserves_known_archive_password_for_online_fix_only() {
+        assert_eq!(archive_password_for_source(Some("online-fix")), Some("online-fix.me"));
+        assert_eq!(archive_password_for_source(None), None);
+        assert_eq!(archive_password_for_source(Some("fitgirl")), None);
+    }
+
     #[test]
     fn allows_public_https_but_not_private_networks() {
         assert!(valid_public_https(&reqwest::Url::parse("https://cdn.example.org/game.zip").unwrap()));
