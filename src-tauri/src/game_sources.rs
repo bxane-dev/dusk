@@ -199,6 +199,99 @@ pub(crate) async fn open_game_source_search(app: tauri::AppHandle, source: Strin
     open_game_source_page(app, url)
 }
 
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct DiscoveredArchivePart {
+    filename: String,
+    mirrors: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct DiscoveredArchiveBundle {
+    label: String,
+    parts: Vec<DiscoveredArchivePart>,
+}
+
+// Only actual HTTPS archive files are eligible for direct one-click downloads.
+// Mirrors for the SAME filename are alternatives, never extra copies to fetch.
+// Sequential .part1.rar / .7z.001 volumes are grouped as required parts.
+fn parse_direct_archives(html: &str, page: &reqwest::Url) -> Vec<DiscoveredArchiveBundle> {
+    let Ok(anchors) = Regex::new(r#"(?is)<a\b[^>]*\bhref\s*=\s*["']([^"']+)["'][^>]*>"#) else {
+        return Vec::new();
+    };
+    let mut groups: std::collections::BTreeMap<String,
+        std::collections::BTreeMap<usize, DiscoveredArchivePart>> =
+        std::collections::BTreeMap::new();
+    for capture in anchors.captures_iter(html) {
+        let raw = unescape_html(capture.get(1).unwrap().as_str());
+        let Ok(link) = page.join(raw.trim()) else { continue; };
+        if !super::download_manager::valid_public_https(&link) { continue; }
+        let Some(filename) = link.path_segments().and_then(|mut segments| segments.next_back()) else { continue; };
+        if !super::download_manager::archive_name(filename) { continue; }
+        let name = filename.to_ascii_lowercase();
+        if ["crack", "patch", "update", "redist", "fix-only", "repair"].iter()
+            .any(|word| name.contains(word)) { continue; }
+        let (key, volume) = super::download_manager::multipart_volume(filename)
+            .unwrap_or_else(|| (name, 0));
+        if volume > 120 { continue; }
+        let group = groups.entry(key).or_default();
+        let part = group.entry(volume).or_insert_with(|| DiscoveredArchivePart {
+            filename: filename.to_string(), mirrors: Vec::new()
+        });
+        if part.mirrors.len() < 8 && !part.mirrors.iter().any(|url| url == link.as_str()) {
+            part.mirrors.push(link.into());
+        }
+    }
+    let mut bundles = Vec::new();
+    for (label, volumes) in groups {
+        let multipart = !volumes.contains_key(&0);
+        if multipart {
+            if volumes.len() < 2 || !volumes.contains_key(&1) { continue; }
+            if volumes.keys().copied().enumerate().any(|(index, volume)| volume != index + 1) {
+                continue;
+            }
+        }
+        let parts: Vec<_> = volumes.into_values().collect();
+        if parts.is_empty() { continue; }
+        bundles.push(DiscoveredArchiveBundle { label, parts });
+    }
+    bundles.sort_by(|a,b| b.parts.len().cmp(&a.parts.len()).then(a.label.cmp(&b.label)));
+    bundles.truncate(20);
+    bundles
+}
+
+#[tauri::command]
+pub(crate) async fn discover_game_source_archives(source: String, listing_url: String) -> Result<Vec<DiscoveredArchiveBundle>, String> {
+    let host = source_host(&source)?;
+    let page = verified_listing(&listing_url)?;
+    if !matches!(page.host_str(), Some(name) if name == host || name == format!("www.{host}")) {
+        return Err("The selected game listing belongs to a different source.".into());
+    }
+    tauri::async_runtime::spawn_blocking(move || {
+        let client = reqwest::blocking::Client::builder()
+            .connect_timeout(Duration::from_secs(12))
+            .timeout(Duration::from_secs(30))
+            .redirect(reqwest::redirect::Policy::custom(move |attempt| {
+                let safe = attempt.url().scheme() == "https" &&
+                    attempt.url().host_str().is_some_and(|name| name == host || name == format!("www.{host}"));
+                if !safe || attempt.previous().len() >= 3 { attempt.stop() } else { attempt.follow() }
+            }))
+            .user_agent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/131.0.0.0 Safari/537.36")
+            .build().map_err(|e| e.to_string())?;
+        let response = client.get(page.clone()).send()
+            .map_err(|e| format!("Could not open listing: {e}"))?
+            .error_for_status().map_err(|e| format!("Listing returned an error: {e}"))?;
+        use std::io::Read;
+        let mut limited = response.take(4_000_001);
+        let mut body = Vec::new();
+        limited.read_to_end(&mut body).map_err(|e| e.to_string())?;
+        if body.len() > 4_000_000 { return Err("Listing is too large to inspect.".into()); }
+        Ok(parse_direct_archives(&String::from_utf8_lossy(&body), &page))
+    }).await.map_err(|e| e.to_string())?
+}
+
 #[cfg(target_os = "windows")]
 #[tauri::command]
 pub(crate) fn open_game_source_browser(url: String) -> Result<(), String> {
@@ -220,6 +313,28 @@ pub(crate) fn open_game_source_browser(url: String) -> Result<(), String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn groups_multipart_volumes_and_deduplicates_mirrors() {
+        let page = reqwest::Url::parse("https://fitgirl-repacks.site/game/").unwrap();
+        let html = r#"<a href="https://cdn1.example/Game.part1.rar">1</a>
+            <a href="https://cdn2.example/Game.part1.rar">Mirror 1</a>
+            <a href="https://cdn1.example/Game.part2.rar">2</a>
+            <a href="https://ads.exoclick.com/Game.part3.rar">Bad</a>"#;
+        let found = parse_direct_archives(html, &page);
+        assert_eq!(found.len(), 1);
+        assert_eq!(found[0].parts.len(), 2);
+        assert_eq!(found[0].parts[0].mirrors.len(), 2);
+    }
+
+    #[test]
+    fn rejects_incomplete_multipart_sets_and_nonarchives() {
+        let page = reqwest::Url::parse("https://game3rb.com/test/").unwrap();
+        let html = r#"<a href="https://cdn.example/game.7z.001"></a>
+            <a href="https://cdn.example/game.7z.003"></a>
+            <a href="https://cdn.example/file.exe"></a>"#;
+        assert!(parse_direct_archives(html, &page).is_empty());
+    }
 
     #[test]
     fn parses_game3rb_game_cards_not_sidebar_links() {
