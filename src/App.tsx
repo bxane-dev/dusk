@@ -996,6 +996,17 @@ export default function App() {
   const [cloudSyncBusy, setCloudSyncBusy] = useState(false);
   const [availableUpdate, setAvailableUpdate] = useState<string | null>(null);
   const [availableUpdateNotes, setAvailableUpdateNotes] = useState<string | null>(null);
+  const [vpnMode, setVpnMode] = useState<"automatic" | "off">(
+    () => localStorage.getItem("dusk-windows-vpn-mode") === "off" ? "off" : "automatic"
+  );
+  const [vpnProfile, setVpnProfile] = useState(
+    () => localStorage.getItem("dusk-windows-vpn-profile") || ""
+  );
+  const [vpnProfiles, setVpnProfiles] = useState<Array<{ name: string; connected: boolean }>>([]);
+  const [vpnMessage, setVpnMessage] = useState("Checking Windows VPN profiles…");
+  const [vpnBusy, setVpnBusy] = useState(false);
+  const vpnNoticeShownRef = useRef(false);
+
   const [autoScanEnabled, setAutoScanEnabled] = useState(
     () => localStorage.getItem("dusk-auto-scan") !== "false",
   );
@@ -1169,6 +1180,57 @@ export default function App() {
     }, 30000);
     return () => window.clearInterval(syncTimer);
   }, [refreshCore]);
+
+  useEffect(() => {
+    let mounted = true;
+    void api.listWindowsVpnProfiles().then((profiles) => {
+      if (!mounted) return;
+      setVpnProfiles(profiles);
+      setVpnMessage(profiles.some(profile => profile.connected)
+        ? "Windows VPN is connected."
+        : profiles.length === 0
+          ? "No Windows VPN profile is configured. Dusk cannot provide a VPN server."
+          : "A Windows VPN profile is available. Automatic mode connects it before opening websites.");
+    }).catch((error: unknown) => {
+      if (mounted) setVpnMessage("Could not read Windows VPN profiles: " + readableError(error));
+    });
+    return () => { mounted = false; };
+  }, []);
+
+  async function prepareBrowserVpn() {
+    if (vpnMode === "off") return;
+    try {
+      const connection = await api.prepareWindowsVpn(vpnProfile || undefined);
+      setVpnMessage(connection.message);
+      setVpnProfiles(await api.listWindowsVpnProfiles());
+      if (!connection.connected && !vpnNoticeShownRef.current) {
+        vpnNoticeShownRef.current = true;
+        showToast("VPN not connected. Dusk will open the page using your normal network. " + connection.message, "error");
+      }
+    } catch (error) {
+      setVpnMessage("VPN connection check failed: " + readableError(error));
+      if (!vpnNoticeShownRef.current) {
+        vpnNoticeShownRef.current = true;
+        showToast("VPN unavailable; browsing uses your normal network connection.", "error");
+      }
+    }
+  }
+
+  async function connectVpnNow() {
+    if (vpnBusy || vpnMode === "off") return;
+    setVpnBusy(true);
+    try {
+      const result = await api.prepareWindowsVpn(vpnProfile || undefined);
+      setVpnMessage(result.message);
+      setVpnProfiles(await api.listWindowsVpnProfiles());
+      showToast(result.connected ? "Windows VPN connected." : result.message, result.connected ? "ok" : "error");
+    } catch (error) {
+      setVpnMessage("VPN connection failed: " + readableError(error));
+      showToast(readableError(error), "error");
+    } finally {
+      setVpnBusy(false);
+    }
+  }
 
   useEffect(() => {
     let cancelled = false;
@@ -1914,6 +1976,7 @@ export default function App() {
     // Start monitoring before opening the selected verified download page.
     setActiveDownloadWatch({ sinceMs: Date.now() - 2000, title: result.title, url: destination, source: "online-fix" });
     try {
+      await prepareBrowserVpn();
       if (externalBrowser) await api.openOnlineFixBrowser(destination);
       else await api.openOnlineFixResult(destination, result.title, autoSelect);
     } catch (error) {
@@ -1936,6 +1999,7 @@ export default function App() {
       source: webSource,
     });
     try {
+      await prepareBrowserVpn();
       if (external) await api.openGameSourceBrowser(result.url);
       else await api.openGameSourceListing(result.url);
     } catch (error) {
@@ -2487,7 +2551,7 @@ export default function App() {
                   <p>{webError}</p>
                   {webSource !== "online-fix" && (
                     <button className="button secondary" onClick={() => {
-                      void api.openGameSourceSearch(webSource, query.trim())
+                      void prepareBrowserVpn().then(() => api.openGameSourceSearch(webSource, query.trim()))
                         .catch(error => showToast(readableError(error), "error"));
                     }} title="Open this search in Dusk's embedded browser with its ad blocker enabled">
                       <Globe2 size={15} /> Open search in Dusk browser
@@ -2924,6 +2988,63 @@ export default function App() {
                       <p>Account, profiles, appearance, updates, and local data.</p>
                     </div>
                   </div>
+
+                  <section className="settings-card" aria-label="VPN settings">
+                    <div className="settings-card-head">
+                      <ShieldCheck size={20} />
+                      <div>
+                        <h3>VPN · Windows integration</h3>
+                        <p>Uses a VPN profile configured in Windows. Dusk does not supply a VPN server or store VPN credentials.</p>
+                      </div>
+                    </div>
+                    <div className="setting-row">
+                      <div>
+                        <strong>Connection mode</strong>
+                        <span>Automatic is the default. Connect your selected Windows VPN before browsing. If no profile is available, traffic is not tunneled.</span>
+                      </div>
+                      <select className="vpn-settings-select" value={vpnMode} aria-label="VPN connection mode"
+                        onChange={event => {
+                          const mode = event.target.value === "off" ? "off" : "automatic";
+                          setVpnMode(mode);
+                          localStorage.setItem("dusk-windows-vpn-mode", mode);
+                          vpnNoticeShownRef.current = false;
+                        }}>
+                        <option value="automatic">Automatic</option>
+                        <option value="off">Off</option>
+                      </select>
+                    </div>
+                    <div className="setting-row">
+                      <div>
+                        <strong>Windows VPN profile</strong>
+                        <span>Uses Windows' existing VPN connection, including its stored credentials. Changes may affect network traffic outside Dusk.</span>
+                      </div>
+                      <select className="vpn-settings-select" value={vpnProfile}
+                        aria-label="Windows VPN profile" disabled={vpnMode === "off"}
+                        onChange={event => {
+                          setVpnProfile(event.target.value);
+                          localStorage.setItem("dusk-windows-vpn-profile", event.target.value);
+                          vpnNoticeShownRef.current = false;
+                        }}>
+                        <option value="">Automatic selection</option>
+                        {vpnProfiles.map(profile => (
+                          <option value={profile.name} key={profile.name}>
+                            {profile.name}{profile.connected ? " · Connected" : ""}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                    <div className="setting-row">
+                      <div>
+                        <strong>VPN status</strong>
+                        <span role="status">{vpnMode === "off" ? "VPN integration is off. Dusk will not connect a VPN." : vpnMessage}</span>
+                      </div>
+                      <button className="button secondary" disabled={vpnBusy || vpnMode === "off"}
+                        onClick={() => void connectVpnNow()}>
+                        <ShieldCheck size={15} />
+                        {vpnBusy ? "Connecting…" : "Connect now"}
+                      </button>
+                    </div>
+                  </section>
 
                   {!guestMode && <AccountProfileSettings onToast={showToast} />}
 
