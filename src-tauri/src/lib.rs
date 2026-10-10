@@ -3331,6 +3331,7 @@ async fn open_online_fix_result(
         .accept_first_mouse(true)
         .initialization_script(include_str!("online_fix_navigation.js"))
         .initialization_script(include_str!("online_fix_adblock.js"))
+        .initialization_script(include_str!("browser_copy_link.js"))
         .on_navigation(|url| {
             // Only official site pages are browsable in Dusk. Signed HTTPS
             // archive URLs from a storage CDN may navigate directly to a file;
