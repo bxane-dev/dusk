@@ -122,7 +122,7 @@ fn connect_warp(cli: &std::path::Path) -> Result<VpnConnectionResult, String> {
 #[tauri::command]
 pub(crate) async fn list_windows_vpn_profiles() -> Result<Vec<WindowsVpnProfile>, String> {
     tauri::async_runtime::spawn_blocking(|| {
-        let mut profiles = local_profiles()?;
+        let mut profiles = local_profiles().unwrap_or_default();
         #[cfg(target_os = "windows")]
         if let Some(cli) = cloudflare_warp_cli() {
             profiles.insert(0, WindowsVpnProfile {
@@ -136,8 +136,8 @@ pub(crate) async fn list_windows_vpn_profiles() -> Result<Vec<WindowsVpnProfile>
 
 #[cfg(target_os = "windows")]
 fn connect_profile(requested: Option<String>) -> Result<VpnConnectionResult, String> {
-    let profiles = local_profiles()?;
     let warp = cloudflare_warp_cli();
+    let profiles = if warp.is_some() { local_profiles().unwrap_or_default() } else { local_profiles()? };
     if requested.as_deref() == Some(WARP_PROFILE) {
         return match warp {
             Some(ref cli) => connect_warp(cli),
