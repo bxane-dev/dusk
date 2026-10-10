@@ -96,20 +96,24 @@ jobs:
           tagName: dusk-v__VERSION__
           releaseName: Dusk v__VERSION__
           releaseBody: |
-            # Dusk v1.8.14 — Reliable multipart archive and mirror checks
+            # Dusk v1.8.15 — Automatic Cloudflare WARP VPN and archive reliability
             
-            ## Fixes
-            - Verify **every required RAR or 7z volume** before starting an automatic bundle download, not only the first and last.
-            - Only retain mirrors confirmed to return archive data. Reject redirects to missing `/download` endpoints, HTML landing pages and HTTP errors.
-            - Correct archive-header detection for later `.part04.rar`, `.part05.rar` and higher numbered volumes, which do not start with a RAR header.
-            - Recognize first RAR volumes consistently across `.part1.rar`, `.part01.rar` and `.part001.rar` filenames.
-            - If a verified link subsequently expires or the host rejects a transfer, open the original game listing inside Dusk for manual host-side steps, instead of repeatedly retrying a dead URL.
-            - Add native Rust regression tests to the Windows build pipeline.
+            ## New: VPN in Settings
+            - **Automatic VPN** remains enabled by default.
+            - Connect the official **Cloudflare WARP** Windows client automatically when it is installed and configured, or use an existing Windows VPN connection.
+            - Detect whether WARP actually reports a connected tunnel, not just DNS-only mode.
+            - Choose your VPN connection, view status, connect manually, or switch to Off.
+            - **Install Cloudflare WARP** opens the official installation instructions; WARP must be installed and set up once before Dusk can control it.
+            - When Automatic is enabled but the VPN isn't connected, Dusk blocks source browsing and downloads instead of silently using your normal connection.
             
-            ## Important
-            - A hosting provider that returns **404**, requires login/CAPTCHA, or does not issue a working direct download cannot be forced to provide the file. Dusk will use another verified public mirror when available and otherwise open the original listing.
-            - Some hosting providers reserve direct or bulk downloads for authenticated/premium accounts.
-            - Dusk still requires your approval before running downloaded installers.
+            ## Download and extraction fixes
+            - Raise verified extraction limit from 20 GiB to 150 GiB for modern large games; keep the existing file-count and path/link protections.
+            - Reject multipart archive sets with missing middle volumes and recognize `.part001.rar` automatically.
+            
+            ## Limits
+            - Dusk integrates a genuine VPN client but does **not** bundle a VPN server or the proprietary WARP software. Cloudflare's own client is required.
+            - WARP may change routing for other Windows applications; it cannot bypass login, CAPTCHA, paid access, blocked files, or dead hosting links.
+            - Some networks or websites may remain inaccessible through WARP. There is no guarantee Game3rb or its file hosts will work on a given connection.
           releaseDraft: false
           prerelease: false
           uploadUpdaterJson: false
