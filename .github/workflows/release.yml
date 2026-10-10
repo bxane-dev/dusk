@@ -93,17 +93,20 @@ jobs:
           tagName: dusk-v__VERSION__
           releaseName: Dusk v__VERSION__
           releaseBody: |
-            # Dusk v1.8.12 — Fix download mirrors returning 404
+            # Dusk v1.8.13 — Browser Copy link and Automatic VPN settings
             
-            ## Fixes
-            - Validate the first bytes of discovered direct archive links before starting automatic downloads.
-            - Reject mirror links that return **HTTP 404**, HTML landing pages, or content that does not match the expected archive format.
-            - Verify the first and last volume of multipart archives before selecting a bundle; try alternative mirrors if the first URL is not usable.
-            - When no direct archive can be verified, show a clear message and open the original listing inside Dusk so you can complete any required host-side steps.
-            - Keep ad and pop-up blocking in the embedded browser, and continue requiring approval before executing downloaded installers.
+            ## What's new
+            - Added a **Copy link** button to Dusk's embedded game-listing and download-host browser windows. It copies the current page URL, including after navigation.
+            - Added **Settings → VPN** with **Automatic** enabled by default and an Off option.
+            - Detects Windows VPN profiles and uses the selected or sole existing profile, with connection status and a **Connect now** control.
+            - Attempts to connect the configured Windows VPN at Dusk startup and before launching websites; credentials stay in Windows.
+            - Added a shortcut to **Windows VPN settings** to create or manage VPN profiles.
+            - Added regression coverage for the browser Copy link button.
             
-            ## Notice
-            Some file hosts redirect to `/download` pages that are unavailable without a site-specific session or download step. Dusk cannot guarantee a direct download from these links or bypass login, CAPTCHA, or paid access restrictions. Automatic imports still depend on complete archives and a supported extractor.
+            ## Important limitations
+            - This is **Windows VPN integration**, not a bundled VPN service, endpoint, or server. A VPN account/server must already be configured in Windows.
+            - If a VPN cannot connect, Dusk displays that it is disconnected; websites use the normal network connection. Windows VPN routing (including split tunneling) determines what traffic uses the tunnel.
+            - Dusk does not bypass download hosts' authentication, CAPTCHA or access restrictions, and does not silently execute game installers.
           releaseDraft: false
           prerelease: false
           uploadUpdaterJson: false
