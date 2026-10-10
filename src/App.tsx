@@ -3044,6 +3044,16 @@ export default function App() {
                         {vpnBusy ? "Connecting…" : "Connect now"}
                       </button>
                     </div>
+                    <div className="setting-row">
+                      <div>
+                        <strong>VPN provider and routing</strong>
+                        <span>Configure an actual VPN service in Windows first. Automatic does not create a VPN server, guarantee full-tunnel routing, or hide traffic when disconnected.</span>
+                      </div>
+                      <button className="button secondary"
+                        onClick={() => void api.openWindowsVpnSettings().catch(error => showToast(readableError(error), "error"))}>
+                        <ExternalLink size={15} /> Windows VPN settings
+                      </button>
+                    </div>
                   </section>
 
                   {!guestMode && <AccountProfileSettings onToast={showToast} />}
