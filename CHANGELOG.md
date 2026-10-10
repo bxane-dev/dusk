@@ -2,6 +2,17 @@
 
 All notable Dusk changes are documented here.
 
+## 1.8.9 - 2026-10-10
+
+Enable ad-filtered in-app browsing for all game listing sources.
+
+- Open Game3rb and FitGirl listings inside Dusk's isolated webview, instead of always leaving to the system browser.
+- Keep Game3rb as an alternative game-listing source and FitGirl labeled for offline-only discovery.
+- Inject the lightweight ad blocker automatically in all Game3rb, FitGirl and Online-Fix browser windows.
+- Block third-party pop-ups and off-site advertising redirects without hiding normal listing controls.
+- Provide a separate Browser fallback button when a listing requires an external download host.
+- Add tests for in-app browsing and ad filtering on both new listing sources.
+
 ## 1.8.8 - 2026-10-10
 
 Add multiple selectable game discovery websites to Dusk.
