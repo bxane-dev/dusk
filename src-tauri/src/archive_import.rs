@@ -82,7 +82,8 @@ fn archive_type(archive: &Path) -> Option<&'static str> {
         Some("7z")
     } else if filename.ends_with(".rar") && !filename.contains(".part") {
         Some("rar")
-    } else if filename.ends_with(".part1.rar") || filename.ends_with(".part01.rar") {
+    } else if super::download_manager::multipart_volume(&filename)
+        .is_some_and(|(_, volume)| volume == 1 && filename.ends_with(".rar")) {
         Some("rar")
     } else {
         None
@@ -451,5 +452,19 @@ mod tests {
         assert!(verify_7zip_listing(listing).is_ok());
         let unsafe_listing = "Listing archive: demo.7z\r\n----------\r\nPath = ../escape.exe\r\nSize = 1\r\n\r\n";
         assert!(verify_7zip_listing(unsafe_listing).is_err());
+    }
+}
+
+#[cfg(test)]
+mod first_volume_tests {
+    use super::*;
+    #[test]
+    fn first_rar_volume_is_recognized_consistently() {
+        assert_eq!(archive_type(Path::new("Example.part1.rar")), Some("rar"));
+        assert_eq!(archive_type(Path::new("Example.part01.rar")), Some("rar"));
+        assert_eq!(archive_type(Path::new("Example.part001.rar")), Some("rar"));
+        assert_eq!(archive_type(Path::new("Example.part002.rar")), None);
+        assert_eq!(archive_type(Path::new("Example.7z.001")), Some("7z"));
+        assert_eq!(archive_type(Path::new("Example.7z.002")), None);
     }
 }
