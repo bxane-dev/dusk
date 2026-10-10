@@ -6456,6 +6456,7 @@ pub fn run() {
             import_account_state,
             windows_vpn::list_windows_vpn_profiles,
             windows_vpn::prepare_windows_vpn,
+            windows_vpn::open_windows_vpn_settings,
             check_github_update,
             install_github_update,
             discord_rpc_enable,
