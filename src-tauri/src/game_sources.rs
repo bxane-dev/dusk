@@ -262,6 +262,62 @@ fn parse_direct_archives(html: &str, page: &reqwest::Url) -> Vec<DiscoveredArchi
     bundles
 }
 
+// A filename-looking link does not prove the host serves a file. Some
+// mirrors redirect to /download landing pages, 404s, or HTML ad gates.
+// Request just the first bytes and validate the archive magic before marking
+// a mirror eligible for an unattended background download.
+fn archive_probe_response_ok(filename: &str, status: reqwest::StatusCode,
+    content_type: &str, header: &[u8]) -> bool {
+    status.is_success()
+        && !content_type.contains("text/html")
+        && !content_type.contains("application/json")
+        && super::download_manager::validate_archive_header(filename, header)
+}
+
+fn probe_direct_archive(client: &reqwest::blocking::Client, filename: &str, href: &str) -> bool {
+    let Ok(url) = reqwest::Url::parse(href) else { return false; };
+    if !super::download_manager::valid_public_https(&url) { return false; }
+    let Ok(mut response) = client.get(url)
+        .header(reqwest::header::RANGE, "bytes=0-15")
+        .send() else { return false; };
+    if !super::download_manager::valid_public_https(response.url()) ||
+        !response.status().is_success() { return false; }
+    let status = response.status();
+    let content_type = response.headers().get(reqwest::header::CONTENT_TYPE)
+        .and_then(|value| value.to_str().ok()).unwrap_or("").to_ascii_lowercase();
+    let mut header = [0u8; 8];
+    use std::io::Read;
+    if response.read_exact(&mut header).is_err() { return false; }
+    archive_probe_response_ok(filename, status, &content_type, &header)
+}
+
+fn verify_direct_archive_bundles(
+    bundles: Vec<DiscoveredArchiveBundle>,
+    client: &reqwest::blocking::Client
+) -> Vec<DiscoveredArchiveBundle> {
+    let mut verified = Vec::new();
+    for mut bundle in bundles.into_iter().take(5) {
+        let last_index = bundle.parts.len() - 1;
+        let checks = if last_index > 0 { vec![0, last_index] } else { vec![0] };
+        let mut usable = true;
+        for index in checks {
+            let part = &mut bundle.parts[index];
+            // Cap probes per candidate so a dead host doesn't stall search.
+            let working = part.mirrors.iter().take(4).find(|url|
+                probe_direct_archive(client, &part.filename, url)).cloned();
+            if let Some(mirror) = working {
+                part.mirrors.retain(|value| value != &mirror);
+                part.mirrors.insert(0, mirror);
+            } else {
+                usable = false;
+                break;
+            }
+        }
+        if usable { verified.push(bundle); }
+    }
+    verified
+}
+
 #[tauri::command]
 pub(crate) async fn discover_game_source_archives(source: String, listing_url: String) -> Result<Vec<DiscoveredArchiveBundle>, String> {
     let host = source_host(&source)?;
@@ -288,7 +344,20 @@ pub(crate) async fn discover_game_source_archives(source: String, listing_url: S
         let mut body = Vec::new();
         limited.read_to_end(&mut body).map_err(|e| e.to_string())?;
         if body.len() > 4_000_000 { return Err("Listing is too large to inspect.".into()); }
-        Ok(parse_direct_archives(&String::from_utf8_lossy(&body), &page))
+        let candidates = parse_direct_archives(&String::from_utf8_lossy(&body), &page);
+        if candidates.is_empty() { return Ok(Vec::new()); }
+        let probe_client = reqwest::blocking::Client::builder()
+            .connect_timeout(Duration::from_secs(6))
+            .timeout(Duration::from_secs(12))
+            .redirect(reqwest::redirect::Policy::custom(|attempt| {
+                if attempt.previous().len() >= 5 ||
+                    !super::download_manager::valid_public_https(attempt.url()) {
+                    attempt.stop()
+                } else { attempt.follow() }
+            }))
+            .user_agent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/131.0.0.0 Safari/537.36")
+            .build().map_err(|e| format!("Could not validate download mirrors: {e}"))?;
+        Ok(verify_direct_archive_bundles(candidates, &probe_client))
     }).await.map_err(|e| e.to_string())?
 }
 
@@ -313,6 +382,20 @@ pub(crate) fn open_game_source_browser(url: String) -> Result<(), String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+
+    #[test]
+    fn refuses_dead_or_html_mirror_responses_even_with_archive_filename() {
+        let real_rar = b"Rar!\\x1a\\x07\\x01\\x00";
+        assert!(!archive_probe_response_ok("game.part01.rar", reqwest::StatusCode::NOT_FOUND,
+            "application/octet-stream", real_rar));
+        assert!(!archive_probe_response_ok("game.part01.rar", reqwest::StatusCode::OK,
+            "text/html", b"<html>hi"));
+        assert!(!archive_probe_response_ok("game.part01.rar", reqwest::StatusCode::OK,
+            "application/octet-stream", b"<html>hi"));
+        assert!(archive_probe_response_ok("game.part01.rar", reqwest::StatusCode::PARTIAL_CONTENT,
+            "application/octet-stream", real_rar));
+    }
 
     #[test]
     fn groups_multipart_volumes_and_deduplicates_mirrors() {
