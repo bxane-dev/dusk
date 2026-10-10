@@ -117,8 +117,13 @@ fn source_page_allowed(url: &reqwest::Url, expected_host: &str) -> bool {
     if url.scheme() != "https" || url.username() != "" || url.password().is_some() {
         return false;
     }
-    // Don't allow a page or ad redirect to leave the chosen game site.
-    url.host_str().map(|host| host == expected_host || host == format!("www.{expected_host}")).unwrap_or(false)
+    // Allow supported file hosts while retaining the original source restriction.
+    // In-page click handling rejects unrelated pop-ups and advertising hosts.
+    url.host_str().map(|host| host == expected_host || host == format!("www.{expected_host}") ||
+        matches!(host, "gofile.io" | "pixeldrain.com" | "mega.nz" | "1fichier.com" |
+            "filecrypt.cc" | "filecrypt.co" | "rapidgator.net" | "multiup.io" |
+            "qiwi.gg" | "datanodes.to" | "buzzheavier.com" | "vikingfile.com" |
+            "filekeeper.net" | "fileditchfiles.st")).unwrap_or(false)
 }
 
 fn open_game_source_page(app: tauri::AppHandle, listing: reqwest::Url) -> Result<(), String> {
