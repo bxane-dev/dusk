@@ -1936,8 +1936,10 @@ export default function App() {
         const hostBlocked = /404|403|file host|web page|access denied|download mirror|archive/i.test(detail);
         if (item.listingUrl && hostBlocked) {
           showToast("No usable download mirror for " + item.title + ". Opening the original listing in Dusk. " + detail, "error");
-          void api.openGameSourceListing(item.listingUrl)
-            .catch(error => showToast("Could not open listing: " + readableError(error), "error"));
+          void prepareBrowserVpn().then(connected => {
+            if (connected) return api.openGameSourceListing(item.listingUrl!);
+            return undefined;
+          }).catch(error => showToast("Could not open listing: " + readableError(error), "error"));
         } else {
           showToast("Download failed for " + item.title + ": " + detail, "error");
         }
@@ -1989,13 +1991,13 @@ export default function App() {
   }
 
   async function trackOnlineFixDownload(result: WebGameResult, externalBrowser = false, destination = result.url, autoSelect = false) {
+    if (!(await prepareBrowserVpn())) return;
     downloadStabilityRef.current.clear();
     watchAttemptedRef.current.clear();
     setDownloadWatchMessage("Waiting for a completed archive matching " + result.title + " in Downloads…");
     // Start monitoring before opening the selected verified download page.
     setActiveDownloadWatch({ sinceMs: Date.now() - 2000, title: result.title, url: destination, source: "online-fix" });
     try {
-      if (!(await prepareBrowserVpn())) return;
       if (externalBrowser) await api.openOnlineFixBrowser(destination);
       else await api.openOnlineFixResult(destination, result.title, autoSelect);
     } catch (error) {
@@ -2006,6 +2008,7 @@ export default function App() {
   }
 
   async function openOtherGameSource(result: WebGameResult, external = false) {
+    if (!(await prepareBrowserVpn())) return;
     // Browsing still happens on the real host. A completed, title-matching
     // archive is picked up and imported without a manual URL-paste form.
     downloadStabilityRef.current.clear();
@@ -2018,7 +2021,6 @@ export default function App() {
       source: webSource,
     });
     try {
-      if (!(await prepareBrowserVpn())) return;
       if (external) await api.openGameSourceBrowser(result.url);
       else await api.openGameSourceListing(result.url);
     } catch (error) {
