@@ -387,6 +387,77 @@ fn combined_multipart_size(first: &Path, filename: &str) -> Option<u64> {
     volumes.values().try_fold(0u64, |sum, size| sum.checked_add(*size))
 }
 
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct ArchiveReadiness {
+    ready: bool,
+    message: String,
+}
+
+// Consecutive filenames are insufficient: a set with .001 and .002 may still
+// be missing .003. Test the actual archive BEFORE telling the UI it is ready.
+fn multipart_archive_readiness(archive: &Path, password: Option<&str>) -> ArchiveReadiness {
+    let Some(filename) = archive.file_name().and_then(|value| value.to_str()) else {
+        return ArchiveReadiness { ready: false, message: "Archive filename is unreadable.".into() };
+    };
+    if super::download_manager::multipart_volume(filename)
+        .is_none_or(|(_, number)| number != 1) {
+        return ArchiveReadiness {
+            ready: false, message: "Select the first volume of a multipart archive.".into()
+        };
+    }
+    if combined_multipart_size(archive, filename).is_none() {
+        return ArchiveReadiness {
+            ready: false,
+            message: "Waiting for at least two contiguous, nonempty archive volumes.".into(),
+        };
+    }
+
+    let mut available_extractor = false;
+    for executable in extractor_candidates() {
+        let mut command = Command::new(&executable);
+        command.args(["t", "-bd", "-y", "-bb0", "-mmt=2"]);
+        if let Some(value) = password { command.arg(format!("-p{value}")); }
+        match command.arg(archive).stdin(Stdio::null())
+            .stdout(Stdio::null()).stderr(Stdio::null()).status() {
+            Ok(status) => {
+                available_extractor = true;
+                if status.success() {
+                    return ArchiveReadiness {
+                        ready: true, message: "All multipart volumes passed archive integrity testing.".into(),
+                    };
+                }
+            }
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => continue,
+            Err(_) => { available_extractor = true; }
+        }
+    }
+    ArchiveReadiness {
+        ready: false,
+        message: if available_extractor {
+            "Archive integrity test failed. Some volumes may be missing, incomplete or corrupt, or a password may be required.".into()
+        } else {
+            "Install 7-Zip to verify multipart downloads before automatic import.".into()
+        },
+    }
+}
+
+#[tauri::command]
+pub(crate) async fn verify_downloaded_multipart_archive(
+    archive_path: String, password: Option<String>
+) -> Result<ArchiveReadiness, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let downloads = downloads_dir()?;
+        let file = PathBuf::from(&archive_path).canonicalize()
+            .map_err(|error| format!("Archive not found: {error}"))?;
+        if file == downloads || !file.starts_with(&downloads) || !file.is_file() {
+            return Err("Archive verification is restricted to files in Downloads.".into());
+        }
+        Ok(multipart_archive_readiness(&file, password.as_deref()))
+    }).await.map_err(|error| error.to_string())?
+}
+
 #[tauri::command]
 pub(crate) async fn list_recent_game_archives(since_ms: u64) -> Result<Vec<RecentGameArchive>, String> {
     tauri::async_runtime::spawn_blocking(move || {
@@ -480,6 +551,18 @@ mod multipart_scan_tests {
         assert_eq!(combined_multipart_size(&first, "test.part001.rar"), None);
         fs::write(dir.join("test.part002.rar"), b"abcdef").unwrap();
         assert_eq!(combined_multipart_size(&first, "test.part001.rar"), Some(18));
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn consecutive_volume_names_do_not_mark_an_invalid_archive_ready() {
+        let dir = std::env::temp_dir().join(format!("dusk-test-readiness-{}", Uuid::new_v4()));
+        fs::create_dir_all(&dir).unwrap();
+        let first = dir.join("broken.part01.rar");
+        fs::write(&first, b"not actually a rar file").unwrap();
+        fs::write(dir.join("broken.part02.rar"), b"not actually a continuation").unwrap();
+        let readiness = multipart_archive_readiness(&first, None);
+        assert!(!readiness.ready, "A numbered set without valid archive contents must never import");
         let _ = fs::remove_dir_all(dir);
     }
 
