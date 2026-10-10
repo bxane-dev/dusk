@@ -127,3 +127,19 @@ pub(crate) async fn prepare_windows_vpn(profile: Option<String>) -> Result<VpnCo
     tauri::async_runtime::spawn_blocking(move || connect_profile(profile))
         .await.map_err(|error| format!("Windows VPN setup failed: {error}"))?
 }
+
+#[tauri::command]
+pub(crate) fn open_windows_vpn_settings() -> Result<(), String> {
+    #[cfg(target_os = "windows")]
+    {
+        super::hidden_windows_command("explorer.exe")
+            .arg("ms-settings:network-vpn")
+            .spawn()
+            .map_err(|_| "Could not open Windows VPN settings.".to_string())?;
+        Ok(())
+    }
+    #[cfg(not(target_os = "windows"))]
+    {
+        Err("Windows VPN settings are unavailable on this operating system.".into())
+    }
+}
