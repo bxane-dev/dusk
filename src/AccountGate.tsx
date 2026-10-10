@@ -1,4 +1,4 @@
-import { type FormEvent, type MouseEvent, type ReactNode, useEffect, useState } from "react";
+import { type FormEvent, type MouseEvent, type ReactNode, useEffect, useRef, useState } from "react";
 import { ArrowLeft, KeyRound, LockKeyhole, LogIn, Mail, Minus, Square, UserRound, UserPlus, X } from "lucide-react";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import duskLogo from "./assets/dusk-logo.svg";
@@ -83,17 +83,28 @@ export default function AccountGate(props: { children: ReactNode }) {
   const [password, setPassword] = useState("");
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState("");
+  const guestChoiceRef = useRef(false);
 
   useEffect(() => {
     void (async () => {
       try {
         if (localStorage.getItem("dusk-account-mode") === "guest") {
           await api.setAccountScope(null);
-          setGuest(true);
+          if (!guestChoiceRef.current) setGuest(true);
           return;
         }
 
-        const existing = await currentDuskAccount();
+        // A network timeout during session refresh must not hold the whole UI
+        // on the noninteractive "Opening Dusk" screen indefinitely.
+        let sessionTimer: ReturnType<typeof setTimeout> | undefined;
+        const session = currentDuskAccount();
+        const timeout = new Promise<null>(resolve => {
+          sessionTimer = setTimeout(() => resolve(null), 10_000);
+        });
+        const existing = await Promise.race([session, timeout]).finally(() => {
+          if (sessionTimer !== undefined) clearTimeout(sessionTimer);
+        });
+        if (guestChoiceRef.current) return;
         if (existing) {
           await api.setAccountScope(existing.user.id);
           // Cloud hydration can be slow or never resolve on offline/filtered
@@ -107,9 +118,9 @@ export default function AccountGate(props: { children: ReactNode }) {
           await api.setAccountScope(null);
         }
       } catch (error) {
-        setMessage(error instanceof Error ? error.message : String(error));
+        if (!guestChoiceRef.current) setMessage(error instanceof Error ? error.message : String(error));
       } finally {
-        setChecking(false);
+        if (!guestChoiceRef.current) setChecking(false);
       }
     })();
   }, []);
@@ -148,13 +159,16 @@ export default function AccountGate(props: { children: ReactNode }) {
   }
 
   async function continueAsGuest() {
+    guestChoiceRef.current = true;
     setBusy(true);
     setMessage("");
     try {
       localStorage.setItem("dusk-account-mode", "guest");
       await api.setAccountScope(null);
       setGuest(true);
+      setChecking(false);
     } catch (error) {
+      guestChoiceRef.current = false;
       setMessage(error instanceof Error ? error.message : String(error));
     } finally {
       setBusy(false);
@@ -170,6 +184,10 @@ export default function AccountGate(props: { children: ReactNode }) {
             <img className="account-logo-image" src={duskLogo} alt="" draggable={false} />
           </div>
           <strong>Opening Dusk...</strong>
+          <p className="account-guest-note">Account checks can be slow when offline. You can open your local library without signing in.</p>
+          <button className="account-guest" type="button" disabled={busy} onClick={() => void continueAsGuest()}>
+            <UserRound size={17} /> {busy ? "Opening local library…" : "Continue as guest"}
+          </button>
         </div>
       </main>
     );
