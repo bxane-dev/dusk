@@ -6457,6 +6457,7 @@ pub fn run() {
             windows_vpn::list_windows_vpn_profiles,
             windows_vpn::prepare_windows_vpn,
             windows_vpn::open_windows_vpn_settings,
+            windows_vpn::open_cloudflare_warp_setup,
             check_github_update,
             install_github_update,
             discord_rpc_enable,
