@@ -1003,7 +1003,7 @@ export default function App() {
     () => localStorage.getItem("dusk-windows-vpn-profile") || ""
   );
   const [vpnProfiles, setVpnProfiles] = useState<Array<{ name: string; connected: boolean }>>([]);
-  const [vpnMessage, setVpnMessage] = useState("Checking Windows VPN profiles…");
+  const [vpnMessage, setVpnMessage] = useState("Checking Cloudflare WARP and Windows VPN profiles…");
   const [vpnBusy, setVpnBusy] = useState(false);
   const vpnNoticeShownRef = useRef(false);
 
@@ -1192,8 +1192,8 @@ export default function App() {
           setVpnMessage("Automatic VPN connection is disabled.");
           return;
         }
-        // Automatic mode is active from first launch. Windows manages the
-        // real tunnel; Dusk cannot connect without a configured profile.
+        // Cloudflare WARP or Windows creates the actual system tunnel.
+        // Dusk only connects an installed and configured provider.
         const result = await api.prepareWindowsVpn(vpnProfile || undefined);
         if (!mounted) return;
         setVpnMessage(result.message);
@@ -1205,22 +1205,25 @@ export default function App() {
     return () => { mounted = false; };
   }, [vpnMode, vpnProfile]);
 
-  async function prepareBrowserVpn() {
-    if (vpnMode === "off") return;
+  async function prepareBrowserVpn(): Promise<boolean> {
+    if (vpnMode === "off") return true; // Explicitly chosen direct networking.
     try {
       const connection = await api.prepareWindowsVpn(vpnProfile || undefined);
       setVpnMessage(connection.message);
       setVpnProfiles(await api.listWindowsVpnProfiles());
-      if (!connection.connected && !vpnNoticeShownRef.current) {
+      if (connection.connected) return true;
+      if (!vpnNoticeShownRef.current) {
         vpnNoticeShownRef.current = true;
-        showToast("VPN not connected. Dusk will open the page using your normal network. " + connection.message, "error");
+        showToast("VPN not connected. Download blocked to avoid using your normal connection. " + connection.message, "error");
       }
+      return false;
     } catch (error) {
       setVpnMessage("VPN connection check failed: " + readableError(error));
       if (!vpnNoticeShownRef.current) {
         vpnNoticeShownRef.current = true;
-        showToast("VPN unavailable; browsing uses your normal network connection.", "error");
+        showToast("VPN unavailable. Download blocked; set VPN to Off to use your regular network.", "error");
       }
+      return false;
     }
   }
 
@@ -1992,7 +1995,7 @@ export default function App() {
     // Start monitoring before opening the selected verified download page.
     setActiveDownloadWatch({ sinceMs: Date.now() - 2000, title: result.title, url: destination, source: "online-fix" });
     try {
-      await prepareBrowserVpn();
+      if (!(await prepareBrowserVpn())) return;
       if (externalBrowser) await api.openOnlineFixBrowser(destination);
       else await api.openOnlineFixResult(destination, result.title, autoSelect);
     } catch (error) {
@@ -2015,7 +2018,7 @@ export default function App() {
       source: webSource,
     });
     try {
-      await prepareBrowserVpn();
+      if (!(await prepareBrowserVpn())) return;
       if (external) await api.openGameSourceBrowser(result.url);
       else await api.openGameSourceListing(result.url);
     } catch (error) {
@@ -2035,6 +2038,7 @@ export default function App() {
       await trackOnlineFixDownload(result, true, file.url);
       return;
     }
+    if (!(await prepareBrowserVpn())) return;
     try {
       const created = await api.startManagedDownload(file.url, file.filename, result.title);
       setManagedDownloads((current) => [created, ...current.filter((entry) => entry.id !== created.id)]);
@@ -2070,6 +2074,7 @@ export default function App() {
 
   async function selectGameDownload(result: WebGameResult) {
     if (downloadSourcesBusy) return;
+    if (!(await prepareBrowserVpn())) return;
     setDownloadSourcesBusy(result.url);
     try {
       const links = await api.getOnlineFixDownloadLinks(result.url);
@@ -2121,6 +2126,7 @@ export default function App() {
   // URLs for the same volume are mirrors; numbered volumes are all required.
   async function oneClickGameSourceDownload(result: WebGameResult) {
     if (downloadSourcesBusy || webSource === "online-fix") return;
+    if (!(await prepareBrowserVpn())) return;
     const source = webSource;
     setDownloadSourcesBusy(result.url);
     try {
@@ -2567,7 +2573,7 @@ export default function App() {
                   <p>{webError}</p>
                   {webSource !== "online-fix" && (
                     <button className="button secondary" onClick={() => {
-                      void prepareBrowserVpn().then(() => api.openGameSourceSearch(webSource, query.trim()))
+                      void prepareBrowserVpn().then(connected => connected ? api.openGameSourceSearch(webSource, query.trim()) : undefined)
                         .catch(error => showToast(readableError(error), "error"));
                     }} title="Open this search in Dusk's embedded browser with its ad blocker enabled">
                       <Globe2 size={15} /> Open search in Dusk browser
@@ -3009,14 +3015,14 @@ export default function App() {
                     <div className="settings-card-head">
                       <ShieldCheck size={20} />
                       <div>
-                        <h3>VPN · Windows integration</h3>
-                        <p>Uses a VPN profile configured in Windows. Dusk does not supply a VPN server or store VPN credentials.</p>
+                        <h3>VPN · Cloudflare WARP &amp; Windows</h3>
+                        <p>Automatic uses the official Cloudflare WARP client when installed, or an existing Windows VPN profile. VPN traffic is routed by Windows, not by a webpage proxy.</p>
                       </div>
                     </div>
                     <div className="setting-row">
                       <div>
                         <strong>Connection mode</strong>
-                        <span>Automatic is the default. Connect your selected Windows VPN before browsing. If no profile is available, traffic is not tunneled.</span>
+                        <span>Automatic is the default. Dusk checks the real VPN connection before browsing and downloading; without a connection, network requests are blocked until you connect or choose Off.</span>
                       </div>
                       <select className="vpn-settings-select" value={vpnMode} aria-label="VPN connection mode"
                         onChange={event => {
@@ -3031,11 +3037,11 @@ export default function App() {
                     </div>
                     <div className="setting-row">
                       <div>
-                        <strong>Windows VPN profile</strong>
-                        <span>Uses Windows' existing VPN connection, including its stored credentials. Changes may affect network traffic outside Dusk.</span>
+                        <strong>VPN provider / profile</strong>
+                        <span>Automatic prefers an active tunnel, then Cloudflare WARP if installed. Choose a provider here to override.</span>
                       </div>
                       <select className="vpn-settings-select" value={vpnProfile}
-                        aria-label="Windows VPN profile" disabled={vpnMode === "off"}
+                        aria-label="VPN provider and profile" disabled={vpnMode === "off"}
                         onChange={event => {
                           setVpnProfile(event.target.value);
                           localStorage.setItem("dusk-windows-vpn-profile", event.target.value);
@@ -3062,8 +3068,18 @@ export default function App() {
                     </div>
                     <div className="setting-row">
                       <div>
-                        <strong>VPN provider and routing</strong>
-                        <span>Configure an actual VPN service in Windows first. Automatic does not create a VPN server, guarantee full-tunnel routing, or hide traffic when disconnected.</span>
+                        <strong>Set up a real VPN</strong>
+                        <span>Install Cloudflare WARP once, then finish its first-run registration. Dusk can automatically connect it afterwards. Cloudflare may not make every download host accessible.</span>
+                      </div>
+                      <button className="button secondary"
+                        onClick={() => void api.openCloudflareWarpSetup().catch(error => showToast(readableError(error), "error"))}>
+                        <ExternalLink size={15} /> Install Cloudflare WARP
+                      </button>
+                    </div>
+                    <div className="setting-row">
+                      <div>
+                        <strong>Other VPN providers</strong>
+                        <span>Existing Windows VPN profiles remain supported. VPN routing can affect other apps. Dusk never stores provider credentials.</span>
                       </div>
                       <button className="button secondary"
                         onClick={() => void api.openWindowsVpnSettings().catch(error => showToast(readableError(error), "error"))}>
