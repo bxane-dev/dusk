@@ -86,6 +86,7 @@ export const api = {
     invoke<void>("run_game_installer", { installerPath }),
   discoverGameSourceArchives: (source: "game3rb" | "fitgirl", listingUrl: string) =>
     invoke<GameArchiveBundle[]>("discover_game_source_archives", { source, listingUrl }),
+  openWindowsVpnSettings: () => invoke<void>("open_windows_vpn_settings"),
   listWindowsVpnProfiles: () =>
     invoke<WindowsVpnProfile[]>("list_windows_vpn_profiles"),
   prepareWindowsVpn: (profile?: string) =>
