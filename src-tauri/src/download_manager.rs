@@ -104,8 +104,8 @@ fn looks_like_download_error(bytes: &[u8]) -> bool {
     let sample = String::from_utf8_lossy(&bytes[..bytes.len().min(128)]);
     let head = sample.trim_start_matches(|ch: char| ch.is_ascii_whitespace()).to_ascii_lowercase();
     head.starts_with("<!doctype") || head.starts_with("<html") ||
-        head.starts_with("<?xml") || head.starts_with("{\\\"error\\\"") ||
-        head.starts_with("{\\\"message\\\"") || head.starts_with("access denied") ||
+        head.starts_with("<?xml") || head.starts_with("{\"error\"") ||
+        head.starts_with("{\"message\"") || head.starts_with("access denied") ||
         head.starts_with("not found")
 }
 
@@ -420,7 +420,7 @@ mod tests {
         assert!(validate_archive_header("game.part120.rar", b"RAW CONTINUATION BYTES"));
         assert!(!validate_archive_header("game.part01.rar", b"RAW CONTINUATION BYTES"));
         assert!(!validate_archive_header("game.part04.rar", b"<html>404 error</html>"));
-        assert!(!validate_archive_header("game.part04.rar", b"{\\"error\\":404}"));
+        assert!(!validate_archive_header("game.part04.rar", b"{\"error\":404}"));
         assert!(validate_archive_header("game.7z.002", b"RAW CONTINUATION BYTES"));
         assert!(!validate_archive_header("game.7z.001", b"RAW CONTINUATION BYTES"));
     }
