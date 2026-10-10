@@ -1866,7 +1866,7 @@ export default function App() {
     handledDownloadIdsRef.current.add(ready.id);
     // A first multipart volume is not a complete game. Never try to unpack
     // an incomplete set of volumes or execute files from an archive.
-    if (/\.7z\.\d{3}$|\.part\d+\.rar$/i.test(ready.filename)) {
+    if (/\.7z\.\d{3}$|\.part\d+\.rar$/i.test(ready.filename) && !ready.bundleReady) {
       showToast("Downloaded " + ready.filename + ". Multipart archives need all volumes before import.");
       return;
     }
@@ -1995,6 +1995,32 @@ export default function App() {
       await trackOnlineFixDownload(result, false, result.url, false);
     } catch (error) {
       showToast("Could not load game files: " + readableError(error), "error");
+    } finally {
+      setDownloadSourcesBusy(null);
+    }
+  }
+
+  // One click finds direct archive files on the selected listing. Multiple
+  // URLs for the same volume are mirrors; numbered volumes are all required.
+  async function oneClickGameSourceDownload(result: WebGameResult) {
+    if (downloadSourcesBusy || webSource === "online-fix") return;
+    const source = webSource;
+    setDownloadSourcesBusy(result.url);
+    try {
+      const bundles = await api.discoverGameSourceArchives(source, result.url);
+      if (!bundles.length) {
+        showToast("No complete set of direct archive links was found. Opening the listing for download-host steps.");
+        await openOtherGameSource(result);
+        return;
+      }
+      // Prefer the most complete contiguous volume set. Alternatives/mirrors
+      // are never mistaken for extra volumes of the same archive.
+      const selected = bundles[0];
+      const created = await api.startArchiveBundle(result.title, selected.parts);
+      setManagedDownloads(current => [created, ...current.filter(item => item.id !== created.id)]);
+      showToast("Downloading " + selected.parts.length + " archive volume(s) with automatic mirror fallback.");
+    } catch (error) {
+      showToast("Direct download unavailable: " + readableError(error), "error");
     } finally {
       setDownloadSourcesBusy(null);
     }
@@ -2505,12 +2531,18 @@ export default function App() {
                     </div>
                     ) : (
                       <div className="web-result-actions">
-                        <button className="button primary" onClick={() => void openOtherGameSource(result)}
-                          title="Open inside Dusk and watch for completed matching archives in the background">
+                        <button className="button primary" disabled={downloadSourcesBusy !== null}
+                          onClick={() => void oneClickGameSourceDownload(result)}
+                          title="Find direct game archives, download all required volumes, and try alternate mirrors">
+                          {downloadSourcesBusy === result.url ? <RefreshCw className="spin" size={15} /> : <Archive size={15} />}
+                          {downloadSourcesBusy === result.url ? "Finding sources…" : "Get game"}
+                        </button>
+                        <button className="button secondary" onClick={() => void openOtherGameSource(result)}
+                          title="Open inside Dusk for hosts that require login, a captcha, or an extra download step">
                           <Globe2 size={15} /> Open in Dusk
                         </button>
                         <button className="button ghost" onClick={() => void openOtherGameSource(result, true)}
-                          title="Use system browser when needed; Dusk still watches for a matching downloaded archive">
+                          title="Use system browser when needed; Dusk watches for a matching downloaded archive">
                           <ExternalLink size={15} /> Browser fallback
                         </button>
                       </div>
@@ -2522,8 +2554,8 @@ export default function App() {
                 {webSource === "online-fix"
                   ? "Get game starts supported downloads and safely imports completed single-file archives in the background. Home and Library show games, not download forms. Login-only hosts still need browser interaction."
                   : webSource === "fitgirl"
-                    ? "FitGirl is an offline-only discovery source. Listings open inside Dusk with ad and pop-up blocking on by default. For download-host pages outside FitGirl, use Browser fallback."
-                    : "Game3rb listings open in Dusk with ad and pop-up blocking on by default. For third-party download hosts or sites that require external browsing, use Browser fallback."}
+                    ? "Get game downloads discoverable direct archives, including multiple volumes and alternate mirrors. Hosts that require login, captchas or special steps still need Open in Dusk."
+                    : "Get game tries direct archive links with alternate mirrors and multipart support. Browser-based hosts still need manual steps; embedded browsing keeps ad blocking on."}
               </p>
             </section>
           ) : (
