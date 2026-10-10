@@ -2,6 +2,19 @@
 
 All notable Dusk changes are documented here.
 
+## 1.8.10 - 2026-10-10
+
+Keep Home and Library game-focused and automate safe downloads in the background.
+
+- Remove the Downloads toolbar button, dashboard and manual HTTPS archive URL form.
+- Start supported Online-Fix archive transfers directly from game search, without opening a download manager.
+- Poll transfer status in the background and automatically import completed single-volume archives into the game library.
+- Show failure and import-result notifications rather than a Home-page download interface.
+- Prevent the browser download watcher and native transfer importer from importing the same archive twice.
+- Monitor matching downloads from Game3rb and offline-focused FitGirl listings in the ad-blocked Dusk browser.
+- Require user approval before executing an installer; multipart game archives still need all volumes.
+- Preserve per-source external browser fallback and default embedded ad blocking.
+
 ## 1.8.9 - 2026-10-10
 
 Enable ad-filtered in-app browsing for all game listing sources.
