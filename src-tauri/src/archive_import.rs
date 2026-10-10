@@ -556,7 +556,7 @@ mod tests {
     #[test]
     fn parses_7zip_listings_with_windows_newlines() {
         let listing = "Listing archive: demo.7z\r\n----------\r\nPath = Game/one.exe\r\nSize = 100\r\n\r\nPath = Game/two.dll\r\nSize = 200\r\n\r\n";
-        assert!(verify_7zip_listing(listing).is_ok());
+        assert_eq!(verify_7zip_listing(listing).unwrap(), 300);
         let unsafe_listing = "Listing archive: demo.7z\r\n----------\r\nPath = ../escape.exe\r\nSize = 1\r\n\r\n";
         assert!(verify_7zip_listing(unsafe_listing).is_err());
     }
