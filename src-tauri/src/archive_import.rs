@@ -2,13 +2,13 @@ use super::*;
 use std::process::Stdio;
 use std::time::UNIX_EPOCH;
 
-const MAX_UNPACKED_BYTES: u64 = 20 * 1024 * 1024 * 1024;
+const MAX_UNPACKED_BYTES: u64 = 150 * 1024 * 1024 * 1024;
 const MAX_ARCHIVE_FILES: usize = 50_000;
 const PYTHON_EXTRACT: &str = r#"
 import pathlib, sys, zipfile, stat
 archive, destination, kind, password = sys.argv[1:]
 root = pathlib.Path(destination).resolve()
-limit, max_files = 20 * 1024**3, 50000
+limit, max_files = 150 * 1024**3, 50000
 
 def check(name):
     normalized = name.replace('\\', '/')
@@ -24,7 +24,7 @@ def verify(entries):
     if len(entries) > max_files:
         raise ValueError('Too many files in archive')
     if sum(max(0, size) for _, size, _ in entries) > limit:
-        raise ValueError('Archive exceeds 20 GiB unpacked limit')
+        raise ValueError('Archive exceeds 150 GiB unpacked limit')
     for name, size, link in entries:
         check(name)
         if link:
@@ -128,7 +128,7 @@ fn verify_7zip_listing(output: &str) -> Result<(), String> {
             count += 1;
             total = total.checked_add(size).ok_or("Archive size overflow.")?;
             if count > MAX_ARCHIVE_FILES || total > MAX_UNPACKED_BYTES {
-                return Err("Archive exceeds extraction limits (20 GiB / 50,000 entries).".into());
+                return Err("Archive exceeds extraction limits (150 GiB / 50,000 entries).".into());
             }
         }
     }
@@ -190,7 +190,7 @@ try {
     if (!$full.StartsWith($root, [StringComparison]::OrdinalIgnoreCase)) { throw 'Unsafe archive path' }
     if ((($entry.ExternalAttributes -shr 16) -band 61440) -eq 40960) { throw 'Symlink entries are not allowed' }
     $total += $entry.Length
-    if ($total -gt 21474836480L) { throw 'Archive exceeds 20 GiB limit' }
+    if ($total -gt 161061273600L) { throw 'Archive exceeds 150 GiB limit' }
   }
 } finally { $zip.Dispose() }
 [IO.Compression.ZipFile]::ExtractToDirectory($env:DUSK_ARCHIVE, $env:DUSK_DESTINATION)
@@ -358,37 +358,33 @@ fn downloads_dir() -> Result<PathBuf, String> {
 
 // Sum all currently available multipart volumes. If a later volume arrives, the
 // reported size changes and the frontend retries after the entire group settles.
+// Unknown multipart sets must not be mistaken for single complete archives.
+// Ensure detected parts are sequential, nonempty and no transfer is in flight.
 fn combined_multipart_size(first: &Path, filename: &str) -> Option<u64> {
-    let lower = filename.to_ascii_lowercase();
-    let (prefix, ending) = if let Some(pos) = lower.rfind(".part") {
-        if lower.ends_with(".rar") && lower[pos + 5..lower.len() - 4].chars().all(|c| c.is_ascii_digit()) {
-            (&lower[..pos + 5], ".rar")
-        } else {
-            return None;
-        }
-    } else if lower.ends_with(".7z.001") {
-        (&lower[..lower.len() - 3], "")
-    } else {
-        return None;
-    };
-    let mut size = 0u64;
-    let mut found = 0usize;
+    let (set, first_volume) = super::download_manager::multipart_volume(filename)?;
+    if first_volume != 1 { return None; }
+    let mut volumes = std::collections::BTreeMap::new();
+    let (prefix, _) = set.rsplit_once('.')?;
     for entry in fs::read_dir(first.parent()?).ok()? {
         let entry = entry.ok()?;
         let name = entry.file_name().to_string_lossy().to_ascii_lowercase();
         if !name.starts_with(prefix) { continue; }
-        let rest = &name[prefix.len()..];
-        if name.ends_with(".crdownload") || name.ends_with(".part") || name.ends_with(".tmp") {
+        if name.ends_with(".crdownload") || name.ends_with(".dusk-part")
+            || name.ends_with(".tmp") {
             return None;
         }
-        let volume = if ending.is_empty() { rest } else if let Some(volume) = rest.strip_suffix(ending) { volume } else { continue };
-        if volume.is_empty() || !volume.chars().all(|c| c.is_ascii_digit()) { continue; }
+        let Some((candidate, index)) = super::download_manager::multipart_volume(&name) else { continue; };
+        if candidate != set { continue; }
+        if index > 120 { return None; }
         let meta = entry.metadata().ok()?;
-        if !meta.is_file() { continue; }
-        found += 1;
-        size = size.checked_add(meta.len())?;
+        if !meta.is_file() || meta.len() == 0 { return None; }
+        volumes.insert(index, meta.len());
     }
-    if found > 0 { Some(size) } else { None }
+    if volumes.len() < 2 || !volumes.contains_key(&1) { return None; }
+    if volumes.iter().enumerate().any(|(index, (number, _))| *number != index + 1) {
+        return None;
+    }
+    volumes.values().try_fold(0u64, |sum, size| sum.checked_add(*size))
 }
 
 #[tauri::command]
@@ -411,7 +407,8 @@ pub(crate) async fn list_recent_game_archives(since_ms: u64) -> Result<Vec<Recen
             if freshest.elapsed().unwrap_or_default() < Duration::from_secs(8) { continue; }
             let filename = path.file_name().and_then(|name| name.to_str()).unwrap_or("archive").to_string();
             let lower = filename.to_ascii_lowercase();
-            let size_bytes = if lower.ends_with(".7z.001") || lower.contains(".part1.rar") || lower.contains(".part01.rar") {
+            let size_bytes = if super::download_manager::multipart_volume(&lower)
+                .is_some_and(|(_, number)| number == 1) {
                 match combined_multipart_size(&path, &filename) {
                     Some(size) if size > 0 => size,
                     _ => continue, // Another volume is still downloading.
@@ -466,5 +463,28 @@ mod first_volume_tests {
         assert_eq!(archive_type(Path::new("Example.part002.rar")), None);
         assert_eq!(archive_type(Path::new("Example.7z.001")), Some("7z"));
         assert_eq!(archive_type(Path::new("Example.7z.002")), None);
+    }
+}
+
+#[cfg(test)]
+mod multipart_scan_tests {
+    use super::*;
+    #[test]
+    fn only_contiguous_multiple_volumes_are_scanned() {
+        let dir = std::env::temp_dir().join(format!("dusk-parts-{}", Uuid::new_v4()));
+        fs::create_dir_all(&dir).unwrap();
+        let first = dir.join("test.part001.rar");
+        fs::write(&first, b"Rar!\x1a\x07").unwrap();
+        assert_eq!(combined_multipart_size(&first, "test.part001.rar"), None);
+        fs::write(dir.join("test.part003.rar"), b"abcdef").unwrap();
+        assert_eq!(combined_multipart_size(&first, "test.part001.rar"), None);
+        fs::write(dir.join("test.part002.rar"), b"abcdef").unwrap();
+        assert_eq!(combined_multipart_size(&first, "test.part001.rar"), Some(18));
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn supports_game_installations_larger_than_twenty_gib() {
+        assert!(MAX_UNPACKED_BYTES >= 80 * 1024 * 1024 * 1024);
     }
 }
