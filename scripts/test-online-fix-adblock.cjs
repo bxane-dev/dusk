@@ -43,6 +43,14 @@ assert.equal(click(webview, "https://drive.online-fix.me:2053/Game"), false);
 assert.equal(click(webview, "https://hosters.online-fix.me:2053/Game"), false);
 assert.equal(click(webview, "https://acscdn.com.evil.test/fake"), false);
 
+// Ad filtering is enabled by default for all three in-app game sources.
+const game3rb = simulate("https://game3rb.com/my-game/");
+assert.equal(click(game3rb, "https://exoclick.com/pop"), true);
+assert.equal(click(game3rb, "https://game3rb.com/another-game/"), false);
+const fitgirl = simulate("https://fitgirl-repacks.site/my-offline-game/");
+assert.equal(click(fitgirl, "https://realsrv.com/ad"), true);
+assert.equal(click(fitgirl, "https://fitgirl-repacks.site/game/"), false);
+
 const other = simulate("https://unrelated.example/");
 assert.equal(other.handlers.has("click"), false);
 console.log("Online-Fix ad blocker tests passed.");
