@@ -2695,3 +2695,14 @@ button:disabled { cursor: not-allowed; opacity: 0.55; }
   .web-source-control { width: 100%; }
   .web-source-select { max-width: min(100%, 230px); }
 }
+
+/* Browser ad protection is enabled automatically for all listing sources. */
+.web-adblock-indicator {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--muted, #a0a0a9);
+  font-size: 11px;
+  white-space: nowrap;
+}
+.web-adblock-indicator > svg { color: #a98ad8; }
