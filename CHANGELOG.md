@@ -2,6 +2,19 @@
 
 All notable Dusk changes are documented here.
 
+## 1.8.18 - 2026-10-10
+
+Prevent an unresponsive main window during background imports and slow startup.
+
+- Never open native installer confirmations from background download completion or file monitoring.
+- Allow cloud account hydration to run without blocking local app navigation.
+- Add a Continue as guest escape path during initial account checking.
+- Bound library-load waiting so Settings and navigation remain accessible if a local query stalls.
+- Add real Windows Edge click-through smoke tests for six sidebar views and physical hit testing.
+- Fix outdated download UI regression assertions; retain v1.8.17 archive integrity and extraction fixes.
+
+This reduces hidden modal blocking but cannot yet conclusively reproduce every native WebView2 input failure.
+
 ## 1.8.17 - 2026-10-10
 
 Make one-click multipart completion and automatic extraction retries more reliable.
