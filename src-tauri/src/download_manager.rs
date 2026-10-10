@@ -79,18 +79,34 @@ pub(crate) fn archive_name(name: &str) -> bool {
 
 pub(crate) fn validate_archive_header(name: &str, bytes: &[u8]) -> bool {
     let lower = name.to_ascii_lowercase();
-    if lower.ends_with(".zip") {
-        bytes.starts_with(b"PK\x03\x04") || bytes.starts_with(b"PK\x05\x06")
-            || bytes.starts_with(b"PK\x07\x08")
-    } else if lower.ends_with(".7z") || lower.ends_with(".7z.001") {
-        bytes.starts_with(b"7z\xbc\xaf\x27\x1c")
-    } else if lower.ends_with(".rar") && !lower.contains(".part2.") && !lower.contains(".part02.")
-        && !lower.contains(".part3.") && !lower.contains(".part03.") {
-        bytes.starts_with(b"Rar!\x1a\x07")
-    } else {
-        // Non-first multipart volumes may not carry a format signature.
-        !bytes.starts_with(b"<!DOCTYPE") && !bytes.starts_with(b"<html")
+    // Every first volume has an archive signature; later volumes are raw
+    // continuation bytes, not standalone RAR or 7z files.
+    match multipart_volume(&lower) {
+        Some((_, 1)) if lower.ends_with(".rar") =>
+            bytes.starts_with(b"Rar!\x1a\x07"),
+        Some((_, 1)) if lower.contains(".7z.") =>
+            bytes.starts_with(b"7z\xbc\xaf\x27\x1c"),
+        Some((_, volume)) if volume > 1 => {
+            !bytes.is_empty() && !looks_like_download_error(bytes)
+        },
+        _ if lower.ends_with(".zip") =>
+            bytes.starts_with(b"PK\x03\x04") || bytes.starts_with(b"PK\x05\x06")
+                || bytes.starts_with(b"PK\x07\x08"),
+        _ if lower.ends_with(".7z") =>
+            bytes.starts_with(b"7z\xbc\xaf\x27\x1c"),
+        _ if lower.ends_with(".rar") =>
+            bytes.starts_with(b"Rar!\x1a\x07"),
+        _ => false,
     }
+}
+
+fn looks_like_download_error(bytes: &[u8]) -> bool {
+    let sample = String::from_utf8_lossy(&bytes[..bytes.len().min(128)]);
+    let head = sample.trim_start_matches(|ch: char| ch.is_ascii_whitespace()).to_ascii_lowercase();
+    head.starts_with("<!doctype") || head.starts_with("<html") ||
+        head.starts_with("<?xml") || head.starts_with("{\\\"error\\\"") ||
+        head.starts_with("{\\\"message\\\"") || head.starts_with("access denied") ||
+        head.starts_with("not found")
 }
 
 fn choose_path(filename: &str) -> Result<std::path::PathBuf, String> {
@@ -397,6 +413,18 @@ mod tests {
             assert!(!valid_public_https(&reqwest::Url::parse(url).unwrap()), "{url}");
         }
     }
+    #[test]
+    fn recognizes_all_multipart_rar_volumes() {
+        assert!(validate_archive_header("game.part01.rar", b"Rar!\x1a\x07\x01"));
+        assert!(validate_archive_header("game.part04.rar", b"RAW CONTINUATION BYTES"));
+        assert!(validate_archive_header("game.part120.rar", b"RAW CONTINUATION BYTES"));
+        assert!(!validate_archive_header("game.part01.rar", b"RAW CONTINUATION BYTES"));
+        assert!(!validate_archive_header("game.part04.rar", b"<html>404 error</html>"));
+        assert!(!validate_archive_header("game.part04.rar", b"{\\"error\\":404}"));
+        assert!(validate_archive_header("game.7z.002", b"RAW CONTINUATION BYTES"));
+        assert!(!validate_archive_header("game.7z.001", b"RAW CONTINUATION BYTES"));
+    }
+
     #[test]
     fn checks_filename_and_archive_signature() {
         assert!(archive_name("My Game.zip"));
