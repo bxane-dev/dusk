@@ -96,24 +96,20 @@ jobs:
           tagName: dusk-v__VERSION__
           releaseName: Dusk v__VERSION__
           releaseBody: |
-            # Dusk v1.8.15 — Automatic Cloudflare WARP VPN and archive reliability
+            # Dusk v1.8.16 — Safer large-game extraction and multipart readiness
             
-            ## New: VPN in Settings
-            - **Automatic VPN** remains enabled by default.
-            - Connect the official **Cloudflare WARP** Windows client automatically when it is installed and configured, or use an existing Windows VPN connection.
-            - Detect whether WARP actually reports a connected tunnel, not just DNS-only mode.
-            - Choose your VPN connection, view status, connect manually, or switch to Off.
-            - **Install Cloudflare WARP** opens the official installation instructions; WARP must be installed and set up once before Dusk can control it.
-            - When Automatic is enabled but the VPN isn't connected, Dusk blocks source browsing and downloads instead of silently using your normal connection.
+            ## Fixed
+            - Browser-downloaded multi-volume RAR and 7z archives must **pass an actual 7-Zip integrity test** before Dusk treats them as complete; consecutive filenames alone no longer count.
+            - Reject archives with duplicate volume numbers, noncontiguous parts, or parts that change while being tested.
+            - Check available disk space **before** extraction through 7-Zip, the Windows ZIP extractor, or the Python fallback. Keep a 512 MiB free-space reserve.
+            - Preserve the **150 GiB unpacked-size limit** introduced in v1.8.15, with 50,000-file and path/link safety limits.
+            - Show specific progress when a multipart download is incomplete or needs an installed 7-Zip tool instead of repeatedly attempting a failing extraction.
+            - Add regression tests for bogus multipart files, duplicate volumes, unpacked-size calculation and disk-space limits.
             
-            ## Download and extraction fixes
-            - Raise verified extraction limit from 20 GiB to 150 GiB for modern large games; keep the existing file-count and path/link protections.
-            - Reject multipart archive sets with missing middle volumes and recognize `.part001.rar` automatically.
-            
-            ## Limits
-            - Dusk integrates a genuine VPN client but does **not** bundle a VPN server or the proprietary WARP software. Cloudflare's own client is required.
-            - WARP may change routing for other Windows applications; it cannot bypass login, CAPTCHA, paid access, blocked files, or dead hosting links.
-            - Some networks or websites may remain inaccessible through WARP. There is no guarantee Game3rb or its file hosts will work on a given connection.
+            ## Notes
+            - Managed one-click bundles know their download completion status; browser-downloaded archives now require integrity verification before automatic import.
+            - On Windows, automatic verification of browser-downloaded multipart archives needs 7-Zip available on the system.
+            - Dusk cannot recover archive volumes that are missing or inaccessible from the file host, and continues to require approval before executing installers.
           releaseDraft: false
           prerelease: false
           uploadUpdaterJson: false
