@@ -19,6 +19,14 @@
     } catch { return null; }
   };
 
+  // Explicit download-host links can open in the current WebView.
+  const fileHosts = new Set(["gofile.io","pixeldrain.com","mega.nz","1fichier.com","filecrypt.cc","filecrypt.co","rapidgator.net","multiup.io","qiwi.gg","datanodes.to","buzzheavier.com","vikingfile.com","filekeeper.net","fileditchfiles.st"]);
+  function downloadHost(value) {
+    try {
+      const url = new URL(value, location.href);
+      return url.protocol === "https:" && !url.username && !url.password && fileHosts.has(url.hostname.toLowerCase()) ? url : null;
+    } catch { return null; }
+  }
   let noticeTimer;
   function explainBlockedLink() {
     if (!document.body) return;
@@ -58,12 +66,17 @@
         event.ctrlKey || event.altKey || event.shiftKey || event.metaKey) return;
     const element = event.target;
     if (!(element instanceof Element)) return;
-    const anchor = element.closest('a[href][target="_blank"]');
+    const anchor = element.closest('a[href]');
     if (!anchor || anchor.hasAttribute("download")) return;
+    if (anchor.getAttribute("target") !== "_blank" && !downloadHost(anchor.getAttribute("href"))) return;
     const link = isSameSource(anchor.getAttribute("href"));
     event.preventDefault();
     event.stopImmediatePropagation();
     if (link) window.location.assign(link.href);
-    else explainBlockedLink();
+    else {
+      const download = downloadHost(anchor.getAttribute("href"));
+      if (download && event.isTrusted !== false) window.location.assign(download.href);
+      else explainBlockedLink();
+    }
   }, true);
 })();
