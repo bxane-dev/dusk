@@ -995,6 +995,7 @@ export default function App() {
   const [archiveBusy, setArchiveBusy] = useState(false);
   const [cloudSyncBusy, setCloudSyncBusy] = useState(false);
   const [availableUpdate, setAvailableUpdate] = useState<string | null>(null);
+  const [availableUpdateNotes, setAvailableUpdateNotes] = useState<string | null>(null);
   const [autoScanEnabled, setAutoScanEnabled] = useState(
     () => localStorage.getItem("dusk-auto-scan") !== "false",
   );
@@ -1176,6 +1177,8 @@ export default function App() {
         .then((result) => {
           if (!cancelled && result.available && result.version) {
             setAvailableUpdate(result.version);
+            setAvailableUpdateNotes(result.body || null);
+            showToast("Dusk " + result.version + " is available. See Settings → Updates for the changelog.");
           }
         })
         .catch(() => undefined);
@@ -1782,9 +1785,11 @@ export default function App() {
       const result = await checkForDuskUpdate();
       if (result.available && result.version) {
         setAvailableUpdate(result.version);
-        showToast("Dusk " + result.version + " is available.");
+        setAvailableUpdateNotes(result.body || null);
+        showToast("Dusk " + result.version + " is available. Changelog: Settings → Updates.");
       } else {
         setAvailableUpdate(null);
+        setAvailableUpdateNotes(null);
         showToast("Dusk is up to date.");
       }
     } catch (error) {
@@ -3171,6 +3176,12 @@ export default function App() {
                         </button>
                       )}
                     </div>
+                    {availableUpdate && availableUpdateNotes && (
+                      <div className="update-release-notes" role="status" aria-label="Available update changelog">
+                        <strong>What's new in Dusk {availableUpdate}</strong>
+                        <div className="update-release-notes-text">{availableUpdateNotes}</div>
+                      </div>
+                    )}
                   </section>
 
                   <section className="settings-card">
