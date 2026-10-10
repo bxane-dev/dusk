@@ -1959,6 +1959,30 @@ export default function App() {
     }
   }
 
+  function findHosterMultipartBundle(files: OnlineFixHosterFile[]) {
+    const groups = new Map<string, Map<number, { filename: string; mirrors: string[] }>>();
+    for (const file of files) {
+      if (!file.directArchive || file.isFix || file.requiresCaution) continue;
+      const rar = file.filename.match(/^(.*)\.part0*(\d+)\.rar$/i);
+      const seven = file.filename.match(/^(.*\.7z)\.(\d{3})$/i);
+      const match = rar || seven;
+      if (!match) continue;
+      const volume = Number(match[2]);
+      if (!Number.isInteger(volume) || volume < 1 || volume > 120) continue;
+      const groupId = (match[1] + (rar ? ".rar" : "")).toLocaleLowerCase();
+      if (!groups.has(groupId)) groups.set(groupId, new Map());
+      const group = groups.get(groupId)!;
+      if (!group.has(volume)) group.set(volume, { filename: file.filename, mirrors: [] });
+      const entry = group.get(volume)!;
+      if (!entry.mirrors.includes(file.url) && entry.mirrors.length < 8) entry.mirrors.push(file.url);
+    }
+    const complete = Array.from(groups.values())
+      .map(group => Array.from(group.entries()).sort(([a], [b]) => a - b))
+      .filter(entries => entries.length >= 2 && entries.every(([number], index) => number === index + 1))
+      .sort((a, b) => b.length - a.length);
+    return complete.length ? complete[0].map(([, part]) => part) : null;
+  }
+
   async function selectGameDownload(result: WebGameResult) {
     if (downloadSourcesBusy) return;
     setDownloadSourcesBusy(result.url);
@@ -1972,7 +1996,15 @@ export default function App() {
         try {
           const files = await api.getOnlineFixHosterFiles(hosters.url);
           setHosterFiles((current) => ({ ...current, [result.url]: files }));
-          const primary = files.find((file) => file.directArchive && !file.isFix && !file.requiresCaution);
+          const multipart = findHosterMultipartBundle(files);
+          if (multipart) {
+            const created = await api.startArchiveBundle(result.title, multipart);
+            setManagedDownloads(current => [created, ...current.filter(item => item.id !== created.id)]);
+            showToast("Downloading " + multipart.length + " archive volumes with automatic mirror fallback.");
+            return;
+          }
+          const primary = files.find(file => file.directArchive && !file.isFix && !file.requiresCaution &&
+            !/\.7z\.\d{3}$|\.part\d+\.rar$/i.test(file.filename));
           if (primary) {
             await startHosterFileDownload(result, primary);
             return;
