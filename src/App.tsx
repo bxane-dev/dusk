@@ -970,13 +970,13 @@ export default function App() {
   const [downloadSources, setDownloadSources] = useState<Record<string, WebDownloadLink[]>>({});
   const [hosterFiles, setHosterFiles] = useState<Record<string, OnlineFixHosterFile[]>>({});
   const [downloadSourcesBusy, setDownloadSourcesBusy] = useState<string | null>(null);
-  const [downloadManagerOpen, setDownloadManagerOpen] = useState(false);
-  const [downloadUrl, setDownloadUrl] = useState("");
-  const [downloadFileName, setDownloadFileName] = useState("");
-  const [downloadGameTitle, setDownloadGameTitle] = useState("");
-  const [downloadStarting, setDownloadStarting] = useState(false);
-  const [downloadImportingId, setDownloadImportingId] = useState<string | null>(null);
   const [managedDownloads, setManagedDownloads] = useState<ManagedDownload[]>([]);
+  // Transfers and extraction continue independently of the current screen.
+  // No Downloads dashboard or manual URL form occupies Home/Library.
+  const handledDownloadIdsRef = useRef(new Set<string>());
+  const failedDownloadIdsRef = useRef(new Set<string>());
+  const importingInBackgroundRef = useRef(false);
+  const managedDownloadPathsRef = useRef(new Set<string>());
   const [activeDownloadWatch, setActiveDownloadWatch] = useState<{ sinceMs: number; title: string; url: string } | null>(null);
   const [downloadWatchMessage, setDownloadWatchMessage] = useState("");
   const downloadStabilityRef = useRef(new Map<string, { size: number; stable: number }>());
@@ -1832,48 +1832,60 @@ export default function App() {
     }
   }
 
-  async function startNativeDownload() {
-    if (downloadStarting) return;
-    setDownloadStarting(true);
-    try {
-      const created = await api.startManagedDownload(downloadUrl.trim(), downloadFileName.trim(), downloadGameTitle.trim());
-      setManagedDownloads((current) => [created, ...current]);
-      setDownloadUrl("");
-      setDownloadFileName("");
-      showToast("Downloading " + created.filename + " in Dusk.");
-    } catch (error) {
-      showToast(readableError(error), "error");
-    } finally {
-      setDownloadStarting(false);
-    }
-  }
-
-  async function importNativeDownload(download: ManagedDownload) {
-    if (downloadImportingId || download.status !== "completed") return;
-    setDownloadImportingId(download.id);
-    try {
-      const imported = await api.importDownloadedGameArchive(download.filePath, download.title);
-      if (activeDownloadWatch?.title === download.title) setActiveDownloadWatch(null);
-      await finishGameImport(imported);
-    } catch (error) {
-      showToast(readableError(error), "error");
-    } finally {
-      setDownloadImportingId(null);
-    }
-  }
-
+  // Native transfers are polled while Dusk runs; the visible game pages do not
+  // need to stay open. Completed single-volume archives import automatically.
   useEffect(() => {
     let mounted = true;
     const refresh = async () => {
       try {
-        const updated = await api.listManagedDownloads();
-        if (mounted) setManagedDownloads(updated);
-      } catch { /* The launcher can still work without a download manager. */ }
+        const items = await api.listManagedDownloads();
+        if (mounted) {
+          managedDownloadPathsRef.current = new Set(items.map((item) => item.filePath.toLowerCase()));
+          setManagedDownloads(items);
+        }
+      } catch { /* Downloads must not prevent the game library from loading. */ }
     };
     void refresh();
-    const poll = window.setInterval(() => void refresh(), 1800);
+    const poll = window.setInterval(() => void refresh(), 2000);
     return () => { mounted = false; window.clearInterval(poll); };
   }, []);
+
+  useEffect(() => {
+    for (const item of managedDownloads) {
+      if (item.status === "failed" && !failedDownloadIdsRef.current.has(item.id)) {
+        failedDownloadIdsRef.current.add(item.id);
+        showToast("Download failed for " + item.title + ": " + (item.error || "File host refused the transfer."), "error");
+      }
+    }
+    if (importingInBackgroundRef.current) return;
+
+    const ready = managedDownloads.find((item) =>
+      item.status === "completed" && !handledDownloadIdsRef.current.has(item.id));
+    if (!ready) return;
+
+    handledDownloadIdsRef.current.add(ready.id);
+    // A first multipart volume is not a complete game. Never try to unpack
+    // an incomplete set of volumes or execute files from an archive.
+    if (/\.7z\.\d{3}$|\.part\d+\.rar$/i.test(ready.filename)) {
+      showToast("Downloaded " + ready.filename + ". Multipart archives need all volumes before import.");
+      return;
+    }
+
+    importingInBackgroundRef.current = true;
+    void (async () => {
+      const imported = await api.importDownloadedGameArchive(ready.filePath, ready.title);
+      if (imported.game) {
+        await refreshCore(false);
+        showToast(ready.title + " was downloaded and added to your library.");
+      } else if (imported.installers.length > 0) {
+        showToast(ready.title + " extracted. An installer was found and needs your approval; use Install game to run it.");
+      } else {
+        showToast(ready.title + " extracted. No executable was detected; use Add game to select one.");
+      }
+    })().catch((error: unknown) => {
+      showToast("Could not import " + ready.title + ": " + readableError(error), "error");
+    }).finally(() => { importingInBackgroundRef.current = false; });
+  }, [managedDownloads]);
 
   async function importArchive() {
     if (archiveBusy) return;
@@ -1917,10 +1929,8 @@ export default function App() {
     try {
       const created = await api.startManagedDownload(file.url, file.filename, result.title);
       setManagedDownloads((current) => [created, ...current.filter((entry) => entry.id !== created.id)]);
-      setDownloadManagerOpen(true);
-      showToast("Downloading " + file.filename + " from " + file.provider + ".");
+      showToast("Downloading " + file.filename + " from " + file.provider + " in the background.");
     } catch (error) {
-      setDownloadManagerOpen(true);
       showToast("Download could not start: " + readableError(error), "error");
     }
   }
@@ -2058,6 +2068,7 @@ export default function App() {
         const archives = await api.listRecentGameArchives(watch.sinceMs);
         if (cancelled) return;
         for (const candidate of archives) {
+          if (managedDownloadPathsRef.current.has(candidate.path.toLowerCase())) continue;
           if (!matchesGameArchive(candidate.filename, watch.title)) continue;
           const prior = downloadStabilityRef.current.get(candidate.path);
           const stable = prior && prior.size === candidate.sizeBytes ? prior.stable + 1 : 0;
@@ -2338,11 +2349,6 @@ export default function App() {
           </div>
 
           <div className="top-actions">
-            <button className="button secondary" onClick={() => setDownloadManagerOpen((open) => !open)}
-              title="Dusk native download manager: direct HTTPS archive URLs, progress, cancellation and import">
-              <Archive size={16} />
-              Downloads{managedDownloads.some((item) => item.status === "downloading") ? " •" : ""}
-            </button>
             <button className="button secondary" onClick={() => void importArchive()} disabled={archiveBusy} title="Extract ZIP, RAR, or 7z archives with Python fallback">
               {archiveBusy ? <RefreshCw className="spin" size={16} /> : <Archive size={16} />}
               {archiveBusy ? "Extracting…" : "Import archive"}
@@ -2359,72 +2365,6 @@ export default function App() {
         </header>
 
         <div className="content">
-          {downloadManagerOpen && (
-            <section className="native-download-manager" aria-label="Native download manager">
-              <div className="native-download-heading">
-                <div>
-                  <strong>Download manager</strong>
-                  <p>Download game archives directly inside Dusk. Paste an actual HTTPS file URL, not a download-host webpage. Game sites requiring login or special download steps still need the embedded browser.</p>
-                </div>
-                <button className="button ghost" onClick={() => setDownloadManagerOpen(false)} aria-label="Close downloads"><X size={16} /></button>
-              </div>
-              <form className="native-download-form" onSubmit={(event) => { event.preventDefault(); void startNativeDownload(); }}>
-                <label>Direct HTTPS archive URL
-                  <input type="url" value={downloadUrl} required placeholder="https://files.example.org/MyGame.zip"
-                    onChange={(event) => {
-                      const value = event.target.value;
-                      setDownloadUrl(value);
-                      try {
-                        const last = decodeURIComponent(new URL(value).pathname.split("/").pop() || "");
-                        if (/\.(zip|rar|7z|7z\.001)$/i.test(last)) setDownloadFileName(last);
-                      } catch { /* A partial URL is allowed while typing. */ }
-                    }} />
-                </label>
-                <label>Archive filename
-                  <input value={downloadFileName} required placeholder="MyGame.zip"
-                    onChange={(event) => setDownloadFileName(event.target.value)} />
-                </label>
-                <label>Game title
-                  <input value={downloadGameTitle} required placeholder="My Game"
-                    onChange={(event) => setDownloadGameTitle(event.target.value)} />
-                </label>
-                <button className="button primary" type="submit" disabled={downloadStarting}>
-                  {downloadStarting ? "Connecting…" : "Start download"}
-                </button>
-              </form>
-              <div className="native-download-list">
-                {managedDownloads.length === 0 && <p className="native-download-empty">No downloads yet.</p>}
-                {managedDownloads.map((item) => (
-                  <div className="native-download-job" key={item.id}>
-                    <div className="native-download-job-header">
-                      <strong>{item.filename}</strong>
-                      <span>{item.status === "downloading" ? "Downloading" : item.status === "completed" ? "Ready to import" : item.status === "cancelled" ? "Cancelled" : "Failed"}</span>
-                    </div>
-                    <div className="native-download-meter">
-                      <progress max={item.totalBytes || 1} value={item.receivedBytes} />
-                      <span>
-                        {formatBytes(item.receivedBytes)}{item.totalBytes ? " / " + formatBytes(item.totalBytes) + " (" + Math.min(100, Math.floor(item.receivedBytes * 100 / item.totalBytes)) + "%)" : ""}
-                      </span>
-                    </div>
-                    {item.error && <p className="native-download-error">{item.error}</p>}
-                    <div className="native-download-job-actions">
-                      {item.status === "downloading" && (
-                        <button className="button ghost" onClick={() => void api.cancelManagedDownload(item.id).catch((error: unknown) => showToast(readableError(error), "error"))}>
-                          Cancel
-                        </button>
-                      )}
-                      {item.status === "completed" && (
-                        <button className="button secondary" disabled={downloadImportingId !== null}
-                          onClick={() => void importNativeDownload(item)}>
-                          {downloadImportingId === item.id ? "Importing…" : "Extract & add to library"}
-                        </button>
-                      )}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </section>
-          )}
           {loading ? (
             <div className="loading-screen">
               <div className="brand-mark">
@@ -2471,7 +2411,9 @@ export default function App() {
                       <div className="web-result-actions">
                         <button className="button primary" disabled={downloadSourcesBusy !== null} onClick={() => void selectGameDownload(result)} title="Find the actual game archive on Hosters and start downloading in Dusk">
                           {downloadSourcesBusy === result.url ? <RefreshCw className="spin" size={15} /> : <Archive size={15} />}
-                          {downloadSourcesBusy === result.url ? "Finding game file…" : "Get game"}
+                          {downloadSourcesBusy === result.url ? "Finding game file…" :
+                            managedDownloads.some((download) => download.title === result.title && download.status === "downloading")
+                              ? "Downloading in background" : "Get game"}
                         </button>
                         <button className="button secondary" onClick={() => void trackOnlineFixDownload(result)} title="Open the original game listing inside Dusk">
                           <Globe2 size={15} /> Listing
@@ -2546,7 +2488,7 @@ export default function App() {
               </div>
               <p className="web-results-note">
                 {webSource === "online-fix"
-                  ? "Get game selects a Hosters archive and starts a native download when a direct file URL is available. Fix-only files are excluded. Some hosts require browser interaction."
+                  ? "Get game starts supported downloads and safely imports completed single-file archives in the background. Home and Library show games, not download forms. Login-only hosts still need browser interaction."
                   : webSource === "fitgirl"
                     ? "FitGirl is an offline-only discovery source. Listings open inside Dusk with ad and pop-up blocking on by default. For download-host pages outside FitGirl, use Browser fallback."
                     : "Game3rb listings open in Dusk with ad and pop-up blocking on by default. For third-party download hosts or sites that require external browsing, use Browser fallback."}
