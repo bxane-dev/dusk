@@ -2,6 +2,16 @@
 
 All notable Dusk changes are documented here.
 
+## 1.8.12 - 2026-10-10
+
+Fix misleading one-click downloads caused by mirrors redirecting to 404 download endpoints.
+
+- Probe discovered archive mirrors with a small ranged GET and verify archive magic bytes.
+- Reject HTTP 404, HTML responses and other non-archive responses before starting a download.
+- Validate the first and last multipart volumes and prefer a verified working mirror.
+- When direct sources are inaccessible, explain the limitation and open the original listing in Dusk.
+- Preserve ad/pop-up protections and installer confirmation.
+
 ## 1.8.11 - 2026-10-10
 
 One-click downloads across multiple game listing sources, with mirror fallback and release notes visible in the update notice.
