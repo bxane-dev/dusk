@@ -608,6 +608,49 @@ mod multipart_scan_tests {
     }
 
     #[test]
+    fn validates_real_multi_volume_seven_zip_archive_and_rejects_missing_last_part() {
+        let Some(tool) = extractor_candidates().into_iter().find(|candidate|
+            Command::new(candidate).arg("-h").output().is_ok()
+        ) else {
+            // Building Dusk must not require a separately installed extractor.
+            return;
+        };
+        let folder = std::env::temp_dir().join(format!("dusk-multipart-integration-{}", Uuid::new_v4()));
+        fs::create_dir_all(&folder).unwrap();
+        let payload = folder.join("payload.bin");
+        let mut state: u32 = 0xa5b4c3d2;
+        let data: Vec<u8> = (0..4096).map(|_| {
+            state ^= state << 13;
+            state ^= state >> 17;
+            state ^= state << 5;
+            (state & 0xff) as u8
+        }).collect();
+        fs::write(&payload, data).unwrap();
+        let destination = folder.join("fixture.7z");
+        let created = Command::new(tool)
+            .args(["a", "-bd", "-y", "-t7z", "-mx=0", "-v2048b"])
+            .arg(&destination).arg(&payload)
+            .stdin(Stdio::null()).stdout(Stdio::null()).stderr(Stdio::null())
+            .status().unwrap();
+        assert!(created.success(), "Could not create 7-Zip multipart test fixture.");
+        let first = folder.join("fixture.7z.001");
+        assert!(first.is_file());
+        let mut volumes: Vec<_> = fs::read_dir(&folder).unwrap().flatten()
+            .map(|entry| entry.path())
+            .filter(|path| path.file_name().and_then(|v| v.to_str())
+                .is_some_and(|name| name.starts_with("fixture.7z.")))
+            .collect();
+        volumes.sort();
+        assert!(volumes.len() >= 2);
+        assert!(multipart_archive_readiness(&first, None).ready,
+            "A valid, complete multi-volume archive must pass validation");
+        fs::remove_file(volumes.last().unwrap()).unwrap();
+        assert!(!multipart_archive_readiness(&first, None).ready,
+            "A set missing its last part must never be treated as complete");
+        fs::remove_dir_all(folder).unwrap();
+    }
+
+    #[test]
     fn supports_game_installations_larger_than_twenty_gib() {
         assert!(MAX_UNPACKED_BYTES >= 80 * 1024 * 1024 * 1024);
     }
