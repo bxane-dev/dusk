@@ -57,6 +57,13 @@
       window.location.assign(permitted.href);
       return window;
     }
+    // JavaScript download buttons commonly call window.open during a real
+    // user gesture. Only permit selected file hosts during that activation.
+    const fileHost = downloadHost(target);
+    if (fileHost && typeof navigator !== "undefined" && navigator.userActivation?.isActive) {
+      window.location.assign(fileHost.href);
+      return window;
+    }
     explainBlockedLink();
     return null;
   };
