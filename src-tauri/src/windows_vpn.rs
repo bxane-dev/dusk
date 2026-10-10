@@ -79,7 +79,27 @@ fn warp_status(cli: &std::path::Path) -> Result<bool, String> {
         return Err("Cloudflare WARP could not report its status. Open WARP to finish its initial setup.".into());
     }
     let report = String::from_utf8_lossy(&output.stdout);
-    Ok(warp_reports_connected(&report))
+    if !warp_reports_connected(&report) { return Ok(false); }
+    // Connected in DNS-only mode does not route downloads through a VPN.
+    let settings = super::hidden_windows_command(cli.to_string_lossy().as_ref())
+        .arg("settings").output()
+        .map_err(|_| "Could not verify Cloudflare WARP's tunnel mode.".to_string())?;
+    if !settings.status.success() {
+        return Err("Could not verify Cloudflare WARP's tunnel mode.".into());
+    }
+    if !warp_mode_is_tunnel(&String::from_utf8_lossy(&settings.stdout)) {
+        return Err("Cloudflare WARP is connected but is not in VPN tunnel mode. Select WARP mode in the Cloudflare app.".into());
+    }
+    Ok(true)
+}
+
+#[cfg(target_os = "windows")]
+fn warp_mode_is_tunnel(settings: &str) -> bool {
+    settings.lines().any(|line| {
+        let line = line.trim().to_ascii_lowercase();
+        line.strip_prefix("mode:")
+            .is_some_and(|mode| mode.trim().starts_with("warp"))
+    })
 }
 
 #[cfg(target_os = "windows")]
@@ -93,7 +113,15 @@ fn warp_reports_connected(output: &str) -> bool {
 
 #[cfg(target_os = "windows")]
 fn connect_warp(cli: &std::path::Path) -> Result<VpnConnectionResult, String> {
-    if warp_status(cli).unwrap_or(false) {
+    let initial_status = warp_status(cli);
+    if let Err(reason) = &initial_status {
+        if reason.contains("not in VPN tunnel mode") {
+            return Ok(VpnConnectionResult {
+                connected: false, profile: Some(WARP_PROFILE.into()), message: reason.clone(),
+            });
+        }
+    }
+    if initial_status.unwrap_or(false) {
         return Ok(VpnConnectionResult {
             connected: true, profile: Some(WARP_PROFILE.into()),
             message: "Cloudflare WARP reports Connected. Network routing follows the WARP client settings.".into(),
@@ -264,5 +292,7 @@ mod tests {
         assert!(warp_reports_connected("Status update: Connected\n"));
         assert!(!warp_reports_connected("Status update: Disconnected\n"));
         assert!(!warp_reports_connected("Connection: Connected\nStatus update: Connecting\n"));
+        assert!(warp_mode_is_tunnel("Mode: WarpWithDnsOverHttps\\n".replace("\\n", "\n").as_str()));
+        assert!(!warp_mode_is_tunnel("Mode: DnsOverHttps\\n".replace("\\n", "\n").as_str()));
     }
 }
