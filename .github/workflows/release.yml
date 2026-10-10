@@ -92,24 +92,17 @@ jobs:
           tagName: dusk-v__VERSION__
           releaseName: Dusk v__VERSION__
           releaseBody: |
-            # Dusk v1.8.11 — One-click multi-source game downloads
+            # Dusk v1.8.12 — Fix download mirrors returning 404
             
-            ## What's new
-            - Added **Get game** to Game3rb and FitGirl listings for detectable direct archive links.
-            - Detects alternative download mirrors for the same file and tries the next mirror if one fails.
-            - Downloads recognized complete multipart **RAR** and **7z** volume sets with one click.
-            - Expanded Online-Fix Hosters discovery to support multiple archive volumes.
-            - Fixed the embedded Game3rb search fallback and allowed user-clicked links to recognized download hosts while blocking unrelated pop-ups.
-            - Scans recent archives in Downloads subfolders (up to two levels deep) and imports supported archives into Dusk's managed-games directory.
-            - Detects games after extraction when a single runnable game executable is identified; offers a confirmation before launching an extracted installer.
-            - Shows this changelog in Dusk's **Settings → Updates** notice.
+            ## Fixes
+            - Validate the first bytes of discovered direct archive links before starting automatic downloads.
+            - Reject mirror links that return **HTTP 404**, HTML landing pages, or content that does not match the expected archive format.
+            - Verify the first and last volume of multipart archives before selecting a bundle; try alternative mirrors if the first URL is not usable.
+            - When no direct archive can be verified, show a clear message and open the original listing inside Dusk so you can complete any required host-side steps.
+            - Keep ad and pop-up blocking in the embedded browser, and continue requiring approval before executing downloaded installers.
             
-            ## Important limitations
-            - Automatic downloading requires discoverable, direct public HTTPS archive URLs. File hosts that require login, CAPTCHA, torrents, or intermediate download steps may still need browser interaction.
-            - Multipart archives must have every numbered volume; incomplete sets are not imported.
-            - Untrusted installer execution is never silent: your approval is required. Some archives require 7-Zip or a supported extractor.
-            - Background downloads and import require Dusk to remain open.
-            - Windows SmartScreen may warn about installers without a trusted publisher signature.
+            ## Notice
+            Some file hosts redirect to `/download` pages that are unavailable without a site-specific session or download step. Dusk cannot guarantee a direct download from these links or bypass login, CAPTCHA, or paid access restrictions. Automatic imports still depend on complete archives and a supported extractor.
           releaseDraft: false
           prerelease: false
           uploadUpdaterJson: false
