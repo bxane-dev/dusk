@@ -266,6 +266,20 @@ fn download_bundle(id: String, parts: Vec<(String, Vec<reqwest::Url>)>, folder: 
             return;
         }
     }
+    if parts.len() > 1 && multipart_volume(&parts[0].0).is_some() {
+        // A complete list of filenames and matching HTTP lengths cannot prove
+        // that the archive is intact. Validate the assembled set with 7-Zip
+        // before reporting a completed managed bundle to the import watcher.
+        let first_path = folder.join(&parts[0].0);
+        let readiness = super::archive_import::multipart_archive_readiness(&first_path, None);
+        if !readiness.ready {
+            update_complete(&id, "failed", Some(format!(
+                "Downloaded all archive parts, but integrity verification failed: {}",
+                readiness.message
+            )));
+            return;
+        }
+    }
     update_complete(&id, "completed", None);
 }
 
