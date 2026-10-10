@@ -28,6 +28,9 @@ export type OnlineFixHosterFile = {
 
 export type GameArchiveBundle = { label: string; parts: Array<{ filename: string; mirrors: string[] }> };
 
+export type WindowsVpnProfile = { name: string; connected: boolean };
+export type WindowsVpnConnection = { connected: boolean; profile: string | null; message: string };
+
 export type ManagedDownload = {
   id: string;
   title: string;
@@ -83,6 +86,10 @@ export const api = {
     invoke<void>("run_game_installer", { installerPath }),
   discoverGameSourceArchives: (source: "game3rb" | "fitgirl", listingUrl: string) =>
     invoke<GameArchiveBundle[]>("discover_game_source_archives", { source, listingUrl }),
+  listWindowsVpnProfiles: () =>
+    invoke<WindowsVpnProfile[]>("list_windows_vpn_profiles"),
+  prepareWindowsVpn: (profile?: string) =>
+    invoke<WindowsVpnConnection>("prepare_windows_vpn", { profile: profile || null }),
   searchGameSource: (source: "game3rb" | "fitgirl", query: string) =>
     invoke<Array<{ title: string; url: string; description: string }>>(
       "search_game_source", { source, query },
