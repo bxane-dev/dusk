@@ -6406,6 +6406,7 @@ pub fn run() {
             search_online_fix_games,
             game_sources::search_game_source,
             game_sources::open_game_source_listing,
+            game_sources::open_game_source_search,
             game_sources::open_game_source_browser,
             get_online_fix_download_links,
             get_online_fix_hoster_files,
