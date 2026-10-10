@@ -90,18 +90,18 @@ jobs:
           tagName: dusk-v__VERSION__
           releaseName: Dusk v__VERSION__
           releaseBody: |
-            # Dusk v1.8.7 — Working Hosters downloads
+            # Dusk v1.8.8 — Multiple game search sources
 
-            - Get game now reads actual Hosters archive choices and starts the first safe full-game direct download in Dusk.
-            - Download progress and errors appear in the native Downloads panel.
-            - FileDitch, FileKeeper, Pixeldrain, Gofile and VikingFile are no longer silently blocked.
-            - Fix-only/update archives are not auto-selected. Provider safety prompts remain manual.
-            - Downloads no longer stop at a fixed 60-second request deadline.
-            - Unsupported download links now produce a visible message instead of doing nothing.
+            - Choose Online-Fix, Game3rb or FitGirl from the web search source menu.
+            - Game3rb results appear inside Dusk with links to their original listings.
+            - FitGirl is marked as an offline-game discovery source.
+            - Website search results are restricted to official source hostnames.
+            - The native Online-Fix download manager and prior fixes remain available.
 
-            ## Limitations
-            Sites requiring authentication, anti-bot challenges or browser-only download steps still require manual interaction.
-            Dusk does not bypass access restrictions. No installer runs without your approval.
+            ## Important
+            Game3rb and FitGirl listings open in your default browser; their
+            download hosts may require user interaction. Dusk does not bypass
+            download restrictions or execute downloaded installers automatically.
           releaseDraft: false
           prerelease: false
           uploadUpdaterJson: false
