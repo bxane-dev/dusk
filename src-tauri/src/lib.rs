@@ -6401,6 +6401,7 @@ pub fn run() {
             archive_import::import_game_archive,
             archive_import::import_downloaded_game_archive,
             archive_import::list_recent_game_archives,
+            archive_import::verify_downloaded_multipart_archive,
             download_manager::start_managed_download,
             download_manager::start_archive_bundle,
             download_manager::list_managed_downloads,
