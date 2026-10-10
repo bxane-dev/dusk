@@ -32,6 +32,7 @@ jobs:
           node scripts/test-online-fix-autoselect.cjs
           node scripts/test-background-download-ui.cjs
           node scripts/test-game-source-browser.cjs
+          node scripts/test-browser-copy-link.cjs
       - name: Build frontend
         run: npm run build
       - name: Check Tauri integration
