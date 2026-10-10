@@ -983,6 +983,7 @@ export default function App() {
   const watchBusyRef = useRef(false);
   const watchAttemptedRef = useRef(new Set<string>());
   const watchVerificationCheckedRef = useRef(new Map<string, number>());
+  const watchImportRetryAtRef = useRef(new Map<string, number>());
   const [sourceFilter, setSourceFilter] = useState("all");
   const [sortMode, setSortMode] = useState<SortMode>("name");
   const [addOpen, setAddOpen] = useState(false);
@@ -1996,6 +1997,7 @@ export default function App() {
     downloadStabilityRef.current.clear();
     watchAttemptedRef.current.clear();
     watchVerificationCheckedRef.current.clear();
+    watchImportRetryAtRef.current.clear();
     setDownloadWatchMessage("Waiting for a completed archive matching " + result.title + " in Downloads…");
     // Start monitoring before opening the selected verified download page.
     setActiveDownloadWatch({ sinceMs: Date.now() - 2000, title: result.title, url: destination, source: "online-fix" });
@@ -2016,6 +2018,7 @@ export default function App() {
     downloadStabilityRef.current.clear();
     watchAttemptedRef.current.clear();
     watchVerificationCheckedRef.current.clear();
+    watchImportRetryAtRef.current.clear();
     setDownloadWatchMessage("Watching for a download of " + result.title + " in the background…");
     setActiveDownloadWatch({
       sinceMs: Date.now() - 2000,
@@ -2254,6 +2257,7 @@ export default function App() {
           downloadStabilityRef.current.set(candidate.path, { size: candidate.sizeBytes, stable });
           const key = candidate.path + ":" + candidate.sizeBytes;
           if (stable < 2 || watchAttemptedRef.current.has(key)) continue;
+          if (Date.now() < (watchImportRetryAtRef.current.get(key) || 0)) continue;
           const isMultipart = /\.7z\.001$|\.part0*1\.rar$/i.test(candidate.filename);
           if (isMultipart) {
             const lastChecked = watchVerificationCheckedRef.current.get(key) || 0;
@@ -2278,7 +2282,15 @@ export default function App() {
             setDownloadWatchMessage("Imported " + candidate.filename + ".");
             await finishGameImport(imported);
           } catch (error) {
-            if (!cancelled) setDownloadWatchMessage("Import failed: " + readableError(error) + " — monitoring continues.");
+            // A transient extraction error (disk space, a changing volume,
+            // locked file) should not permanently suppress retrying this file.
+            // Back off so a bad archive does not trigger costly extraction on
+            // every six-second watcher poll.
+            watchAttemptedRef.current.delete(key);
+            watchImportRetryAtRef.current.set(key, Date.now() + 60_000);
+            if (!cancelled) setDownloadWatchMessage(
+              "Import failed: " + readableError(error) + " — retrying after 60 seconds."
+            );
           }
           break;
         }
