@@ -40,6 +40,7 @@ jobs:
           node scripts/test-online-fix-autoselect.cjs
           node scripts/test-background-download-ui.cjs
           node scripts/test-game-source-browser.cjs
+          node scripts/test-browser-copy-link.cjs
 
       - name: Prepare Dusk branding
         run: npm run brand:prepare
