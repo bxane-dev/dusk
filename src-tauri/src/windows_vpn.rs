@@ -56,19 +56,115 @@ fn local_profiles() -> Result<Vec<WindowsVpnProfile>, String> {
     Ok(Vec::new())
 }
 
+const WARP_PROFILE: &str = "Cloudflare WARP";
+
+#[cfg(target_os = "windows")]
+fn cloudflare_warp_cli() -> Option<std::path::PathBuf> {
+    for key in ["ProgramFiles", "ProgramFiles(x86)"] {
+        if let Some(dir) = std::env::var_os(key) {
+            let candidate = std::path::PathBuf::from(dir)
+                .join("Cloudflare").join("Cloudflare WARP").join("warp-cli.exe");
+            if candidate.is_file() { return Some(candidate); }
+        }
+    }
+    None
+}
+
+#[cfg(target_os = "windows")]
+fn warp_status(cli: &std::path::Path) -> Result<bool, String> {
+    let output = super::hidden_windows_command(cli.to_string_lossy().as_ref())
+        .arg("status").output()
+        .map_err(|_| "Cloudflare WARP is installed but not responding.".to_string())?;
+    if !output.status.success() {
+        return Err("Cloudflare WARP could not report its status. Open WARP to finish its initial setup.".into());
+    }
+    let report = String::from_utf8_lossy(&output.stdout);
+    Ok(warp_reports_connected(&report))
+}
+
+#[cfg(target_os = "windows")]
+fn warp_reports_connected(output: &str) -> bool {
+    output.lines().any(|line| {
+        let normalized = line.trim().to_ascii_lowercase();
+        (normalized.starts_with("status update:") || normalized.starts_with("status:"))
+            && normalized.split_once(':').is_some_and(|(_, status)| status.trim().starts_with("connected"))
+    })
+}
+
+#[cfg(target_os = "windows")]
+fn connect_warp(cli: &std::path::Path) -> Result<VpnConnectionResult, String> {
+    if warp_status(cli).unwrap_or(false) {
+        return Ok(VpnConnectionResult {
+            connected: true, profile: Some(WARP_PROFILE.into()),
+            message: "Cloudflare WARP reports Connected. Network routing follows the WARP client settings.".into(),
+        });
+    }
+    let result = super::hidden_windows_command(cli.to_string_lossy().as_ref())
+        .arg("connect").output()
+        .map_err(|_| "Cloudflare WARP could not start. Open its app and complete first-run setup.".to_string())?;
+    if !result.status.success() {
+        return Ok(VpnConnectionResult {
+            connected: false, profile: Some(WARP_PROFILE.into()),
+            message: "WARP connection failed. Open Cloudflare WARP, accept its terms and register the device first.".into(),
+        });
+    }
+    let connected = warp_status(cli).unwrap_or(false);
+    Ok(VpnConnectionResult {
+        connected, profile: Some(WARP_PROFILE.into()),
+        message: if connected {
+            "Cloudflare WARP reports Connected. Routing follows the WARP client settings.".into()
+        } else {
+            "Cloudflare WARP has not confirmed a connection. Open its app to check setup and network access.".into()
+        },
+    })
+}
+
 #[tauri::command]
 pub(crate) async fn list_windows_vpn_profiles() -> Result<Vec<WindowsVpnProfile>, String> {
-    tauri::async_runtime::spawn_blocking(local_profiles)
-        .await.map_err(|error| format!("VPN profile lookup failed: {error}"))?
+    tauri::async_runtime::spawn_blocking(|| {
+        let mut profiles = local_profiles()?;
+        #[cfg(target_os = "windows")]
+        if let Some(cli) = cloudflare_warp_cli() {
+            profiles.insert(0, WindowsVpnProfile {
+                name: WARP_PROFILE.into(),
+                connected: warp_status(&cli).unwrap_or(false),
+            });
+        }
+        Ok(profiles)
+    }).await.map_err(|error| format!("VPN profile lookup failed: {error}"))?
 }
 
 #[cfg(target_os = "windows")]
 fn connect_profile(requested: Option<String>) -> Result<VpnConnectionResult, String> {
     let profiles = local_profiles()?;
+    let warp = cloudflare_warp_cli();
+    if requested.as_deref() == Some(WARP_PROFILE) {
+        return match warp {
+            Some(ref cli) => connect_warp(cli),
+            None => Ok(VpnConnectionResult {
+                connected: false, profile: Some(WARP_PROFILE.into()),
+                message: "Cloudflare WARP is not installed. Use Install Cloudflare WARP in Dusk Settings.".into(),
+            }),
+        };
+    }
+    // Automatic favors any existing connected VPN, then Cloudflare WARP, then a
+    // single configured Windows VPN connection.
+    if requested.as_deref().unwrap_or_default().trim().is_empty() {
+        if let Some(ref cli) = warp {
+            if warp_status(cli).unwrap_or(false) { return connect_warp(cli); }
+        }
+        if let Some(active) = profiles.iter().find(|p| p.connected) {
+            return Ok(VpnConnectionResult {
+                connected: true, profile: Some(active.name.clone()),
+                message: "Windows reports an existing VPN connection.".into(),
+            });
+        }
+        if let Some(ref cli) = warp { return connect_warp(cli); }
+    }
     if profiles.is_empty() {
         return Ok(VpnConnectionResult {
             connected: false, profile: None,
-            message: "No Windows VPN profile is configured. Add one in Windows Settings → Network & internet → VPN; Dusk cannot provide a VPN server.".into(),
+            message: "No VPN provider is installed. Install Cloudflare WARP in Dusk Settings or configure a Windows VPN profile.".into(),
         });
     }
     let selected = if let Some(name) = requested.filter(|value| !value.trim().is_empty()) {
@@ -141,5 +237,32 @@ pub(crate) fn open_windows_vpn_settings() -> Result<(), String> {
     #[cfg(not(target_os = "windows"))]
     {
         Err("Windows VPN settings are unavailable on this operating system.".into())
+    }
+}
+
+#[tauri::command]
+pub(crate) fn open_cloudflare_warp_setup() -> Result<(), String> {
+    #[cfg(target_os = "windows")]
+    {
+        super::hidden_windows_command("explorer.exe")
+            .arg("https://developers.cloudflare.com/warp-client/get-started/windows/")
+            .spawn()
+            .map_err(|_| "Could not open the official Cloudflare WARP setup guide.".to_string())?;
+        Ok(())
+    }
+    #[cfg(not(target_os = "windows"))]
+    {
+        Err("Cloudflare WARP setup is currently supported on Windows.".into())
+    }
+}
+
+#[cfg(all(test, target_os = "windows"))]
+mod tests {
+    use super::*;
+    #[test]
+    fn recognizes_only_connected_warp_status() {
+        assert!(warp_reports_connected("Status update: Connected\n"));
+        assert!(!warp_reports_connected("Status update: Disconnected\n"));
+        assert!(!warp_reports_connected("Connection: Connected\nStatus update: Connecting\n"));
     }
 }
