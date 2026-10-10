@@ -91,18 +91,19 @@ jobs:
           tagName: dusk-v__VERSION__
           releaseName: Dusk v__VERSION__
           releaseBody: |
-            # Dusk v1.8.8 — Multiple game search sources
+            # Dusk v1.8.9 — Default ad blocking in Dusk browser
 
-            - Choose Online-Fix, Game3rb or FitGirl from the web search source menu.
-            - Game3rb results appear inside Dusk with links to their original listings.
-            - FitGirl is marked as an offline-game discovery source.
-            - Website search results are restricted to official source hostnames.
-            - The native Online-Fix download manager and prior fixes remain available.
+            - Game3rb and FitGirl listing pages now open inside Dusk, not just in the external browser.
+            - Ad and pop-up filtering is always on in Dusk's embedded Online-Fix, Game3rb, and FitGirl browsing windows.
+            - Third-party advertising redirects are blocked; legitimate listing controls remain accessible.
+            - Browser fallback remains available for third-party download hosts.
+            - FitGirl remains labeled as an offline-only discovery option.
 
-            ## Important
-            Game3rb and FitGirl listings open in your default browser; their
-            download hosts may require user interaction. Dusk does not bypass
-            download restrictions or execute downloaded installers automatically.
+            ## Notes
+            Built-in filtering cannot block every advertisement.
+            Hosts requiring login or other access steps still need user interaction.
+            This version does not bypass download-site access restrictions.
+            Windows may show a SmartScreen prompt if the installer is unsigned.
           releaseDraft: false
           prerelease: false
           uploadUpdaterJson: false
