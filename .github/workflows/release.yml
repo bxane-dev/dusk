@@ -92,20 +92,24 @@ jobs:
           tagName: dusk-v__VERSION__
           releaseName: Dusk v__VERSION__
           releaseBody: |
-            # Dusk v1.8.10 — Games-first Home, automatic background downloads
-
-            - Removed the manual Downloader panel and Downloads toolbar button.
-            - Online-Fix Get game starts supported archive transfers in the background.
-            - Completed single-file archives are extracted and registered in Dusk automatically when a game is detected.
-            - Game3rb and FitGirl listings open in Dusk with ad blocking enabled by default; matching browser downloads are monitored.
-            - Download errors appear as notifications, and the browser fallback remains available.
-
-            ## Important
-            Dusk does not bypass third-party logins, download gates or authentication.
-            Multipart archives still require their full set of volumes.
-            Launching a downloaded installer requires separate user confirmation.
-            Background transfers run while Dusk is open, not after exiting the application.
-            Windows may show a SmartScreen warning if unsigned.
+            # Dusk v1.8.11 — One-click multi-source game downloads
+            
+            ## What's new
+            - Added **Get game** to Game3rb and FitGirl listings for detectable direct archive links.
+            - Detects alternative download mirrors for the same file and tries the next mirror if one fails.
+            - Downloads recognized complete multipart **RAR** and **7z** volume sets with one click.
+            - Expanded Online-Fix Hosters discovery to support multiple archive volumes.
+            - Fixed the embedded Game3rb search fallback and allowed user-clicked links to recognized download hosts while blocking unrelated pop-ups.
+            - Scans recent archives in Downloads subfolders (up to two levels deep) and imports supported archives into Dusk's managed-games directory.
+            - Detects games after extraction when a single runnable game executable is identified; offers a confirmation before launching an extracted installer.
+            - Shows this changelog in Dusk's **Settings → Updates** notice.
+            
+            ## Important limitations
+            - Automatic downloading requires discoverable, direct public HTTPS archive URLs. File hosts that require login, CAPTCHA, torrents, or intermediate download steps may still need browser interaction.
+            - Multipart archives must have every numbered volume; incomplete sets are not imported.
+            - Untrusted installer execution is never silent: your approval is required. Some archives require 7-Zip or a supported extractor.
+            - Background downloads and import require Dusk to remain open.
+            - Windows SmartScreen may warn about installers without a trusted publisher signature.
           releaseDraft: false
           prerelease: false
           uploadUpdaterJson: false
