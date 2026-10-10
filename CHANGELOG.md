@@ -2,6 +2,19 @@
 
 All notable Dusk changes are documented here.
 
+## 1.8.15 - 2026-10-10
+
+Automatic Cloudflare WARP connectivity and large-game extraction debugging.
+
+- Use the installed official Cloudflare WARP Windows tunnel, or an existing Windows VPN profile, in Settings > VPN.
+- Confirm active WARP tunnel mode rather than treating DNS-only mode as full VPN protection.
+- Check VPN before game-source browsing and managed downloads; block by default if disconnected.
+- Link to official Cloudflare WARP setup; keep Windows VPN connection controls and an explicit Off setting.
+- Raise extracted game archive limit from 20 GiB to 150 GiB while retaining file count and unsafe-path restrictions.
+- Require sequential multipart volumes before detecting downloaded archives as candidates.
+
+Dusk does not bundle a VPN provider or bypass download-host access requirements. WARP requires a separate installation and first-run setup.
+
 ## 1.8.14 - 2026-10-10
 
 Improve multi-volume downloads and stop wasting time on dead file-host links.
