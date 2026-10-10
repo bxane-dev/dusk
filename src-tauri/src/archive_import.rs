@@ -5,7 +5,7 @@ use std::time::UNIX_EPOCH;
 const MAX_UNPACKED_BYTES: u64 = 150 * 1024 * 1024 * 1024;
 const MAX_ARCHIVE_FILES: usize = 50_000;
 const PYTHON_EXTRACT: &str = r#"
-import pathlib, sys, zipfile, stat
+import pathlib, sys, zipfile, stat, shutil
 archive, destination, kind, password = sys.argv[1:]
 root = pathlib.Path(destination).resolve()
 limit, max_files = 150 * 1024**3, 50000
@@ -23,8 +23,12 @@ def check(name):
 def verify(entries):
     if len(entries) > max_files:
         raise ValueError('Too many files in archive')
-    if sum(max(0, size) for _, size, _ in entries) > limit:
+    required = sum(max(0, size) for _, size, _ in entries)
+    if required > limit:
         raise ValueError('Archive exceeds 150 GiB unpacked limit')
+    free = shutil.disk_usage(root).free
+    if free < required + 512 * 1024**2:
+        raise OSError('Not enough disk space to safely extract this archive')
     for name, size, link in entries:
         check(name)
         if link:
@@ -99,7 +103,22 @@ fn safe_archive_entry(name: &str) -> bool {
         && !normalized.split('/').any(|part| part == "..")
 }
 
-fn verify_7zip_listing(output: &str) -> Result<(), String> {
+const EXTRACTION_FREE_SPACE_RESERVE: u64 = 512 * 1024 * 1024;
+
+fn ensure_extraction_space(destination: &Path, required: u64) -> Result<(), String> {
+    let free = fs2::available_space(destination)
+        .map_err(|error| format!("Could not check extraction disk space: {error}"))?;
+    if free < required.saturating_add(EXTRACTION_FREE_SPACE_RESERVE) {
+        let gib = 1024.0 * 1024.0 * 1024.0;
+        return Err(format!(
+            "Not enough free disk space for extraction: {:.1} GiB required plus 0.5 GiB reserve, {:.1} GiB available.",
+            required as f64 / gib, free as f64 / gib,
+        ));
+    }
+    Ok(())
+}
+
+fn verify_7zip_listing(output: &str) -> Result<u64, String> {
     let normalized = output.replace("\r\n", "\n");
     let body = normalized.splitn(2, "----------").nth(1)
         .ok_or_else(|| "The archive contains no readable entries.".to_string())?;
@@ -133,7 +152,7 @@ fn verify_7zip_listing(output: &str) -> Result<(), String> {
         }
     }
     if count == 0 { return Err("No files could be found in the archive.".into()); }
-    Ok(())
+    Ok(total)
 }
 
 fn extractor_candidates() -> Vec<PathBuf> {
@@ -159,7 +178,8 @@ fn try_7zip(archive: &Path, destination: &Path, password: Option<&str>) -> Resul
         let listing = listing.arg(archive).stdin(Stdio::null()).output();
         let Ok(listing) = listing else { continue };
         if !listing.status.success() { continue; }
-        verify_7zip_listing(&String::from_utf8_lossy(&listing.stdout))?;
+        let unpacked_size = verify_7zip_listing(&String::from_utf8_lossy(&listing.stdout))?;
+        ensure_extraction_space(destination, unpacked_size)?;
 
         let mut command = Command::new(&executable);
         command.args(["x", "-y", "-bd", "-aoa"])
@@ -191,6 +211,12 @@ try {
     if ((($entry.ExternalAttributes -shr 16) -band 61440) -eq 40960) { throw 'Symlink entries are not allowed' }
     $total += $entry.Length
     if ($total -gt 161061273600L) { throw 'Archive exceeds 150 GiB limit' }
+  }
+  $drive = [IO.DriveInfo]::new([IO.Path]::GetPathRoot($root))
+  if ($drive.AvailableFreeSpace -lt ($total + 536870912L)) {
+    throw 'Not enough disk space to safely extract this archive'
+  }
+  if ($false) {
   }
 } finally { $zip.Dispose() }
 [IO.Compression.ZipFile]::ExtractToDirectory($env:DUSK_ARCHIVE, $env:DUSK_DESTINATION)
@@ -260,7 +286,7 @@ fn extract_game_archive(
             }
         };
         if !extracted {
-            return Err("Could not extract archive. Install 7-Zip, or Python 3 with py7zr (7z) / rarfile plus an unrar backend (RAR). Ensure all multipart volumes are downloaded.".into());
+            return Err("Could not extract archive. Check free disk space, archive integrity and passwords. Install 7-Zip, or Python 3 with py7zr (7z) / rarfile plus an unrar backend (RAR). Ensure all multipart volumes are downloaded.".into());
         }
 
         let mut files = 0usize;
@@ -512,6 +538,11 @@ mod tests {
         assert!(!safe_archive_entry("/etc/passwd"));
         assert!(!safe_archive_entry("games:file"));
         assert!(safe_archive_entry("game/bin/launch.exe"));
+    }
+
+    #[test]
+    fn extraction_rejects_impossible_free_space_requirements() {
+        assert!(ensure_extraction_space(&std::env::temp_dir(), u64::MAX).is_err());
     }
 
     #[test]
