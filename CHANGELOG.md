@@ -2,6 +2,18 @@
 
 All notable Dusk changes are documented here.
 
+## 1.8.17 - 2026-10-10
+
+Make one-click multipart completion and automatic extraction retries more reliable.
+
+- Verify downloaded multipart RAR/7z bundles with native archive integrity testing before declaring a managed transfer complete.
+- Retry failed browser-downloaded archive imports after a 60-second cooldown rather than ignoring the file permanently.
+- Preserve Online-Fix source information across managed download jobs for known archive-password handling.
+- Add integration tests that create a real multipart 7z file, verify the full set and reject a missing final volume.
+- Retain the 150 GiB extraction cap and free-disk-space checks.
+
+Native multipart verification requires an installed 7-Zip-compatible utility; inaccessible file-host URLs remain unsupported.
+
 ## 1.8.16 - 2026-10-10
 
 Strengthen large-game extraction preflight and verify actual multipart archives before import.
