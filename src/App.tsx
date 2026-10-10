@@ -2046,7 +2046,7 @@ export default function App() {
     try {
       const bundles = await api.discoverGameSourceArchives(source, result.url);
       if (!bundles.length) {
-        showToast("No complete set of direct archive links was found. Opening the listing for download-host steps.");
+        showToast("No working direct archive mirror was verified (the host may return 404, a web page, or require extra steps). Opening the listing in Dusk.");
         await openOtherGameSource(result);
         return;
       }
@@ -2057,7 +2057,8 @@ export default function App() {
       setManagedDownloads(current => [created, ...current.filter(item => item.id !== created.id)]);
       showToast("Downloading " + selected.parts.length + " archive volume(s) with automatic mirror fallback.");
     } catch (error) {
-      showToast("Direct download unavailable: " + readableError(error), "error");
+      showToast("Direct download could not be verified: " + readableError(error) + ". Opening the listing in Dusk.", "error");
+      await openOtherGameSource(result);
     } finally {
       setDownloadSourcesBusy(null);
     }
