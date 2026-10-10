@@ -112,9 +112,73 @@ pub(crate) async fn search_game_source(source: String, query: String) -> Result<
     }).await.map_err(|e| e.to_string())?
 }
 
+
+fn source_page_allowed(url: &reqwest::Url, expected_host: &str) -> bool {
+    if url.scheme() != "https" || url.username() != "" || url.password().is_some() {
+        return false;
+    }
+    // Don't allow a page or ad redirect to leave the chosen game site.
+    url.host_str().map(|host| host == expected_host || host == format!("www.{expected_host}")).unwrap_or(false)
+}
+
+#[tauri::command]
+pub(crate) async fn open_game_source_listing(app: tauri::AppHandle, url: String) -> Result<(), String> {
+    let listing = verified_listing(&url)?;
+    let host = listing.host_str().unwrap_or_default().trim_start_matches("www.").to_string();
+    let title = if host == "fitgirl-repacks.site" {
+        "Dusk — FitGirl (offline game listings)"
+    } else {
+        "Dusk — Game3rb listings"
+    };
+    tauri::WebviewWindowBuilder::new(
+        &app,
+        format!("game-source-{}", uuid::Uuid::new_v4().simple()),
+        tauri::WebviewUrl::External(listing)
+    )
+    .title(title)
+    .inner_size(1150.0, 800.0)
+    .accept_first_mouse(true)
+    // The ad blocker is intentionally always enabled, including new-window
+    // browser sessions for Game3rb and offline FitGirl listings.
+    .initialization_script(include_str!("online_fix_adblock.js"))
+    .initialization_script(include_str!("game_source_navigation.js"))
+    .on_navigation(move |target| source_page_allowed(target, &host))
+    .on_new_window(|_, _| tauri::webview::NewWindowResponse::Deny)
+    .on_download(|_window, event| match event {
+        tauri::webview::DownloadEvent::Requested { url, destination } => {
+            let Some(filename) = destination.file_name().and_then(|name| name.to_str()) else {
+                return false;
+            };
+            if !super::is_safe_game_archive_download(&url, filename) { return false; }
+            let Some(home) = std::env::var_os("USERPROFILE") else { return false; };
+            let folder = std::path::PathBuf::from(home).join("Downloads");
+            if !folder.is_dir() { return false; }
+            let mut path = folder.join(filename);
+            if path.exists() {
+                // Avoid clobbering existing files; preserving multipart filenames
+                // is more important than guessing an incompatible part name.
+                if filename.to_ascii_lowercase().contains(".part")
+                    || filename.to_ascii_lowercase().ends_with(".7z.001") { return false; }
+                let fpath = std::path::Path::new(filename);
+                let stem = fpath.file_stem().and_then(|part| part.to_str()).unwrap_or("game");
+                let ext = fpath.extension().and_then(|part| part.to_str()).unwrap_or("zip");
+                let Some(next) = (2..100).map(|i| folder.join(format!("{stem} ({i}).{ext}")))
+                    .find(|candidate| !candidate.exists()) else { return false; };
+                path = next;
+            }
+            *destination = path;
+            true
+        }
+        _ => true
+    })
+    .build()
+    .map_err(|error| format!("Could not open game listing inside Dusk: {error}"))?;
+    Ok(())
+}
+
 #[cfg(target_os = "windows")]
 #[tauri::command]
-pub(crate) fn open_game_source_listing(url: String) -> Result<(), String> {
+pub(crate) fn open_game_source_browser(url: String) -> Result<(), String> {
     verified_listing(&url)?;
     super::hidden_windows_command("rundll32")
         .args(["url.dll,FileProtocolHandler", &url])
@@ -125,9 +189,9 @@ pub(crate) fn open_game_source_listing(url: String) -> Result<(), String> {
 
 #[cfg(not(target_os = "windows"))]
 #[tauri::command]
-pub(crate) fn open_game_source_listing(url: String) -> Result<(), String> {
+pub(crate) fn open_game_source_browser(url: String) -> Result<(), String> {
     verified_listing(&url)?;
-    Err("Opening game source listings is currently supported on Windows.".into())
+    Err("External browser fallback is currently supported on Windows.".into())
 }
 
 #[cfg(test)]
@@ -152,6 +216,15 @@ mod tests {
         let results = parse_results("fitgirl", html).unwrap();
         assert_eq!(results.len(), 1);
         assert!(results[0].title.contains("Stardew Valley"));
+    }
+
+    #[test]
+    fn embedded_browser_stays_on_chosen_source() {
+        let host = "fitgirl-repacks.site";
+        assert!(source_page_allowed(&reqwest::Url::parse("https://www.fitgirl-repacks.site/stardew-valley/").unwrap(), host));
+        assert!(source_page_allowed(&reqwest::Url::parse("https://fitgirl-repacks.site/?s=example").unwrap(), host));
+        assert!(!source_page_allowed(&reqwest::Url::parse("https://ads.example/gate").unwrap(), host));
+        assert!(!source_page_allowed(&reqwest::Url::parse("https://fitgirl-repacks.site.evil.org/").unwrap(), host));
     }
 
     #[test]
