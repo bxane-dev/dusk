@@ -2416,7 +2416,19 @@ export default function App() {
                 </div>
               )}
               {!activeDownloadWatch && downloadWatchMessage && <p className="web-results-note" role="status">{downloadWatchMessage}</p>}
-              {webError && <div className="inline-error" role="alert">{webError}</div>}
+              {webError && (
+                <div className="inline-error" role="alert">
+                  <p>{webError}</p>
+                  {webSource !== "online-fix" && (
+                    <button className="button secondary" onClick={() => {
+                      void api.openGameSourceSearch(webSource, query.trim())
+                        .catch(error => showToast(readableError(error), "error"));
+                    }} title="Open this search in Dusk's embedded browser with its ad blocker enabled">
+                      <Globe2 size={15} /> Open search in Dusk browser
+                    </button>
+                  )}
+                </div>
+              )}
               {!webLoading && !webError && webResults.length === 0 && (
                 <p className="web-results-empty">No matching listings found. Try the full game title or another keyword.</p>
               )}
