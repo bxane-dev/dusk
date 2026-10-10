@@ -82,6 +82,12 @@ type View =
 type SortMode = "name" | "recent" | "playtime";
 type ThemeName = "night" | "oled" | "slate";
 type AccentName = "violet" | "ember" | "cyan";
+type WebGameSource = "online-fix" | "game3rb" | "fitgirl";
+const WEB_SOURCES: Record<WebGameSource, { label: string; host: string; description: string }> = {
+  "online-fix": { label: "Online-Fix", host: "online-fix.me", description: "Online game listings" },
+  game3rb: { label: "Game3rb", host: "game3rb.com", description: "Game3rb game listings" },
+  fitgirl: { label: "FitGirl · Offline", host: "fitgirl-repacks.site", description: "Offline game repack listings" },
+};
 type WebGameResult = { title: string; url: string; description: string };
 type WebDownloadLink = {
   url: string;
@@ -955,6 +961,7 @@ export default function App() {
   const [collectionFilter, setCollectionFilter] = useState("all");
   const [query, setQuery] = useState("");
   const [webSearchEnabled, setWebSearchEnabled] = useState(false);
+  const [webSource, setWebSource] = useState<WebGameSource>("online-fix");
   const [webResults, setWebResults] = useState<WebGameResult[]>([]);
   const [webSearched, setWebSearched] = useState(false);
   const [webLoading, setWebLoading] = useState(false);
@@ -1985,7 +1992,10 @@ export default function App() {
     setWebError("");
     setWebResults([]);
     try {
-      setWebResults(await api.searchOnlineFixGames(term));
+      const results = webSource === "online-fix"
+        ? await api.searchOnlineFixGames(term)
+        : await api.searchGameSource(webSource, term);
+      setWebResults(results);
     } catch (error) {
       setWebError(readableError(error));
     } finally {
@@ -2276,7 +2286,7 @@ export default function App() {
                 onFocus={() => {
                   if (!webSearchEnabled && view === "home") setView("library");
                 }}
-                placeholder={webSearchEnabled ? "Find games on Online-Fix (Enter)" : "Search your games"}
+                placeholder={webSearchEnabled ? `Search ${WEB_SOURCES[webSource].label} (Enter)` : "Search your games"}
                 aria-label={webSearchEnabled ? "Web search query" : "Search your games"}
               />
               {query && (
@@ -2285,7 +2295,7 @@ export default function App() {
                 </button>
               )}
               {webSearchEnabled && (
-                <button type="button" onClick={() => void searchWeb()} disabled={!query.trim()} aria-label="Search online games" title="Search Online-Fix game listings inside Dusk">
+                <button type="button" onClick={() => void searchWeb()} disabled={!query.trim()} aria-label="Search online games" title={`Search ${WEB_SOURCES[webSource].label} game listings inside Dusk`}>
                   <Search size={16} />
                 </button>
               )}
@@ -2297,8 +2307,27 @@ export default function App() {
                 onChange={(event) => { setWebSearchEnabled(event.target.checked); setWebSearched(false); setWebResults([]); setWebError(""); }}
               />
               <span className="web-search-switch" aria-hidden="true" />
-              <span>Online-Fix</span>
+              <span>Web search</span>
             </label>
+            {webSearchEnabled && (
+              <label className="web-source-control">
+                <span>Source</span>
+                <select className="web-source-select" value={webSource} disabled={webLoading}
+                  aria-label="Game listing source"
+                  onChange={(event) => {
+                    setWebSource(event.target.value as WebGameSource);
+                    setWebSearched(false);
+                    setWebResults([]);
+                    setWebError("");
+                    setDownloadSources({});
+                    setHosterFiles({});
+                  }}>
+                  <option value="online-fix">Online-Fix · Online</option>
+                  <option value="game3rb">Game3rb · Games</option>
+                  <option value="fitgirl">FitGirl · Offline only</option>
+                </select>
+              </label>
+            )}
           </div>
 
           <div className="top-actions">
@@ -2401,9 +2430,9 @@ export default function App() {
             <section className="web-results-page">
               <div className="web-results-heading">
                 <div>
-                  <span className="eyebrow">Online game listings</span>
-                  <h1>Online-Fix game search</h1>
-                  <p>Results for “{query.trim()}” from public pages indexed on online-fix.me.</p>
+                  <span className="eyebrow">{WEB_SOURCES[webSource].description}</span>
+                  <h1>{WEB_SOURCES[webSource].label} game search</h1>
+                  <p>Results for “{query.trim()}” from {WEB_SOURCES[webSource].host}.</p>
                 </div>
                 {webLoading && <RefreshCw className="spin" size={19} />}
               </div>
@@ -2428,8 +2457,9 @@ export default function App() {
                     <div>
                       <h3>{result.title}</h3>
                       {result.description && <p>{result.description}</p>}
-                      <span>online-fix.me</span>
+                      <span>{WEB_SOURCES[webSource].host}{webSource === "fitgirl" ? " · Offline" : ""}</span>
                     </div>
+                    {webSource === "online-fix" ? (
                     <div className="web-download-action-group">
                       <div className="web-result-actions">
                         <button className="button primary" disabled={downloadSourcesBusy !== null} onClick={() => void selectGameDownload(result)} title="Find the actual game archive on Hosters and start downloading in Dusk">
@@ -2488,10 +2518,26 @@ export default function App() {
                         </div>
                       )}
                     </div>
+                    ) : (
+                      <div className="web-result-actions">
+                        <button className="button primary" onClick={() => {
+                          void api.openGameSourceListing(result.url)
+                            .catch((error: unknown) => showToast(readableError(error), "error"));
+                        }} title="Open this game's original listing in your default browser">
+                          <ExternalLink size={15} /> View listing
+                        </button>
+                      </div>
+                    )}
                   </article>
                 ))}
               </div>
-              <p className="web-results-note">Get game now uses the actual Hosters file list and starts a verified full-game archive in Dusk's Downloads manager when a direct link exists. It never selects fix-only files. If a provider requires a web session, use Open file host or Browser fallback. The download manager reports transfer errors instead of silently doing nothing.</p>
+              <p className="web-results-note">
+                {webSource === "online-fix"
+                  ? "Get game selects a Hosters archive and starts a native download when a direct file URL is available. Fix-only files are excluded. Some hosts require browser interaction."
+                  : webSource === "fitgirl"
+                    ? "FitGirl is listed as an offline-only discovery option in Dusk. Open a listing to inspect its requirements and download choices; Dusk does not assume the site provides a direct-download API."
+                    : "Browse Game3rb listings here and open the selected page in your default browser. Download options depend on the individual host; Dusk does not bypass logins or download gates."}
+              </p>
             </section>
           ) : (
             <>
