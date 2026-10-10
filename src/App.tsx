@@ -26,6 +26,7 @@ import {
   RotateCcw,
   ScanSearch,
   Save,
+  ShieldCheck,
   Search,
   Settings,
   Sparkles,
@@ -2327,6 +2328,12 @@ export default function App() {
                   <option value="fitgirl">FitGirl · Offline only</option>
                 </select>
               </label>
+            )}
+            {webSearchEnabled && (
+              <span className="web-adblock-indicator"
+                title="Ad and pop-up filtering is automatically enabled in all Dusk game browser windows">
+                <ShieldCheck size={14} /> Ad blocking on
+              </span>
             )}
           </div>
 
