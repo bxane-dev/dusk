@@ -40,7 +40,7 @@ fn with_job(id: &str, update: impl FnOnce(&mut DownloadJob)) {
     }
 }
 
-fn valid_public_https(url: &reqwest::Url) -> bool {
+pub(crate) fn valid_public_https(url: &reqwest::Url) -> bool {
     if url.scheme() != "https" || url.username() != "" || url.password().is_some() {
         return false;
     }
@@ -66,7 +66,7 @@ fn valid_public_https(url: &reqwest::Url) -> bool {
     }
 }
 
-fn archive_name(name: &str) -> bool {
+pub(crate) fn archive_name(name: &str) -> bool {
     if name.len() > 210 || name.is_empty() || name == "." || name == ".."
         || name.chars().any(|c| c.is_control() || matches!(c, '/' | '\\' | ':' | '<' | '>' | '"' | '|' | '?' | '*'))
         || name.ends_with('.') || name.ends_with(' ') {
@@ -74,11 +74,7 @@ fn archive_name(name: &str) -> bool {
     }
     let name = name.to_ascii_lowercase();
     name.ends_with(".zip") || name.ends_with(".rar") || name.ends_with(".7z")
-        || name.ends_with(".7z.001") || name.ends_with(".7z.002")
-        || name.ends_with(".7z.003") || name.ends_with(".7z.004")
-        || name.ends_with(".part1.rar") || name.ends_with(".part01.rar")
-        || name.ends_with(".part2.rar") || name.ends_with(".part02.rar")
-        || name.ends_with(".part3.rar") || name.ends_with(".part03.rar")
+        || multipart_volume(&name).is_some_and(|(_, volume)| (1..=120).contains(&volume))
 }
 
 fn validate_archive_header(name: &str, bytes: &[u8]) -> bool {
@@ -256,7 +252,7 @@ fn download_bundle(id: String, parts: Vec<(String, Vec<reqwest::Url>)>, folder: 
     update_complete(&id, "completed", None);
 }
 
-fn multipart_volume(filename: &str) -> Option<(String, usize)> {
+pub(crate) fn multipart_volume(filename: &str) -> Option<(String, usize)> {
     let lower = filename.to_ascii_lowercase();
     if let Some(prefix) = lower.strip_suffix(".rar") {
         if let Some((stem, digits)) = prefix.rsplit_once(".part") {
@@ -314,6 +310,9 @@ pub(crate) fn start_archive_bundle(title: String, parts: Vec<ArchiveBundlePart>)
             if !mirrors.contains(&url) { mirrors.push(url); }
         }
         ready.push((part.filename, mirrors));
+    }
+    if group.is_some() && ready.len() < 2 {
+        return Err("The page lists only the first volume; the remaining parts must be available before automatic import.".into());
     }
     let id = Uuid::new_v4().to_string();
     let home = std::env::var_os("USERPROFILE").or_else(|| std::env::var_os("HOME"))
