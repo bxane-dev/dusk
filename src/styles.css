@@ -2681,3 +2681,17 @@ button:disabled { cursor: not-allowed; opacity: 0.55; }
 .update-release-notes { margin-top: 14px; padding: 12px; border: 1px solid var(--border); border-radius: 9px; }
 .update-release-notes > strong { display: block; font-size: 12px; margin-bottom: 8px; }
 .update-release-notes-text { white-space: pre-wrap; overflow-wrap: anywhere; max-height: 320px; overflow-y: auto; color: var(--subtle); font-size: 11px; line-height: 1.6; }
+
+/* Windows VPN profile integration — compact controls within Settings. */
+.vpn-settings-select {
+  min-width: 150px;
+  max-width: min(46%, 280px);
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  color: var(--text);
+  background: var(--surface-2);
+  font-size: 11px;
+}
+.vpn-settings-select:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.vpn-settings-select:disabled { opacity: .5; }
